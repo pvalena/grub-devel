@@ -1,13 +1,23 @@
 #!/usr/bin/env zsh
 
-exit 1
+set -xe
 
-fastdown https://lists.gnu.org/archive/mbox/grub-devel/2026-02
+zsh -n "$0"
 
-mkdir 2026-02-d
+while [[ -n "$1" ]]; do
 
-git mailsplit -o2026-02-d -- 2026-02
+    M="$1"
+    shift ||:
 
-cd 2026-02-d
+    D="${M}-d"
 
-../commit.sh
+    [[ -d "$D" ]] || {
+
+        fastdown "https://lists.gnu.org/archive/mbox/grub-devel/$M"
+
+        mkdir -p "$D"
+        git mailsplit "-o${M}-d" -- "${M}"
+    }
+
+    ./commit.sh "$D" || echo 'commit: $M' >> fail.log
+done
