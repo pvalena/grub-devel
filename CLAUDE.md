@@ -38,25 +38,36 @@ git diff branch1 branch2
 
 #### 5. Classify Duplicates
 
+**IMPORTANT PRINCIPLE: Always Keep the LATEST Version**
+
+When branches are duplicates or near-duplicates, **always keep the LATEST submission** (most recent date). Rationale:
+- Latest submission may have updated commit messages
+- Author may have made final corrections or refinements
+- Later dates indicate the author's final intent
+
 **Type A: Exact Duplicates** (empty diff)
 - Branches are 100% identical
-- Keep the **earliest** submission
-- Add all others to `duplicates.txt`
+- Keep the **LATEST** submission (by date)
+- Add all earlier versions to `duplicates.txt`
+- **Example**: 2025-05-0204, 2025-05-0205, 2025-05-0220 all identical
+  - Result: Keep 2025-05-0220 (latest), remove 2025-05-0204, 2025-05-0205
 
 **Type B: Nearly Identical** (minor differences only)
 - Only whitespace, comments, or trivial formatting changes
-- Keep the **earliest** submission
-- Add others to `duplicates.txt`
+- Keep the **LATEST** submission (by date)
+- Add earlier versions to `duplicates.txt`
+- **Example**: 2025-05-0206 vs 2025-05-0221 (trivial formatting differences)
+  - Result: Keep 2025-05-0221 (latest), remove 2025-05-0206
 
 **Type C: Superseded/Obsoleted Versions**
 - Same commit message and purpose
 - Later version has **significant improvements** or **bug fixes**
-- Keep the **later/better** version
+- Keep the **LATEST/BETTER** version
 - Add the **older/superseded** version to `duplicates.txt`
 - **Example**: 2025-04-0093 vs 2025-05-0011
   - Both about "Use ET_DYN instead of ET_REL modules"
   - 2025-05-0011 is a major refactoring with additional changes
-  - Result: Keep 2025-05-0011, remove 2025-04-0093
+  - Result: Keep 2025-05-0011 (latest and improved), remove 2025-04-0093
 
 **Type D: Different Implementations** (NOT duplicates)
 - Same problem being solved
@@ -76,6 +87,31 @@ git diff branch1 branch2
 8. "Use ET_DYN instead of ET_REL" - 2 versions → kept 2025-05-0011 (supersedes 2025-04-0093)
 
 **Result:** 11 duplicates removed from 33 branches (33% duplication rate)
+
+### Documentation Requirements
+
+**IMPORTANT: Always Document Explicit Reasons**
+
+Before adding branches to `duplicates.txt`, you MUST:
+1. Verify the relationship between branches (exact duplicate, superseded, etc.)
+2. Document the explicit reason for each duplicate
+3. Ensure branches actually conflict or are truly redundant
+4. DO NOT add branches with:
+   - Different commit messages (unless one clearly supersedes the other)
+   - Different files modified
+   - No clear relationship
+
+**Format for documenting reasons:**
+```
+BRANCH_NAME  (Reason: TYPE - specific justification)
+```
+
+**Examples:**
+```
+2025-04-0088  (Reason: Exact duplicate of 2025-04-0047)
+2025-04-0093  (Reason: Superseded by 2025-05-0011 - major refactoring with additional changes)
+2025-05-0204  (Reason: Exact duplicate, 2025-05-0220 is latest)
+```
 
 ### Output Format
 
