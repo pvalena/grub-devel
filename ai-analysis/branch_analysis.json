@@ -1,0 +1,1426 @@
+{
+  "branches": [
+    {
+      "branch": "2025-01-0065",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2025-01-09",
+      "subject": "term/ns8250: return in case of a null SPCR base addresses",
+      "files": [
+        "grub-core/term/ns8250.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - prevents system halt from invalid SPCR null addresses"
+    },
+    {
+      "branch": "2025-01-0091",
+      "author": "Michael Chang <mchang@suse.com>",
+      "date": "2025-01-21",
+      "subject": "grub-install: force journal draining to ensure data integrity",
+      "files": [
+        "Makefile.util.def",
+        "grub-core/osdep/basic/journaled_fs.c",
+        "grub-core/osdep/journaled_fs.c",
+        "grub-core/osdep/linux/journaled_fs.c",
+        "include/grub/util/install.h",
+        "util/grub-install.c",
+        "util/grub-mkconfig.in"
+      ],
+      "classification": "MERGE",
+      "reason": "Important bug fix - prevents XFS corruption on power loss after grub-install"
+    },
+    {
+      "branch": "2025-01-0100",
+      "author": "Egor Ignatov <egori@altlinux.org>",
+      "date": "2025-01-23",
+      "subject": "fs/xfs: Handle root inode read failure in grub_xfs_mount",
+      "files": [
+        "grub-core/fs/xfs.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - proper error handling for XFS filesystem"
+    },
+    {
+      "branch": "2025-02-0185",
+      "author": "Tony W Wang-oc <TonyWWang-oc@zhaoxin.com>",
+      "date": "2025-02-28",
+      "subject": "i386: Check for cpuid family when flush cache only on VIA CPUs",
+      "files": [
+        "grub-core/kern/i386/pc/init.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform-specific bug fix for Zhaoxin CPUs (avoids unnecessary wbinvd)"
+    },
+    {
+      "branch": "2025-03-0102",
+      "author": "Yann Diorcet <diorcet.yann@gmail.com>",
+      "date": "2025-03-14",
+      "subject": "luks2: Add token parsing support",
+      "files": [
+        "grub-core/disk/luks2.c"
+      ],
+      "classification": "MERGE",
+      "reason": "New feature - TPM2 token support for LUKS2 encryption"
+    },
+    {
+      "branch": "2025-03-0103",
+      "author": "Yann Diorcet <diorcet.yann@gmail.com>",
+      "date": "2025-03-14",
+      "subject": "base64: Add new module allowing multiple modules to use base64 functions",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/lib/base64.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Code improvement - shared base64 functionality (reduces duplication)"
+    },
+    {
+      "branch": "2025-03-0105",
+      "author": "Yann Diorcet <diorcet.yann@gmail.com>",
+      "date": "2025-03-14",
+      "subject": "tpm2_key_protector/grub_protect: code factorization for srk functions",
+      "files": [
+        "Makefile.util.def",
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/tpm2_key_protector/module.c",
+        "grub-core/commands/tpm2_key_protector/tpm2.h",
+        "grub-core/commands/tpm2_key_protector/tpm2_args.h",
+        "grub-core/commands/tpm2_key_protector/tpm2srk.c",
+        "grub-core/commands/tpm2_key_protector/tpm2srk.h",
+        "util/grub-protect.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Code refactoring - improves TPM2 code organization"
+    },
+    {
+      "branch": "2025-03-0106",
+      "author": "Yann Diorcet <diorcet.yann@gmail.com>",
+      "date": "2025-03-14",
+      "subject": "tss2: Add some types and mashalling/unmarshalling functions for IESYS",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/lib/tss2/tss2_iesys.c",
+        "grub-core/lib/tss2/tss2_iesys.h",
+        "grub-core/lib/tss2/tss2_mu.c",
+        "grub-core/lib/tss2/tss2_mu.h",
+        "grub-core/lib/tss2/tss2_structs.h",
+        "grub-core/lib/tss2/tss2_types.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Enhancement - extends TPM2 functionality with marshalling support"
+    },
+    {
+      "branch": "2025-03-0206",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-03-27",
+      "subject": "Add convenience TARGET_CROSS",
+      "files": [
+        "configure.ac"
+      ],
+      "classification": "MERGE",
+      "reason": "Build improvement - simplifies cross-compilation configuration"
+    },
+    {
+      "branch": "2025-03-0211",
+      "author": "Lidong Chen <lidong.chen@oracle.com>",
+      "date": "2025-03-27",
+      "subject": "loader/xnu: Fix memory leak",
+      "files": [
+        "grub-core/loader/xnu.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - fixes memory leak (Coverity CID 473859)"
+    },
+    {
+      "branch": "2025-03-0223",
+      "author": "Mike Gilbert <floppym@gentoo.org>",
+      "date": "2025-03-27",
+      "subject": "build: include missing header files in source tarball",
+      "files": [
+        "Makefile.util.def",
+        "grub-core/Makefile.core.def"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - ensures all required headers are in tarball"
+    },
+    {
+      "branch": "2025-03-0225",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-03-29",
+      "subject": "Add support for qemu emulation of malta board",
+      "files": [
+        "configure.ac",
+        "gentpl.py",
+        "grub-core/Makefile.am",
+        "grub-core/Makefile.core.def",
+        "grub-core/kern/mips/malta/init.c",
+        "grub-core/kern/mips/malta/pci.c",
+        "grub-core/lib/mips/malta/reboot.c",
+        "include/grub/kernel.h",
+        "include/grub/mips/malta/cmos.h",
+        "include/grub/mips/malta/console.h",
+        "include/grub/mips/malta/kernel.h",
+        "include/grub/mips/malta/memory.h",
+        "include/grub/mips/malta/pci.h",
+        "include/grub/mips/malta/serial.h",
+        "include/grub/mips/malta/time.h",
+        "include/grub/offsets.h",
+        "include/grub/util/install.h",
+        "tests/ahci_test.in",
+        "tests/cdboot_test.in",
+        "tests/ehci_test.in",
+        "tests/fddboot_test.in",
+        "tests/file_filter_test.in",
+        "tests/hddboot_test.in",
+        "tests/netboot_test.in",
+        "tests/ohci_test.in",
+        "tests/partmap_test.in",
+        "tests/pata_test.in",
+        "tests/uhci_test.in",
+        "tests/util/grub-shell.in",
+        "util/grub-install-common.c",
+        "util/grub-install.c",
+        "util/grub-mkrescue.c",
+        "util/grub-module-verifier.c",
+        "util/mkimage.c"
+      ],
+      "classification": "MERGE",
+      "reason": "New platform support - QEMU MIPS Malta board (useful for testing)"
+    },
+    {
+      "branch": "2025-04-0012",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-04-01",
+      "subject": "libgcrypt: Fix coverity warnings",
+      "files": [
+        "grub-core/lib/libgcrypt-patches/03_coverity.patch"
+      ],
+      "classification": "MERGE",
+      "reason": "Code quality - fixes Coverity warnings in libgcrypt"
+    },
+    {
+      "branch": "2025-04-0073",
+      "author": "Tobias Heider <tobias.heider@canonical.com>",
+      "date": "2025-04-07",
+      "subject": "arm64: Limit memory allocations to 4GB boundary",
+      "files": [
+        "include/grub/arm64/efi/memory.h"
+      ],
+      "classification": "REVIEW",
+      "reason": "Platform-specific workaround for Snapdragon X Elite - superseded by 2025-04-0139 which has better approach"
+    },
+    {
+      "branch": "2025-04-0092",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-04-08",
+      "subject": "loongarch64: Use la.pcrel instead of la.",
+      "files": [
+        "grub-core/kern/loongarch64/efi/startup.S"
+      ],
+      "classification": "REVIEW",
+      "reason": "Platform-specific fix for loongarch64 - superseded by 2025-05-0010 with better solution"
+    },
+    {
+      "branch": "2025-04-0139",
+      "author": "Tobias Heider <tobias.heider@canonical.com>",
+      "date": "2025-04-11",
+      "subject": "kern/efi/mm: try allocating in the lower 4GB first",
+      "files": [
+        "grub-core/kern/efi/mm.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - better approach than 2025-04-0073, handles Snapdragon X Elite without breaking other platforms"
+    },
+    {
+      "branch": "2025-04-0149",
+      "author": "Tony W Wang-oc <TonyWWang-oc@zhaoxin.com>",
+      "date": "2025-04-14",
+      "subject": "i386: Reduce the time of set VESA mode by clearing FB directly for Zhaoxin/Glenfly card",
+      "files": [
+        "grub-core/video/i386/pc/vbe.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform-specific performance improvement for Zhaoxin/Glenfly graphics"
+    },
+    {
+      "branch": "2025-04-0167",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-04-15",
+      "subject": "Implement __aeabi_uldivmod",
+      "files": [
+        "grub-core/kern/arm/compiler-rt.S",
+        "include/grub/compiler-rt.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform fix - provides missing ARM compiler runtime function"
+    },
+    {
+      "branch": "2025-04-0168",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-04-15",
+      "subject": "Enable (u)divdi3 and (u)moddi3 for mips",
+      "files": [
+        "gentpl.py",
+        "grub-core/kern/compiler-rt.c",
+        "grub-core/kern/misc.c",
+        "include/grub/compiler-rt.h",
+        "include/grub/misc.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform fix - provides missing MIPS compiler runtime functions"
+    },
+    {
+      "branch": "2025-04-0198",
+      "author": "Paymon MARANDI <paymon@encs.concordia.ca>",
+      "date": "2025-04-16",
+      "subject": "efi/mm: relax memory type request we're asking for from allocate_pages()",
+      "files": [
+        "grub-core/kern/efi/mm.c"
+      ],
+      "classification": "REVIEW",
+      "reason": "EFI memory allocation change - superseded by later patches (2025-04-0236, 2025-04-0237) with more complete solution"
+    },
+    {
+      "branch": "2025-04-0214",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-04-18",
+      "subject": "Command lspaging to show paging table",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/arm64/lspaging.c",
+        "grub-core/commands/x86_64/lspaging.c"
+      ],
+      "classification": "MERGE",
+      "reason": "New debugging command - useful diagnostic tool for x86_64 and arm64"
+    },
+    {
+      "branch": "2025-04-0223",
+      "author": "Adriano Cordova <adrianox@gmail.com>",
+      "date": "2025-04-21",
+      "subject": "kern/efi/mm.c: Add optional range check",
+      "files": [
+        "grub-core/kern/efi/mm.c",
+        "include/grub/mm.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Infrastructure for memory range limiting - used by 2025-04-0224"
+    },
+    {
+      "branch": "2025-04-0224",
+      "author": "Adriano Cordova <adrianox@gmail.com>",
+      "date": "2025-04-21",
+      "subject": "kern/efi/mm.c: use GRUB_MM_ADD_REGION_IN_RANGE on risc-v",
+      "files": [
+        "grub-core/kern/efi/mm.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform fix - required for RISC-V with -mcmodel=medany"
+    },
+    {
+      "branch": "2025-04-0236",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-04-22",
+      "subject": "x86_64-efi: Ensure that memory is mapped when allocating",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/kern/efi/mm.c",
+        "grub-core/kern/x86_64/efi/mm.c",
+        "include/grub/efi/memory.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Important EFI fix - handles unmapped memory above 4GB, increases max to 128TiB"
+    },
+    {
+      "branch": "2025-04-0237",
+      "author": "Paymon MARANDI <paymon@encs.concordia.ca>",
+      "date": "2025-04-22",
+      "subject": "kern/efi/mm: ask for more that 4GB if we need it",
+      "files": [
+        "grub-core/kern/efi/mm.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Enhancement to 2025-04-0236 - properly handles large memory allocations"
+    },
+    {
+      "branch": "2025-04-0275",
+      "author": "Daniel Kiper <daniel.kiper@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "mmap: Add grub_mmap_get_lowest() and grub_mmap_get_highest()",
+      "files": [
+        "grub-core/mmap/mmap.c",
+        "include/grub/memory.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Infrastructure for Secure Launch - needed by subsequent patches"
+    },
+    {
+      "branch": "2025-04-0276",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "slaunch: Add Secure Launch Resource Table (SLRT) header file",
+      "files": [
+        "grub-core/Makefile.am",
+        "include/grub/slr_table.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - header definitions (part of series)"
+    },
+    {
+      "branch": "2025-04-0278",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "i386: Add CRx, MMIO, MSR and extend CPUID definitions",
+      "files": [
+        "include/grub/i386/cpuid.h",
+        "include/grub/i386/crfr.h",
+        "include/grub/i386/mmio.h",
+        "include/grub/i386/msr.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - infrastructure definitions"
+    },
+    {
+      "branch": "2025-04-0281",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "slaunch: Add SLR table setup support module",
+      "files": [
+        "grub-core/loader/slaunch/slrt.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - core implementation (part of series)"
+    },
+    {
+      "branch": "2025-04-0283",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "i386/txt: Add Intel TXT definitions header file",
+      "files": [
+        "include/grub/i386/txt.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - Intel TXT support definitions"
+    },
+    {
+      "branch": "2025-04-0284",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "slaunch/txt: Add Intel TXT ACM module support",
+      "files": [
+        "grub-core/loader/slaunch/acmod.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - Intel TXT ACM module"
+    },
+    {
+      "branch": "2025-04-0285",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "slaunch/txt: Add Intel TXT core implementation",
+      "files": [
+        "grub-core/loader/slaunch/txt.c",
+        "include/grub/i386/memory.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - Intel TXT core implementation"
+    },
+    {
+      "branch": "2025-04-0286",
+      "author": "Sergii Dmytruk <sergii.dmytruk@3mdeb.com>",
+      "date": "2025-05-01",
+      "subject": "i386: extract grub_get_max_phy_addr_bits ()",
+      "files": [
+        "grub-core/video/i386/pc/vbe.c",
+        "include/grub/i386/cpuid.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Code refactoring - extracts reusable function for Secure Launch"
+    },
+    {
+      "branch": "2025-04-0287",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "slaunch/txt: Add Intel TXT verification routines",
+      "files": [
+        "grub-core/loader/slaunch/verify.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - verification routines"
+    },
+    {
+      "branch": "2025-04-0289",
+      "author": "Ross Philipson <ross.philipson@oracle.com>",
+      "date": "2025-05-01",
+      "subject": "i386/efi: Add DL stub as common DL event module",
+      "files": [
+        "grub-core/loader/slaunch/x86_dlstub.c",
+        "grub-core/loader/slaunch/x86_dltrampoline.S"
+      ],
+      "classification": "MERGE",
+      "reason": "Secure Launch feature - dynamic launch stub"
+    },
+    {
+      "branch": "2025-04-0294",
+      "author": "Sergii Dmytruk <sergii.dmytruk@3mdeb.com>",
+      "date": "2025-05-01",
+      "subject": "multiboot: Make GRUB_MULTIBOOT(make_mbi) return MBI's size",
+      "files": [
+        "grub-core/loader/i386/multiboot_mbi.c",
+        "grub-core/loader/multiboot.c",
+        "grub-core/loader/multiboot_mbi2.c",
+        "include/grub/multiboot.h",
+        "include/grub/multiboot2.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Enhancement - improves multiboot measurement consistency"
+    },
+    {
+      "branch": "2025-05-0010",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "loongarch64: Use got-based retrieval instead of la.",
+      "files": [
+        "grub-core/kern/loongarch64/efi/startup.S"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform fix - better solution than 2025-04-0092 for loongarch64 above 4GB"
+    },
+    {
+      "branch": "2025-05-0011",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "Use ET_DYN instead of ET_REL modules",
+      "files": [
+        "conf/Makefile.common",
+        "conf/i386-modules.sc",
+        "configure.ac",
+        "grub-core/commands/tpm2_key_protector/tpm2key.c",
+        "grub-core/genmod.sh.in",
+        "grub-core/genmoddep.awk",
+        "grub-core/kern/arm/dl.c",
+        "grub-core/kern/arm64/dl.c",
+        "grub-core/kern/dl.c",
+        "grub-core/kern/emu/full.c",
+        "grub-core/kern/i386/dl.c",
+        "grub-core/kern/ia64/dl.c",
+        "grub-core/kern/loongarch64/dl.c",
+        "grub-core/kern/mips/dl.c",
+        "grub-core/kern/powerpc/dl.c",
+        "grub-core/kern/riscv/dl.c",
+        "grub-core/kern/sparc64/dl.c",
+        "grub-core/kern/x86_64/dl.c",
+        "grub-core/lib/backtrace.c",
+        "include/grub/dl.h",
+        "include/grub/elf.h",
+        "util/grub-mkimagexx.c",
+        "util/grub-module-verifier.c",
+        "util/grub-module-verifierXX.c",
+        "util/grub-pe2elf.c"
+      ],
+      "classification": "REVIEW",
+      "reason": "Major architectural change - module loading system overhaul, needs careful testing across all platforms"
+    },
+    {
+      "branch": "2025-05-0012",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "Force mcmodel=large on x64 and riscv64",
+      "files": [
+        "configure.ac"
+      ],
+      "classification": "MERGE",
+      "reason": "Build improvement - ensures proper code model for 64-bit platforms"
+    },
+    {
+      "branch": "2025-05-0014",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "Use mcmodel=extreme on loongarch64",
+      "files": [
+        "conf/Makefile.common"
+      ],
+      "classification": "MERGE",
+      "reason": "Build improvement - proper code model for loongarch64"
+    },
+    {
+      "branch": "2025-05-0016",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "Fix error when cross-compiling for windows from unix-like OS",
+      "files": [
+        "configure.ac"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - cross-compilation for Windows"
+    },
+    {
+      "branch": "2025-05-0017",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "compiler-rt: Add pei386_runtime_relocator stub",
+      "files": [
+        "grub-core/kern/compiler-rt.c",
+        "include/grub/compiler-rt.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Windows/MinGW build fix - provides stub for compiler-inserted function"
+    },
+    {
+      "branch": "2025-05-0018",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "pe2elf: Set correct flag for relocation sections",
+      "files": [
+        "util/grub-pe2elf.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Critical bug fix - prevents crash from ignored relocation sections"
+    },
+    {
+      "branch": "2025-05-0019",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "hostdisk: Fix cygwin compilation",
+      "files": [
+        "grub-core/osdep/windows/hostdisk.c",
+        "include/grub/osdep/hostfile_windows.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - Cygwin compilation"
+    },
+    {
+      "branch": "2025-05-0020",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "Add cygwin path to unifont",
+      "files": [
+        "configure.ac"
+      ],
+      "classification": "MERGE",
+      "reason": "Build improvement - Cygwin support"
+    },
+    {
+      "branch": "2025-05-0021",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "Strip extra sections generated on cygwin when creating binary images",
+      "files": [
+        "gentpl.py"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - Cygwin binary image generation"
+    },
+    {
+      "branch": "2025-05-0022",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "mkrescue: Fix compilation under cygwin.",
+      "files": [
+        "util/grub-mkrescue.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - Cygwin mkrescue compilation"
+    },
+    {
+      "branch": "2025-05-0023",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "Discard .buildid and .reloc in cygwin script",
+      "files": [
+        "conf/i386-cygwin-img-ld.sc"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - Cygwin linker script"
+    },
+    {
+      "branch": "2025-05-0024",
+      "author": "Vladimir Serbinenko <phcoder@gmail.com>",
+      "date": "2025-05-03",
+      "subject": "render-label: Supports canonical paths not starting with /",
+      "files": [
+        "util/render-label.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Windows support - handles drive letter paths"
+    },
+    {
+      "branch": "2025-05-0028",
+      "author": "Collin Funk <collin.funk1@gmail.com>",
+      "date": "2025-05-04",
+      "subject": "ia64: Fix left shift overflow.",
+      "files": [
+        "grub-core/kern/ia64/dl_helper.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - fixes undefined behavior (left shift overflow)"
+    },
+    {
+      "branch": "2025-05-0074",
+      "author": "Yair Yarom <irush@cs.huji.ac.il>",
+      "date": "2025-05-12",
+      "subject": "testpci: initial module",
+      "files": [
+        "docs/grub.texi",
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/testpci.c",
+        "grub-core/kern/efi/sb.c",
+        "include/grub/file.h"
+      ],
+      "classification": "MERGE",
+      "reason": "New feature - PCI device query command (useful for scripting)"
+    },
+    {
+      "branch": "2025-05-0103",
+      "author": "Waldemar Brodkorb <wbx@openadk.org>",
+      "date": "2025-05-16",
+      "subject": "Add xHCI support",
+      "files": [
+        "Makefile.am",
+        "grub-core/Makefile.core.def",
+        "grub-core/bus/usb/ehci.c",
+        "grub-core/bus/usb/ohci.c",
+        "grub-core/bus/usb/serial/common.c",
+        "grub-core/bus/usb/uhci.c",
+        "grub-core/bus/usb/usb.c",
+        "grub-core/bus/usb/usbhub.c",
+        "grub-core/bus/usb/usbtrans.c",
+        "grub-core/bus/usb/xhci-pci.c",
+        "grub-core/bus/usb/xhci.c",
+        "grub-core/commands/usbtest.c",
+        "grub-core/disk/usbms.c",
+        "grub-core/term/usb_keyboard.c",
+        "include/grub/usb.h",
+        "include/grub/usbdesc.h",
+        "include/grub/usbtrans.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Major feature - xHCI USB controller support (well-tested, needed for modern hardware)"
+    },
+    {
+      "branch": "2025-05-0123",
+      "author": "khaalid <khaliidcaliy@gmail.com>",
+      "date": "2025-05-18",
+      "subject": "include/efi/api: Complete UEFI status codes",
+      "files": [
+        "include/grub/efi/api.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Enhancement - adds missing UEFI status codes from spec 2.11"
+    },
+    {
+      "branch": "2025-05-0124",
+      "author": "khaalid <khaliidcaliy@gmail.com>",
+      "date": "2025-05-18",
+      "subject": "include/efi/efi: Add the prototype",
+      "files": [
+        "include/grub/efi/efi.h"
+      ],
+      "classification": "SKIP",
+      "reason": "Incomplete patch - only adds prototype without implementation"
+    },
+    {
+      "branch": "2025-05-0152",
+      "author": "khaalid cali <khaliidcaliy@gmail.com>",
+      "date": "2025-05-20",
+      "subject": "disk/efi/efidisk: Fix memory leak",
+      "files": [
+        "grub-core/disk/efi/efidisk.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - fixes memory leak on failure path"
+    },
+    {
+      "branch": "2025-05-0159",
+      "author": "Alec Brown <alec.r.brown@oracle.com>",
+      "date": "2025-05-21",
+      "subject": "kern/vercmp: Add functionality to compare kernel versions",
+      "files": [
+        "Makefile.util.def",
+        "grub-core/kern/vercmp.c",
+        "include/grub/vercmp.h",
+        "tests/vercmp_unit_test.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Useful utility - kernel version comparison with tests"
+    },
+    {
+      "branch": "2025-05-0220",
+      "author": "Jiří Wolker <projects@jwo.cz>",
+      "date": "2025-05-25",
+      "subject": "Customization of GRUB menu title",
+      "files": [
+        "grub-core/normal/main.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Feature - allows customizing menu title via environment variable"
+    },
+    {
+      "branch": "2025-05-0221",
+      "author": "Jiří Wolker <projects@jwo.cz>",
+      "date": "2025-05-26",
+      "subject": "Option to set title of submenus",
+      "files": [
+        "grub-core/commands/menuentry.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Feature enhancement - submenu title customization (complements 2025-05-0220)"
+    },
+    {
+      "branch": "2025-05-0225",
+      "author": "Jiří 'bindiff' Wolker <jwo@jwo.cz>",
+      "date": "2025-05-26",
+      "subject": "Documentation for the --menutitle option",
+      "files": [
+        "docs/grub.texi"
+      ],
+      "classification": "MERGE",
+      "reason": "Documentation - documents 2025-05-0221 feature"
+    },
+    {
+      "branch": "2025-06-0010",
+      "author": "Ismael Luceno <iluceno@suse.de>",
+      "date": "2025-06-04",
+      "subject": "grub-core/genmoddep.awk: Replace asorti with portable alternative",
+      "files": [
+        "grub-core/genmoddep.awk"
+      ],
+      "classification": "MERGE",
+      "reason": "Portability fix - removes GAWK-specific function for POSIX compliance"
+    },
+    {
+      "branch": "2025-06-0033",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2025-06-09",
+      "subject": "Skip tests if required tools are not available",
+      "files": [
+        "tests/btrfs_test.in",
+        "tests/cpio_test.in",
+        "tests/erofs_test.in",
+        "tests/exfat_test.in",
+        "tests/ext234_test.in",
+        "tests/f2fs_test.in",
+        "tests/fat_test.in",
+        "tests/grub_cmd_cryptomount.in",
+        "tests/gzcompress_test.in",
+        "tests/hfs_test.in",
+        "tests/hfsplus_test.in",
+        "tests/iso9660_test.in",
+        "tests/jfs_test.in",
+        "tests/luks1_test.in",
+        "tests/luks2_test.in",
+        "tests/lzocompress_test.in",
+        "tests/minixfs_test.in",
+        "tests/nilfs2_test.in",
+        "tests/ntfs_test.in",
+        "tests/partmap_test.in",
+        "tests/reiserfs_test.in",
+        "tests/romfs_test.in",
+        "tests/squashfs_test.in",
+        "tests/tar_test.in",
+        "tests/tpm2_key_protector_test.in",
+        "tests/udf_test.in",
+        "tests/xfs_test.in",
+        "tests/xzcompress_test.in",
+        "tests/zfs_test.in"
+      ],
+      "classification": "MERGE",
+      "reason": "Test improvement - better handling of missing tools (skip instead of fail)"
+    },
+    {
+      "branch": "2025-06-0162",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2025-06-24",
+      "subject": "Create a Containerfiles with required grub packages for development",
+      "files": [
+        "INSTALL",
+        "container/Containerfile.debian",
+        "container/Containerfile.fedora"
+      ],
+      "classification": "REVIEW",
+      "reason": "Development tooling - superseded by 2025-09-0193 with improved approach"
+    },
+    {
+      "branch": "2025-06-0183",
+      "author": "Khalid Ali <khaliidcaliy@gmail.com>",
+      "date": "2025-06-26",
+      "subject": "kern/efi: Add centralized UEFI error printer",
+      "files": [
+        "grub-core/kern/efi/err.c",
+        "include/grub/efi/api.h",
+        "include/grub/efi/efi.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Enhancement - centralized UEFI error reporting (improves debugging)"
+    },
+    {
+      "branch": "2025-07-0005",
+      "author": "chench246 <chench246@gmail.com>",
+      "date": "2025-07-02",
+      "subject": "efi/tpcm: Add complete support of TPCM module",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/tpcm.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform-specific feature - Chinese TPCM standard support (TPM-like)"
+    },
+    {
+      "branch": "2025-07-0062",
+      "author": "Frediano Ziglio <frediano.ziglio@cloud.com>",
+      "date": "2025-07-08",
+      "subject": "kern/list: Add a grub_list_length function",
+      "files": [
+        "grub-core/kern/list.c",
+        "include/grub/list.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Utility function - list length counter (used by 2025-07-0063)"
+    },
+    {
+      "branch": "2025-07-0063",
+      "author": "Frediano Ziglio <frediano.ziglio@cloud.com>",
+      "date": "2025-07-08",
+      "subject": "arm64/xen: Allows to use xen_hypervisor and xen_module on x86_64-efi",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/loader/arm64/xen_boot.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform extension - enables Xen boot on x86_64-efi"
+    },
+    {
+      "branch": "2025-07-0190",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2025-07-18",
+      "subject": "libgcrypt-grub: implement _gcry_get_hw_features()",
+      "files": [
+        "grub-core/lib/libgcrypt-patches/08_add_hwfeatures.patch"
+      ],
+      "classification": "MERGE",
+      "reason": "Performance - hardware feature detection for libgcrypt"
+    },
+    {
+      "branch": "2025-07-0191",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2025-07-18",
+      "subject": "Build blake2 and sha256 with x86_64 optimization assembly code",
+      "files": [
+        "grub-core/lib/libgcrypt-patches/09_build_x86_64_opt_code.patch"
+      ],
+      "classification": "MERGE",
+      "reason": "Performance - x86_64 optimized crypto routines"
+    },
+    {
+      "branch": "2025-07-0192",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2025-07-18",
+      "subject": "libgcrypt-grub: fix a typo in blake2.c",
+      "files": [
+        "grub-core/lib/libgcrypt-patches/10_fix_blake2_typo.patch"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - typo correction (USE_AVX -> USE_AVX512)"
+    },
+    {
+      "branch": "2025-07-0193",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2025-07-18",
+      "subject": "libgcrypt-grub: fix missing-prototypes error in sha256-intel-shaext.c",
+      "files": [
+        "grub-core/lib/libgcrypt-patches/11_fix_build_shaext.patch"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - missing prototypes in optimized SHA-256"
+    },
+    {
+      "branch": "2025-07-0196",
+      "author": "Khalid Ali <khaliidcaly@gmail.com>",
+      "date": "2025-07-21",
+      "subject": "commands/efi: Add a command to dump all UEFI runtime variables",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/efi/lsefivar.c"
+      ],
+      "classification": "MERGE",
+      "reason": "New diagnostic command - lists UEFI variables (useful for debugging)"
+    },
+    {
+      "branch": "2025-07-0295",
+      "author": "Shreenidhi Shedi <yesshedi@gmail.com>",
+      "date": "2025-07-31",
+      "subject": "cmdline: fix command line parsing in grub",
+      "files": [
+        "grub-core/lib/cmdline.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - removes incorrect quote escaping in kernel cmdline"
+    },
+    {
+      "branch": "2025-09-0165",
+      "author": "Michael Chang <mchang@suse.com>",
+      "date": "2025-09-16",
+      "subject": "getroot: Skip mount points in grub_find_device",
+      "files": [
+        "grub-core/osdep/unix/getroot.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Performance improvement - speeds up device scanning by skipping mount points"
+    },
+    {
+      "branch": "2025-09-0190",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2025-09-19",
+      "subject": "tests: remove -w param from mkfs.hfsplus",
+      "files": [
+        "tests/util/grub-fs-tester.in"
+      ],
+      "classification": "MERGE",
+      "reason": "Test fix - removes deprecated/unavailable mkfs.hfsplus parameter"
+    },
+    {
+      "branch": "2025-09-0193",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2025-09-19",
+      "subject": "Define a Containerfile and instructions to build distro images",
+      "files": [
+        "INSTALL",
+        "container/Containerfile",
+        "container/check.sh"
+      ],
+      "classification": "MERGE",
+      "reason": "Development tooling - improved version of 2025-06-0162 with single unified Containerfile"
+    },
+    {
+      "branch": "2025-09-0265",
+      "author": "Andrew Hamilton <adhamilt@gmail.com>",
+      "date": "2025-09-29",
+      "subject": "build: Disable building video_bochs/cirrus for EFI x86",
+      "files": [
+        "grub-core/Makefile.core.def"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - prevents video corruption when legacy and EFI video interfaces conflict"
+    },
+    {
+      "branch": "2025-11-0241",
+      "author": "Renaud Métrich <rmetrich@redhat.com>",
+      "date": "2025-11-26",
+      "subject": "efi: new 'connectefi' command",
+      "files": [
+        "docs/grub.texi",
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/efi/connectefi.c",
+        "grub-core/disk/efi/efidisk.c",
+        "include/grub/efi/disk.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Important feature - fixes chainloading issues on network boot (VMWare, QEMU, physical hardware)"
+    },
+    {
+      "branch": "2025-12-0012",
+      "author": "Sridhar Markonda <sridharm@linux.ibm.com>",
+      "date": "2025-12-02",
+      "subject": "normal/menu_entry: Add grub_calloc failure check",
+      "files": [
+        "grub-core/normal/menu_entry.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - NULL pointer check prevents crash"
+    },
+    {
+      "branch": "2025-12-0020",
+      "author": "Michael Chang via Grub-devel <grub-devel@gnu.org>",
+      "date": "2025-12-08",
+      "subject": "efi/sb: Fix boot failure when shim validation is disabled",
+      "files": [
+        "grub-core/kern/efi/init.c",
+        "grub-core/kern/efi/sb.c",
+        "include/grub/efi/sb.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Critical bug fix - fixes boot failure with mokutil --disable-validation"
+    },
+    {
+      "branch": "2025-12-0027",
+      "author": "Daniel Murcia <danielmr97@gmail.com>",
+      "date": "2025-12-11",
+      "subject": "icon offset",
+      "files": [
+        "docs/grub.texi",
+        "grub-core/gfxmenu/gui_list.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Feature - configurable icon offset for menu items (theme customization)"
+    },
+    {
+      "branch": "2025-12-0030",
+      "author": "Radoslav Kolev <radoslav.kolev@suse.com>",
+      "date": "2025-12-12",
+      "subject": "blsuki: scan XBOOTLDR partition for BLS/UKIs if it exists",
+      "files": [
+        "grub-core/commands/blsuki.c",
+        "include/grub/gpt_partition.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Feature - Boot Loader Spec compliance (XBOOTLDR partition support)"
+    },
+    {
+      "branch": "2025-12-0032",
+      "author": "Radoslav Kolev <radoslav.kolev@suse.com>",
+      "date": "2025-12-12",
+      "subject": "blsuki: search default location on XBOOTLDR partition, even if entries found on ESP",
+      "files": [
+        "grub-core/commands/blsuki.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Enhancement - completes 2025-12-0030 XBOOTLDR support"
+    },
+    {
+      "branch": "2026-01-0033",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2026-01-15",
+      "subject": "password_argon2: Support Argon2 for user passwords",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/password_argon2.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Security feature - Argon2 password hashing support"
+    },
+    {
+      "branch": "2026-01-0034",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2026-01-15",
+      "subject": "util: Introduce grub-mkpasswd-argon2",
+      "files": [
+        "Makefile.util.def",
+        "util/grub-mkpasswd-argon2.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Utility - companion tool for 2026-01-0033 Argon2 password generation"
+    },
+    {
+      "branch": "2026-01-0035",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2026-01-15",
+      "subject": "docs: Document password_argon2 and grub-mkpasswd-argon2",
+      "files": [
+        "docs/grub.texi"
+      ],
+      "classification": "MERGE",
+      "reason": "Documentation - documents Argon2 password features"
+    },
+    {
+      "branch": "2026-01-0039",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2026-01-16",
+      "subject": "key_protector: Add MFA key protector",
+      "files": [
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/mfa.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Security feature - Multi-factor authentication for LUKS with split-key architecture"
+    },
+    {
+      "branch": "2026-01-0040",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2026-01-16",
+      "subject": "docs: Add documentation for MFA key protector",
+      "files": [
+        "docs/grub.texi"
+      ],
+      "classification": "MERGE",
+      "reason": "Documentation - documents MFA key protector feature"
+    },
+    {
+      "branch": "2026-01-0041",
+      "author": "Gary Lin <glin@suse.com>",
+      "date": "2026-01-16",
+      "subject": "tests: Add mfa_key_protector_test",
+      "files": [
+        "Makefile.util.def",
+        "tests/mfa_key_protector_test.in"
+      ],
+      "classification": "MERGE",
+      "reason": "Test - verifies MFA key protector functionality"
+    },
+    {
+      "branch": "2026-01-0052",
+      "author": "Glenn Washburn <development@efficientek.com>",
+      "date": "2026-01-23",
+      "subject": "libgcrypt: Re-encode versioninfo.rc.in to UTF8 from latin-1",
+      "files": [
+        "grub-core/lib/libgcrypt/src/versioninfo.rc.in"
+      ],
+      "classification": "MERGE",
+      "reason": "Fix - converts file to UTF-8 for tool compatibility"
+    },
+    {
+      "branch": "2026-01-0054",
+      "author": "Michael Chang <mchang@suse.com>",
+      "date": "2026-01-26",
+      "subject": "00_header: Omit loading efi_uga on non-x86 EFI platforms",
+      "files": [
+        "util/grub.d/00_header.in"
+      ],
+      "classification": "REVIEW",
+      "reason": "Bug fix - but may be superseded by 2026-02-0020 which removes UGA entirely"
+    },
+    {
+      "branch": "2026-01-0064",
+      "author": "Avnish Chouhan <avnish@linux.ibm.com>",
+      "date": "2026-01-27",
+      "subject": "Mandatory install device check for PowerPC",
+      "files": [
+        "util/grub-install.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform fix - prevents bootlist corruption on PowerPC"
+    },
+    {
+      "branch": "2026-01-0073",
+      "author": "Martin Castillo <castilma@uni-bremen.de>",
+      "date": "2026-01-27",
+      "subject": "grub.texi: remove old notice about unsupported Argon2",
+      "files": [
+        "docs/grub.texi"
+      ],
+      "classification": "MERGE",
+      "reason": "Documentation cleanup - removes outdated Argon2 unsupported notice"
+    },
+    {
+      "branch": "2026-02-0008",
+      "author": "Khalid Ali <khaliidcaliy@gmail.com>",
+      "date": "2026-02-09",
+      "subject": "efi: Add wrappers to close device path and loaded image",
+      "files": [
+        "grub-core/kern/efi/efi.c",
+        "include/grub/efi/efi.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Infrastructure - wrapper functions for 2026-02-0009"
+    },
+    {
+      "branch": "2026-02-0009",
+      "author": "Khalid Ali <khaliidcaliy@gmail.com>",
+      "date": "2026-02-09",
+      "subject": "efi: Always close protocols after usage",
+      "files": [
+        "grub-core/commands/bli.c",
+        "grub-core/commands/efi/lsefi.c",
+        "grub-core/commands/efi/tpm.c",
+        "grub-core/disk/efi/efidisk.c",
+        "grub-core/kern/efi/init.c",
+        "grub-core/loader/efi/appleloader.c",
+        "grub-core/loader/efi/chainloader.c",
+        "grub-core/loader/efi/linux.c",
+        "grub-core/net/drivers/efi/efinet.c",
+        "grub-core/term/efi/console.c",
+        "grub-core/term/efi/serial.c",
+        "grub-core/video/efi_gop.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Important fix - prevents firmware resource leaks by closing EFI protocols"
+    },
+    {
+      "branch": "2026-02-0010",
+      "author": "Christian Schoenebeck <linux_oss@crudebyte.com>",
+      "date": "2026-02-09",
+      "subject": "zfs: fix root dataset detection on encrypted pools",
+      "files": [
+        "util/grub.d/10_linux.in"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - fixes grub-probe failure on encrypted ZFS pools"
+    },
+    {
+      "branch": "2026-02-0020",
+      "author": "Mate Kukri <mate.kukri@canonical.com>",
+      "date": "2026-02-10",
+      "subject": "efi: Drop support for UGA Draw and Console Control protocols",
+      "files": [
+        "docs/grub.texi",
+        "grub-core/Makefile.core.def",
+        "grub-core/commands/efi/lsefi.c",
+        "grub-core/kern/efi/efi.c",
+        "grub-core/loader/i386/linux.c",
+        "grub-core/term/efi/console.c",
+        "grub-core/video/efi_uga.c",
+        "include/grub/efi/console_control.h",
+        "include/grub/efi/efi.h",
+        "include/grub/efi/uga_draw.h",
+        "include/grub/video.h",
+        "po/exclude.pot",
+        "util/grub.d/00_header.in"
+      ],
+      "classification": "REVIEW",
+      "reason": "Major change - removes deprecated UEFI protocols (UGA from 2006), may break very old systems"
+    },
+    {
+      "branch": "2026-02-0024",
+      "author": "Mate Kukri <mate.kukri@canonical.com>",
+      "date": "2026-02-11",
+      "subject": "normal/menu_entry: Add support for jump/delete word shortcuts",
+      "files": [
+        "grub-core/normal/menu_entry.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Feature - bash-like editing shortcuts for menu entry editor"
+    },
+    {
+      "branch": "2026-02-0025",
+      "author": "Mate Kukri <mate.kukri@canonical.com>",
+      "date": "2026-02-11",
+      "subject": "normal/cmdline: Add support for jump/delete word shortcuts",
+      "files": [
+        "grub-core/normal/cmdline.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Feature - bash-like editing shortcuts for command line"
+    },
+    {
+      "branch": "2026-02-0071",
+      "author": "Avnish Chouhan <avnish@linux.ibm.com>",
+      "date": "2026-02-23",
+      "subject": "ieee1275/powerpc: implements fibre channel discovery for ofpathname",
+      "files": [
+        "grub-core/osdep/linux/ofpath.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform feature - Fibre Channel support for PowerPC ofpathname"
+    },
+    {
+      "branch": "2026-02-0072",
+      "author": "Avnish Chouhan <avnish@linux.ibm.com>",
+      "date": "2026-02-23",
+      "subject": "ieee1275: implement FCP methods for WWPN and LUNs",
+      "files": [
+        "grub-core/disk/ieee1275/ofdisk.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform feature - FCP WWPN/LUN support for Fibre Channel (complements 2026-02-0071)"
+    },
+    {
+      "branch": "2026-02-0073",
+      "author": "Avnish Chouhan <avnish@linux.ibm.com>",
+      "date": "2026-02-23",
+      "subject": "ieee1275: change the logic of ieee1275_get_devargs()",
+      "files": [
+        "grub-core/kern/ieee1275/openfw.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Platform fix - handles NVMeoFC with multiple colons in device args"
+    },
+    {
+      "branch": "2026-02-0086",
+      "author": "Mikhail Lappo <miklelappo@gmail.com>",
+      "date": "2026-02-25",
+      "subject": "loader/efi/fdt: Ensure FDT blob is 8-byte aligned",
+      "files": [
+        "grub-core/loader/efi/fdt.c"
+      ],
+      "classification": "MERGE",
+      "reason": "Bug fix - ensures proper FDT alignment required by libfdt"
+    },
+    {
+      "branch": "2026-02-0096",
+      "author": "Sudhakar Kuppusamy <sudhakar@linux.ibm.com>",
+      "date": "2026-02-27",
+      "subject": "powerpc_ieee1275: Excluding the PKS for grub-emu on 32-bit PowerPC",
+      "files": [
+        "include/grub/powerpc/ieee1275/platform_keystore.h"
+      ],
+      "classification": "REVIEW",
+      "reason": "Build fix - superseded by 2026-03-0003 with better approach"
+    },
+    {
+      "branch": "2026-03-0003",
+      "author": "Sudhakar Kuppusamy <sudhakar@linux.ibm.com>",
+      "date": "2026-03-03",
+      "subject": "appendedsig: Exclude PKS support for grub-emu",
+      "files": [
+        "grub-core/commands/appendedsig/appendedsig.c",
+        "include/grub/powerpc/ieee1275/platform_keystore.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - better solution than 2026-02-0096, excludes PKS for grub-emu entirely"
+    },
+    {
+      "branch": "2026-03-0007",
+      "author": "Nicholas Vinson <nvinson234@gmail.com>",
+      "date": "2026-03-03",
+      "subject": "i386/pc/int.h: move GRUB_MACHINE_PCBIOS ifdef",
+      "files": [
+        "include/grub/i386/pc/int.h"
+      ],
+      "classification": "MERGE",
+      "reason": "Build fix - prevents attribute ignored warnings with modern compilers"
+    },
+    {
+      "branch": "2026-03-0008",
+      "author": "Nicholas Vinson <nvinson234@gmail.com>",
+      "date": "2026-03-03",
+      "subject": "grub-core: Update kernel image generation",
+      "files": [
+        "conf/i386-pc-kernel.lds"
+      ],
+      "classification": "MERGE",
+      "reason": "Critical build fix - i386-pc kernel with ld.lld-21 using linker script"
+    },
+    {
+      "branch": "2026-03-0009",
+      "author": "Nicholas Vinson <nvinson234@gmail.com>",
+      "date": "2026-03-03",
+      "subject": "Revert \"configure: Print a more helpful error if autoconf-archive is not installed\"",
+      "files": [
+        "configure.ac"
+      ],
+      "classification": "MERGE",
+      "reason": "Build cleanup - part of build fix series"
+    },
+    {
+      "branch": "2026-03-0011",
+      "author": "Nicholas Vinson <nvinson234@gmail.com>",
+      "date": "2026-03-03",
+      "subject": "Revert \"INSTALL: Add note that the GNU Autoconf Archive may be needed\"",
+      "files": [
+        "INSTALL"
+      ],
+      "classification": "MERGE",
+      "reason": "Documentation cleanup - part of build fix series"
+    },
+    {
+      "branch": "2026-03-0019",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2026-03-11",
+      "subject": "SECURITY: Update security team members names/fingerprints",
+      "files": [
+        "SECURITY"
+      ],
+      "classification": "MERGE",
+      "reason": "Administrative - updates security team membership (Daniel stepped down, Marta and Leo joined)"
+    },
+    {
+      "branch": "2026-03-0023",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2026-03-12",
+      "subject": "MAINTAINERS: update maintainers list",
+      "files": [
+        "MAINTAINERS"
+      ],
+      "classification": "MERGE",
+      "reason": "Administrative - updates maintainers list (new maintainers Marta and Leo)"
+    },
+    {
+      "branch": "2026-03-0024",
+      "author": "Leo Sandoval <lsandova@redhat.com>",
+      "date": "2026-03-12",
+      "subject": "MAINTAINERS: update new GRUB git repository and mailing list",
+      "files": [
+        "MAINTAINERS"
+      ],
+      "classification": "MERGE",
+      "reason": "Administrative - updates to new freedesktop.org repository and mailing list"
+    }
+  ]
+}
