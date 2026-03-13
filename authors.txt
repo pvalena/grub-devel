@@ -1,0 +1,38 @@
+Vladimir Serbinenko <phcoder at gmail dot com>
+Nicholas Vinson <nvinson234 at gmail dot com>
+Avnish Chouhan <avnish at linux dot ibm dot com>
+Leo Sandoval <lsandova at redhat dot com>
+Gary Lin <glin at suse dot com>
+Khalid Ali <khaliidcaliy at gmail dot com>
+Ross Philipson <ross dot philipson at oracle dot com>
+Michael Chang <mchang at suse dot com>
+Jiří Wolker <projects at jwo dot cz>
+Yann Diorcet <diorcet dot yann at gmail dot com>
+Shreenidhi Shedi <shreenidhi dot shedi at broadcom dot com>
+Renaud Métrich <rmetrich at redhat dot com>
+Paymon MARANDI <paymon at encs dot concordia dot ca>
+Mate Kukri <mate dot kukri at canonical dot com>
+Yair Yarom <irush at cs dot huji dot ac dot il>
+Tony W Wang-oc <TonyWWang-oc at zhaoxin dot com>
+Tobias Heider <tobias dot heider at canonical dot com>
+Sudhakar Kuppusamy <sudhakar at linux dot ibm dot com>
+Sridhar Markonda <sridharm at linux dot ibm dot com>
+Sergii Dmytruk <sergii dot dmytruk at 3mdeb dot com>
+Radoslav Kolev <radoslav dot kolev at suse dot com>
+Frediano Ziglio <frediano dot ziglio at cloud dot com>
+chench246 <chench246 at gmail dot com>
+Andrew Hamilton <adhamilt at gmail dot com>
+Adriano Cordova <adrianox at gmail dot com>
+Waldemar Brodkorb <wbx at openadk dot org>
+Mikhail Lappo <miklelappo at gmail dot com>
+Mike Gilbert <floppym at gentoo dot org>
+Martin Castillo <castilma at uni-bremen dot de>
+Lidong Chen <lidong dot chen at oracle dot com>
+Ismael Luceno <iluceno at suse dot de>
+Glenn Washburn <development at efficientek dot com>
+Egor Ignatov <egori at altlinux dot org>
+Daniel Murcia <danielmr97 at gmail dot com>
+Daniel Kiper <daniel dot kiper at oracle dot com>
+Collin Funk <collin dot funk1 at gmail dot com>
+Christian Schoenebeck <linux_oss at crudebyte dot com>
+Alec Brown <alec dot r dot brown at oracle dot com>
