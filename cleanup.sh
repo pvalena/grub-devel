@@ -4,6 +4,8 @@ set -xe
 
 zsh -n "$0"
 
+[[ "$1" == "--yes-really-remove-everything" ]]
+
 rm logs/*.log ||:
 
 cd grub
