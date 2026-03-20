@@ -7,7 +7,7 @@ cd grub
 
 gitc master
 
-gitb | grep -E '^\s*202' \
+gitb | grep -E '^\s*202' | grep -vE '\-(duplicate|skip)$' \
   | xargs -i zsh -c "echo; echo '>{}<'; gitc '{}' || exit 255; giteo || { echo 'gitea: {}' >> ../fail.log; gitea; : }"
 
 gitc master

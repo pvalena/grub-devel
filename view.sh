@@ -8,4 +8,4 @@ cd grub
 
 gitc master
 
-gitb | grep -E '^\s*202' | xargs -i zsh -c "echo; echo '>{}<'; giths '{}'|cat"
+gitb | grep -E '^\s*202'| grep -vE '\-(duplicate|skip)$' | xargs -i zsh -c "echo; echo '>{}<'; giths '{}'|cat"
