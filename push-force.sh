@@ -4,7 +4,7 @@ set -xe
 
 zsh -n "$0"
 
-cd grub
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
 gitb | grep -E '^\s*202' | grep -vE '\-(duplicate|skip)$' \
     | xargs -i zsh -c "echo; echo '>{}<'; gitc '{}' && gituuf pvalena"

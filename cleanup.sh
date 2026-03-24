@@ -6,9 +6,9 @@ zsh -n "$0"
 
 [[ "$1" == "--yes-really-remove-everything" ]]
 
-rm logs/*.log ||:
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
-cd grub
+rm ../logs/*.log ||:
 
 gitc master
 

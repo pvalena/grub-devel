@@ -3,7 +3,7 @@
 set -xe
 zsh -n "$0"
 
-cd grub
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
 gitc master
 

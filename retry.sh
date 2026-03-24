@@ -26,5 +26,9 @@ for B in $(<"$M"); do
 
   git am -3 "${D}${n}"
 
+  # In case of fake ancestor:
+  # git am --show-current-patch=diff -3 | patch -p1
+  # git am --resolve
+
   echo "$B" >> ../skip.txt
 done

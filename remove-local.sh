@@ -6,11 +6,12 @@ set -xe
 
 zsh -n "$0"
 
-[[ -r duplicates.txt ]]
-
-cd grub
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
 gitc master
+
+
+[[ -r ../duplicates.txt ]]
 
 cat ../duplicates.txt | xargs -i zsh -c "echo; echo '>{}<'; gitb -D '{}-duplicate'"
 
