@@ -1,6 +1,6 @@
-# GRUB Branches by Author - Brief Overview
+# GRUB MRs by Author - Brief Overview
 
-Complete listing of all active branches organized by author with brief descriptions.
+Complete listing of all active MRs organized by author with brief descriptions.
 
 **Total MRs**: 63 | **Total authors**: 39
 
@@ -309,3 +309,4 @@ Complete listing of all active branches organized by author with brief descripti
 
 - **!XX** - GitLab Merge Request number
 - Number in parentheses indicates multiple commits in the MR
+
