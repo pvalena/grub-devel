@@ -4,6 +4,8 @@ set -xe
 
 zsh -n "$0"
 
+: "Obsolete -- check show.sh"
+
 [[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
 gitc master
