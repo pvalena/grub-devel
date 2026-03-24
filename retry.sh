@@ -6,28 +6,25 @@ zsh -n "$0"
 
 [[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
-[[ -r ../missing.txt ]]
+M='../missing.txt'
+[[ -r "$M" ]]
 
-cat ../missing.txt \
-| while read B; do
-    shift||:
+for B in $(<"$M"); do
 
-    [[ -n "$B" ]]
+  [[ -n "$B" ]]
 
-    #echo ">>$B<<"
-    d="$(cut -d'-' -f1-2)"
-    n="$(cut -d'-' -f3)"
+  #echo ">>$B<<"
+  d="$(cut -d'-' -f1-2 <<< "$B")"
+  n="$(cut -d'-' -f3 <<< "$B")"
 
-    [[ -n "$d" ]]
-    [[ -n "$n" ]]
+  [[ -n "$d" ]]
+  [[ -n "$n" ]]
 
-    exit 2
+  D="../${d}-d/"
 
-    D="../${d}-d/"
+  [[ -d "$D" ]]
 
-    [[ -d "$D" ]]
+  git am -3 "${D}${n}"
 
-    git am -3 "${D}${n}"
-
-    echo "$B" >> ../skip.txt
+  echo "$B" >> ../skip.txt
 done
