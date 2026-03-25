@@ -162,6 +162,9 @@ git diff branch1 branch2
 
 ### grub/ Subdirectory
 - Git repository with all branch commits
+- **IMPORTANT**: All branches with commits are in this subdirectory
+- **Must `cd grub/` to access branches** (e.g., `git checkout 2025-05-0010`)
+- Parent directory is for migration management only (reviews, documentation, tracking)
 - **DO NOT MODIFY** - analysis only
 
 ---
