@@ -13,7 +13,7 @@ while [[ -n "$1" ]]; do
 
     [[ -d "$D" ]] || {
 
-        fastdown "https://lists.gnu.org/archive/mbox/grub-devel/$M"
+        curl -s "https://lists.gnu.org/archive/mbox/grub-devel/$M"
 
         mkdir -p "$D"
         git mailsplit "-o${M}-d" -- "${M}"
