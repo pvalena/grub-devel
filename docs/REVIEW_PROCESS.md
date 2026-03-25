@@ -41,6 +41,9 @@ Reviews should be suitable for posting as MR comments:
 - No "verdict" or "LGTM" sections needed
 - Get straight to the point
 - Use bullet points for clarity
+- **Target length**: <20 lines unless multiple complex issues
+- **Avoid**: Extensive explanations of what code does (commit message has this)
+- **Avoid**: Testing recommendations unless specific bug needs validation
 
 ### 5. "No Issues Found" is Valuable
 
@@ -54,16 +57,45 @@ This is positive, actionable feedback.
 ## Review Template
 
 ```markdown
-# Review: MR !XX - Brief Title
+# AI Review: MR !XX - Brief Title
 
 [1-2 sentence summary explaining what the code does]
 
 [If issues found:]
-- Issue 1: Description and why it matters
-- Issue 2: Description and why it matters
+- **Issue 1**: Description and why it matters (file.c:line)
+- **Issue 2**: Description and why it matters (file.c:line)
 
 [If no issues:]
-Changes are internally consistent across all modified files.
+No issues found.
+```
+
+## Common Mistakes to Avoid
+
+### Too Verbose
+```markdown
+# AI Review: MR !XX - Feature
+
+## Scope
+- Files changed: foo.c, bar.c
+- Purpose: Implements X
+
+## Analysis
+The code does Y by calling Z...
+
+## Observations
+- Uses pattern A
+- Follows convention B
+
+## Recommendation
+Looks good, but test on platform X.
+```
+**Problem**: Unnecessary sections, too much explanation, testing suggestions without specific bugs.
+
+### Better Approach
+```markdown
+# AI Review: MR !XX - Feature
+
+Implements X by modifying foo.c and bar.c.
 
 No issues found.
 ```
@@ -73,15 +105,9 @@ No issues found.
 ### Example 1: No Issues
 
 ```markdown
-# Review: MR !31 - Enable (u)divdi3 and (u)moddi3 for mips
+# AI Review: MR !31 - Enable (u)divdi3 and (u)moddi3 for mips
 
-Looks good. The logic is sound:
-
-- MIPS added to `softdiv` group (enables `GRUB_DIVISION_IN_SOFTWARE`)
-- 32-bit division helpers excluded for MIPS - uses native instructions
-- 64-bit division helpers included for MIPS - provides software implementation
-
-Changes are internally consistent across all 5 files.
+MIPS added to `softdiv` group. 64-bit division helpers use software implementation, 32-bit uses native instructions.
 
 No issues found.
 ```
@@ -89,14 +115,12 @@ No issues found.
 ### Example 2: Issues Found
 
 ```markdown
-# Review: MR !XX - Add feature X
+# AI Review: MR !XX - Add feature X
 
-The implementation has a potential issue:
+Adds feature X with buffer management.
 
-- Buffer allocation in `foo.c:123` doesn't check for NULL return
-- Off-by-one error in loop at `bar.c:456` (should be `< size` not `<= size`)
-
-Otherwise logic looks sound.
+- **Missing NULL check**: Buffer allocation in `foo.c:123` doesn't check for NULL return
+- **Off-by-one error**: Loop at `bar.c:456` should be `< size` not `<= size`
 ```
 
 ## What to Look For
