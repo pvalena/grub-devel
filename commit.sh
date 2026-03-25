@@ -50,7 +50,7 @@ for z in *; do
   [[ -r "$z" ]] || { echo 'FAIL: file-2' | tee -a "${l}"; continue; }
 
 #  m="set -x; cd ../grub || exit; gitc master || exit; gitcb $c || exit; patch -p1 < $f || echo FAIL ; gita -A; gitiam 'TEST: $c'"
-  m="set -x; cd ../grub || exit; gitc master || exit; gitcb $c || exit; git am --abort &>/dev/null; git am $z || { echo FAIL; git am --abort; gitc master && gitb -D $c; } ; gitc master &>/dev/null"
+  m="set -x; cd ../grub || exit; gitc master || exit; gitcb $c || exit; git am --abort &>/dev/null; git am -3 $z || { echo FAIL; git am --abort; gitc master && gitb -D $c; } ; gitc master &>/dev/null"
 
   zsh -n -c "$m" || { echo 'FAIL: cmd' | tee -a "${l}"; continue; }
 
