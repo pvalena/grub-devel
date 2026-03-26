@@ -1,164 +1,365 @@
-# MR Review Process
+# GRUB Merge Request Review Process
 
-## Purpose
+This document describes the systematic process for reviewing GRUB merge requests (MRs) from the upstream GitLab repository.
 
-Document the approach for reviewing merge requests to ensure consistent, focused, and actionable feedback.
+## Overview
 
-## Review Principles
+We maintain AI-assisted reviews of all MRs in the `reviews/` directory. Each review must be:
+1. **Complete** - Cover all commits in the MR
+2. **Accurate** - No false positives or hallucinated bugs
+3. **Actionable** - Clearly describe issues with file:line references
 
-### 1. Focus on Semantic and Logic Issues
+## Repository Structure
 
-- Verify the implementation logic is sound
-- Check for potential bugs or edge cases
-- Ensure internal consistency across files
-- Confirm the approach solves the stated problem
+```
+grub-devel/
+├── grub/                          # Submodule: branches with all MR commits
+├── reviews/                       # Individual MR reviews (one per branch)
+│   └── YYYY-MM-NNNN.md           # Format matches branch name
+├── ai-analysis/
+│   └── BRANCHES_REVIEWS.md       # Summary table grouping by severity
+├── data/
+│   └── mrs.txt                   # Branch to MR number mapping
+└── docs/
+    └── REVIEW_PROCESS.md         # This file
+```
 
-### 2. Stay Within MR Scope
+## Review Workflow
 
-**DO NOT**:
-- Suggest style changes or formatting improvements
-- Recommend documentation additions (unless MR touches docs)
-- Propose new practices or conventions for the repository
-- Request changes to code not modified by the MR
-- Suggest refactoring unrelated code
+### 1. Verify Review Completeness
 
-**DO**:
-- Review only the code changed in the MR
-- Verify changes are consistent across all modified files
-- Check if the implementation matches the commit message
+**Problem**: Reviews may miss commits due to incorrect counting.
 
-### 3. Respect Existing Repository Practices
+**Solution**: Always verify commit count against master base.
 
-- Don't impose new coding styles
-- Don't request comments if surrounding code has none
-- Don't suggest renaming conventions used throughout the project
-- Follow the repository's existing patterns
+```bash
+cd grub/
 
-### 4. Keep Reviews Brief
+# Find branch for MR (example: MR !39)
+grep "!39" ../data/mrs.txt
+# Output: 2025-05-0016|39
 
-Reviews should be suitable for posting as MR comments:
-- Skip metadata (branch/author/commit - already in MR)
-- No "verdict" or "LGTM" sections needed
-- Get straight to the point
-- Use bullet points for clarity
-- **Target length**: <20 lines unless multiple complex issues
-- **Avoid**: Extensive explanations of what code does (commit message has this)
-- **Avoid**: Testing recommendations unless specific bug needs validation
+# Checkout the branch
+git checkout 2025-05-0016
 
-### 5. "No Issues Found" is Valuable
+# Count commits since master base
+git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD | wc -l
 
-If no semantic or logic issues exist, simply state:
-- Brief explanation of what the code does (shows understanding)
-- Confirmation of internal consistency
-- "No issues found"
+# List all commits for review
+git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD
+```
 
-This is positive, actionable feedback.
+**Master base commit**: `c160b58610879a52d959db21b9cae98af5fd095f` (all MRs are based on this)
 
-## Review Template
+**Cross-check**: Compare the count with what's documented in the review file.
+
+### 2. Verify Review Accuracy
+
+**Problem**: Reviews may contain false positives or hallucinated bugs.
+
+**Solution**: Verify each reported issue by reading the actual code.
+
+```bash
+# For each reported bug, verify by reading the code
+git show <commit-hash>:<file-path>
+
+# Or check specific lines
+git show HEAD:grub-core/path/to/file.c | grep -A 10 -B 5 "suspected_bug"
+```
+
+**Common false positives to watch for:**
+- Misunderstanding protocol semantics (e.g., UEFI close behavior)
+- Missing context (e.g., pointer set to NULL later in function)
+- Incorrect assumptions about data flow
+
+**Verification checklist:**
+- [ ] Can you see the exact bug in the code?
+- [ ] Is the scenario actually exploitable?
+- [ ] Does the fix make sense in context?
+
+### 3. Re-review Campaign Strategy
+
+**When to re-review:**
+- MRs marked "No Issues Found" with complex code
+- MRs with resource management (malloc/free, DMA, transfers)
+- Large MRs (>500 lines) that may hide bugs
+
+**Success rate from testing:**
+- ~4-8% of "No Issues" MRs have hidden bugs
+- Focus on: resource lifecycle, error paths, cleanup code
+
+**Best candidates for re-review:**
+1. Complex subsystems (USB controllers, filesystem drivers)
+2. Multi-file changes affecting resource ownership
+3. Error handling paths with early returns
+4. Module initialization/cleanup code
+
+### 4. Submitting Review Comments to GitLab
+
+**Prerequisites:**
+```bash
+# One-time setup
+glab config set host gitlab.freedesktop.org --global
+```
+
+**Submit comment to MR:**
+```bash
+cd grub/
+
+# Always specify --repo due to ssh.gitlab.freedesktop.org remote mismatch
+glab mr comment <MR_NUMBER> --repo gnu-grub/grub -m "Your review comment"
+
+# Example: MR !42
+glab mr comment 42 --repo gnu-grub/grub -m "Found potential double-free bug in xhci.c:2099"
+```
+
+**Multi-line review from file:**
+```bash
+cat > review-mr42.md <<'EOF'
+## Review of MR !42
+
+Found critical issues:
+
+1. **Potential double-free** (grub-core/bus/usb/xhci.c:2099,2196):
+   `grub_xhci_check_transfer()` frees `transfer->controller_data` (line 2099)
+   without setting it to NULL. If `grub_xhci_cancel_transfer()` is subsequently
+   called on the same transfer, it retrieves the dangling pointer (line 2142-2143)
+   and frees it again (line 2196), causing double-free.
+
+   **Fix**: Add `transfer->controller_data = NULL;` after line 2099.
+
+2. **Incomplete module cleanup** (xhci.c:2574-2578):
+   `GRUB_MOD_FINI` halts/resets controllers but doesn't free DMA allocations
+   (`devs_dma`, `eseg_dma`, `cmds_dma`, `evts_dma`, `spba_dma`, `spad_dma`)
+   or global `xhci` controller list. Module unload leaks DMA memory.
+EOF
+
+glab mr comment 42 --repo gnu-grub/grub -F review-mr42.md
+```
+
+**Note**: The `--repo` flag is required because git remotes use `ssh.gitlab.freedesktop.org` which doesn't match glab's configured host `gitlab.freedesktop.org`.
+
+## Review File Format
+
+### Individual Review (`reviews/YYYY-MM-NNNN.md`)
 
 ```markdown
-# AI Review: MR !XX - Brief Title
+# AI Review: MR !XX - Title
 
-[1-2 sentence summary explaining what the code does]
+N commits description:
+
+1. **commit_hash** - Description: Key changes and purpose
+2. **commit_hash** - Description: Key changes and purpose
+...
 
 [If issues found:]
-- **Issue 1**: Description and why it matters (file.c:line)
-- **Issue 2**: Description and why it matters (file.c:line)
+- **Issue type** (file:line): Description of bug with exact scenario
+- **Issue type** (file:line): Another issue
 
 [If no issues:]
 No issues found.
+
+[If complex/untestable:]
+**Note**: [Explanation of why review is limited, testing requirements]
 ```
 
-## Common Mistakes to Avoid
-
-### Too Verbose
+**Example with issues:**
 ```markdown
-# AI Review: MR !XX - Feature
+# AI Review: MR !42 - Add xHCI support
 
-## Scope
-- Files changed: foo.c, bar.c
-- Purpose: Implements X
+Adds USB 3.0 (xHCI) controller driver. 2963 lines based on SeaBIOS implementation.
 
-## Analysis
-The code does Y by calling Z...
+- **Potential double-free** (grub-core/bus/usb/xhci.c:2099,2196):
+  `grub_xhci_check_transfer()` frees `transfer->controller_data` (line 2099)
+  without setting it to NULL. If `grub_xhci_cancel_transfer()` is subsequently
+  called, it frees the dangling pointer (line 2196), causing double-free.
+  Should set `transfer->controller_data = NULL;` after line 2099.
 
-## Observations
-- Uses pattern A
-- Follows convention B
-
-## Recommendation
-Looks good, but test on platform X.
-```
-**Problem**: Unnecessary sections, too much explanation, testing suggestions without specific bugs.
-
-### Better Approach
-```markdown
-# AI Review: MR !XX - Feature
-
-Implements X by modifying foo.c and bar.c.
-
-No issues found.
+**Note**: At 2963 lines, exhaustive review is impractical. Focused on resource
+management. Needs extensive hardware testing.
 ```
 
-## Example Reviews
+### Summary Table (`ai-analysis/BRANCHES_REVIEWS.md`)
 
-### Example 1: No Issues
+Update when adding/moving MRs between categories:
 
 ```markdown
-# AI Review: MR !31 - Enable (u)divdi3 and (u)moddi3 for mips
+## Critical Issues (13 MRs)
 
-MIPS added to `softdiv` group. 64-bit division helpers use software implementation, 32-bit uses native instructions.
+| MR | Title | Issue Found |
+|----|-------|-------------|
+| [!42](https://gitlab.../42) | Add xHCI support | Potential double-free, incomplete module cleanup |
 
-No issues found.
+## Summary Statistics
+
+- **Pass rate**: 74.6% (47/63 MRs with no issues)
+- **Critical issue rate**: 20.6% (13/63 MRs)
 ```
 
-### Example 2: Issues Found
+## Issue Severity Classification
 
-```markdown
-# AI Review: MR !XX - Add feature X
+### Critical Issues
+- System instability, crashes, or hangs
+- Data corruption or loss
+- Security vulnerabilities (buffer overflows, use-after-free, double-free)
+- NULL pointer dereferences
+- Memory leaks in initialization paths
+- Compilation errors
 
-Adds feature X with buffer management.
+### Minor Issues
+- Resource leaks in uncommon error paths
+- Printf format mismatches
+- File descriptor leaks
+- Non-critical style issues with potential impact
 
-- **Missing NULL check**: Buffer allocation in `foo.c:123` doesn't check for NULL return
-- **Off-by-one error**: Loop at `bar.c:456` should be `< size` not `<= size`
+### No Issues
+- Clean code after thorough review
+- May have minor style issues with no functional impact
+
+### Complex/Needs Testing
+- Platform-specific code requiring specialized hardware
+- Too complex for thorough static analysis
+- Requires runtime testing to validate
+
+## Common Bug Patterns
+
+### 1. Double-Free
+```c
+grub_free(cdata);
+// BUG: Missing transfer->controller_data = NULL;
+
+// Later, if this function is called:
+grub_free(transfer->controller_data);  // Double-free!
 ```
 
-## What to Look For
+### 2. NULL Pointer Dereference
+```c
+void func(int *has_space) {
+  if (*has_space == 0)  // Dereference without NULL check
+    ...
+}
 
-### Logic Issues
-- Null pointer dereferences
-- Buffer overflows or underflows
-- Off-by-one errors
-- Resource leaks (memory, file handles, etc.)
-- Race conditions or threading issues
-- Incorrect error handling
+func(NULL);  // Crash!
+```
 
-### Consistency Issues
-- Header declarations vs. implementation
-- Conditional compilation blocks (#ifdef consistency)
-- Function signatures across files
-- Macro definitions used correctly
+### 3. Resource Leaks in Error Paths
+```c
+buffer = grub_malloc(size);
+if (!buffer)
+  return;  // BUG: cursor not re-enabled, transfer not freed, etc.
 
-### Correctness Issues
-- Does the code do what the commit message claims?
-- Are edge cases handled?
-- Is the approach correct for the problem being solved?
+// Normal cleanup code here...
+```
 
-## What NOT to Look For
+### 4. Incomplete Module Cleanup
+```c
+GRUB_MOD_FINI(module) {
+  stop_hardware();
+  // BUG: Missing grub_dma_free() for allocated DMA buffers
+  // BUG: Missing grub_free() for global structures
+}
+```
 
-- Code style (indentation, spacing, naming)
-- Missing comments or documentation
-- Opportunities for refactoring unrelated code
-- Better ways to structure code elsewhere in the project
-- Performance optimizations (unless causing actual issues)
+## Verification Examples
 
-## Review Storage
+### Example 1: Verifying NULL Pointer Dereference (MR !60)
 
-Reviews are stored in `reviews/` directory:
-- Filename: `BRANCH_NAME.md`
-- Format: Markdown
-- Keep concise and focused
+**Review claim**: NULL pointer dereference in grub_loader_cmdline_size()
+
+**Verification**:
+```bash
+git checkout 2025-07-0295
+git show HEAD:grub-core/lib/cmdline.c | grep -A 30 "grub_loader_cmdline_size"
+```
+
+**Code inspection**:
+```c
+unsigned int grub_loader_cmdline_size (int argc, char *argv[])
+{
+  for (i = 0; i < argc; i++)
+    size += check_arg (argv[i], 0);  // Line 53: passes NULL as second arg!
+}
+
+static unsigned int check_arg (char *c, int *has_space)
+{
+  while (*c) {
+    if (*c == ' ') {
+      if (*has_space == 0)  // Line 32: dereferences NULL pointer!
+```
+
+**Result**: ✓ VERIFIED - Real bug
+
+### Example 2: Verifying False Positive (MR !68)
+
+**Review claim**: Double-free in esp_disk->partition
+
+**Verification**:
+```c
+grub_free (esp_disk->partition);  // Line 1384
+esp_disk->partition = NULL;        // Line 1386 - Sets to NULL!
+grub_disk_close(esp_disk);         // Line 1407 - Safe, partition is NULL
+```
+
+**Result**: ✗ FALSE POSITIVE - partition set to NULL before close
+
+## Tools and Commands
+
+### Searching for patterns
+```bash
+# Find all occurrences of a function call
+grep -rn "grub_free" grub-core/bus/usb/xhci.c
+
+# Check if pointer is nulled after free
+git show HEAD:grub-core/bus/usb/xhci.c | grep -A 2 "grub_free(cdata)"
+
+# Find resource allocation without corresponding free
+git diff c160b58610879a52d959db21b9cae98af5fd095f..HEAD | grep -E "grub_malloc|grub_dma_alloc"
+```
+
+### Checking commit details
+```bash
+# Show specific commit changes
+git show <commit-hash>
+
+# Show only statistics
+git show --stat <commit-hash>
+
+# Show specific file from commit
+git show <commit-hash>:path/to/file
+```
+
+## Quality Checklist
+
+Before finalizing any review:
+
+- [ ] Verified all commits are listed (count matches git log)
+- [ ] Each commit has a brief description
+- [ ] All reported bugs include file:line references
+- [ ] Verified bugs by reading actual code (no false positives)
+- [ ] Classified issues by severity correctly
+- [ ] Updated BRANCHES_REVIEWS.md summary table
+- [ ] Used proper markdown formatting with code blocks
+- [ ] Commit hash references are correct and complete
+
+## Continuous Improvement
+
+### Lessons Learned
+
+1. **Always count commits** - Don't trust manual counting, use `git log | wc -l`
+2. **Verify every bug claim** - Read the actual code, don't assume the review is correct
+3. **Check for NULL assignments** - Common source of false positive double-free claims
+4. **Understand protocol semantics** - E.g., UEFI close_protocol doesn't invalidate pointers
+5. **Re-review high-value targets** - Complex code, resource management, error paths
+
+### Success Metrics
+
+- **Completeness**: 100% of commits must be covered
+- **Accuracy**: Zero false positives in critical issues
+- **Actionability**: All bugs include exact file:line and reproduction scenario
+- **Coverage**: Re-reviewed 4 "No Issues" MRs, found 3 hidden bugs (75% success rate)
 
 ---
 
-**Remember**: The goal is to catch bugs and logic errors, not to impose preferences or expand scope.
+**Last updated**: 2026-03-26
+**Review count**: 63 MRs (19-81)
+**Master base**: c160b58610879a52d959db21b9cae98af5fd095f
