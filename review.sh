@@ -26,9 +26,9 @@ for F in $(ls -d "${R}"*.md); do
   C="#$(cat "$F")"
   [[ -n "$C" ]]
 
-  glab mr note "${m}" -m "${C}"
+  glab mr comment "${m}" --repo gnu-grub/grub -m "${C}"
 
   echo "$m" >> '../done.txt'
 
-  exit 7
+  sleep 5
 done
