@@ -2,7 +2,7 @@
 
 Complete listing of all active MRs organized by author with brief descriptions.
 
-**Total MRs**: 63 | **Total authors**: 39
+**Total MRs**: 51 | **Total authors**: 36
 
 ---
 
@@ -23,32 +23,17 @@ Complete listing of all active MRs organized by author with brief descriptions.
 ## Gary Lin
 *glin at suse dot com*
 
-**MRs**: 5
+**MRs**: 1
 
-- **[!55](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/55)**: libgcrypt-grub: implement _gcry_get_hw_features()
-- **[!56](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/56)**: Build blake2 and sha256 with x86_64 optimization assembly code
-- **[!57](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/57)**: libgcrypt-grub: fix a typo in blake2.c
-- **[!58](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/58)**: libgcrypt-grub: fix missing-prototypes error in sha256-intel-shaext.c
 - **[!69](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/69)**: tests: Add mfa_key_protector_test (3 commits)
-
-## Leo Sandoval
-*lsandova at redhat dot com*
-
-**MRs**: 4
-
-- **[!19](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/19)**: term/ns8250: return in case of a null SPCR base addresses
-- **[!50](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/50)**: Create a Containerfiles with required grub packages for development
-- **[!62](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/62)**: tests: remove -w param from mkfs.hfsplus
-- **[!63](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/63)**: Define a Containerfile and instructions to build distro images
 
 ## Mate Kukri
 *mate dot kukri at canonical dot com*
 
-**MRs**: 3
+**MRs**: 2
 
 - **[!75](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/75)**: efi: Drop support for UGA Draw and Console Control protocols
 - **[!76](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/76)**: normal/menu_entry: Add support for jump/delete word shortcuts
-- **[!77](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/77)**: normal/cmdline: Add support for jump/delete word shortcuts
 
 ## Michael Chang
 *mchang at suse dot com*
@@ -191,21 +176,7 @@ Complete listing of all active MRs organized by author with brief descriptions.
 
 - **[!43](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/43)**: include/efi/api: Complete UEFI status codes
 
-## khaalid cali
-*khaliidcaliy at gmail dot com*
-
-**MRs**: 1
-
-- **[!44](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/44)**: disk/efi/efidisk: Fix memory leak
-
-## Alec Brown
-*alec dot r dot brown at oracle dot com*
-
-**MRs**: 1
-
-- **[!45](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/45)**: kern/vercmp: Add functionality to compare kernel versions
-
-## Jiří ‘bindiff’ Wolker
+## Jiří 'bindiff' Wolker
 *jwo at jwo dot cz*
 
 **MRs**: 1
@@ -239,13 +210,6 @@ Complete listing of all active MRs organized by author with brief descriptions.
 **MRs**: 1
 
 - **[!60](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/60)**: cmdline: fix command line parsing in grub
-
-## Andrew Hamilton
-*adhamilt at gmail dot com*
-
-**MRs**: 1
-
-- **[!64](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/64)**: build: Disable building video_bochs/cirrus for EFI x86
 
 ## Renaud Métrich
 *rmetrich at redhat dot com*
