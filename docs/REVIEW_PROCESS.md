@@ -15,13 +15,12 @@ We maintain AI-assisted reviews of all MRs in the `reviews/` directory. Each rev
 grub-devel/
 ├── grub/                          # Submodule: branches with all MR commits
 ├── reviews/                       # Individual MR reviews (one per branch)
-│   └── YYYY-MM-NNNN.md           # Format matches branch name
-├── ai-analysis/
-│   └── BRANCHES_REVIEWS.md       # Summary table grouping by severity
+│   └── YYYY-MM-NNNN.md            # Format matches branch name
+├── MRS_BY_AUTHOR.md               # Summary table grouping by severity
 ├── data/
-│   └── mrs.txt                   # Branch to MR number mapping
+│   └── mrs.txt                    # Branch to MR number mapping
 └── docs/
-    └── REVIEW_PROCESS.md         # This file
+    └── REVIEW_PROCESS.md          # This file
 ```
 
 ## Review Workflow
@@ -179,7 +178,7 @@ Adds USB 3.0 (xHCI) controller driver. 2963 lines based on SeaBIOS implementatio
 management. Needs extensive hardware testing.
 ```
 
-### Summary Table (`ai-analysis/BRANCHES_REVIEWS.md`)
+### Summary Table (`MRS_BY_AUTHOR.md`)
 
 Update when adding/moving MRs between categories:
 
@@ -337,7 +336,7 @@ Before finalizing any review:
 - [ ] All reported bugs include file:line references
 - [ ] Verified bugs by reading actual code (no false positives)
 - [ ] Classified issues by severity correctly
-- [ ] Updated BRANCHES_REVIEWS.md summary table
+- [ ] Updated MRS_BY_AUTHOR.md summary table
 - [ ] Used proper markdown formatting with code blocks
 - [ ] Commit hash references are correct and complete
 
