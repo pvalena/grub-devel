@@ -13,9 +13,18 @@ gitc master
 
 [[ -r ../duplicates.txt ]]
 
-cat ../duplicates.txt | xargs -i zsh -c "echo; echo '>{}<'; gitb -D '{}-duplicate'"
+cat ../duplicates.txt | xargs -i zsh -c "echo -n '> {} '; gitb -D '{}-duplicate'"
 
+echo
 
 [[ -r ../skip.txt ]]
 
-cat ../skip.txt | xargs -i zsh -c "echo; echo '>{}<'; gitb -D '{}-skip'"
+cat ../skip.txt | xargs -i zsh -c "echo -n '> {} '; gitb -D '{}-skip'"
+
+echo
+
+[[ -r ../closed.txt ]]
+
+C="$(cat ../closed.txt| xargs -ri echo -n "{}|")0"
+
+grep -E "\|($C)$" ../data/mrs.txt | cut -d'|' -f1 | xargs -i zsh -c "echo -n '> {} '; gitb -D '{}'"
