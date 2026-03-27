@@ -1,7 +1,6 @@
 #!/usr/bin/env zsh
 
-set -x
-set -e
+set -xe
 
 zsh -n "$0"
 

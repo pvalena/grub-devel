@@ -1,0 +1,31 @@
+#!/usr/bin/zsh
+
+set -e
+
+zsh -n "$0"
+
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
+
+F="../closed.txt"
+O="../open.txt"
+
+rm "$F" ||:
+rm "$O" ||:
+
+for mr in $(cat ../data/mrs.txt | cut -d'|' -f2 | grep -v '^$'); do
+
+  s="$(glab mr view $mr --repo gnu-grub/grub 2>/dev/null | grep '^state:' | tr -s '\t' ' ' | cut -d' ' -f2)"
+
+  echo ">>> $mr: $s"
+
+  if [ "$s" = "open" ]; then
+
+     echo "$mr" >> "$O"
+
+  else
+     echo "$mr" >> "$F"
+
+  fi
+
+  sleep 0.5
+done
