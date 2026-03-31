@@ -6,13 +6,19 @@ zsh -n "$0"
 
 [[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
-F="../closed.txt"
-O="../open.txt"
+F="../data/closed.txt"
+O="../data/open.txt"
+S='../data/mrs.txt'
+
+M="$(cat "$O")" ||:
+
+[[ -n "$M" ]] || M="$(cat "$S" | cut -d'|' -f2 | grep -v '^$')"
+[[ -n "$M" ]]
 
 rm "$F" ||:
 rm "$O" ||:
 
-for mr in $(cat ../data/mrs.txt | cut -d'|' -f2 | grep -v '^$'); do
+for mr in `echo $M`; do
 
   s="$(glab mr view $mr --repo gnu-grub/grub 2>/dev/null | grep '^state:' | tr -s '\t' ' ' | cut -d' ' -f2)"
 
