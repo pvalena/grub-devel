@@ -2,7 +2,7 @@
 
 Complete listing of all active MRs organized by author with brief descriptions.
 
-**Total MRs**: 51 | **Total authors**: 36
+**Total MRs**: 50 | **Total authors**: 35
 
 ---
 
@@ -196,13 +196,6 @@ Complete listing of all active MRs organized by author with brief descriptions.
 **MRs**: 1
 
 - **[!52](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/52)**: efi/tpcm: Add complete support of TPCM module
-
-## Khalid Ali
-*khaliidcaly at gmail dot com*
-
-**MRs**: 1
-
-- **[!59](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/59)**: commands/efi: Add a command to dump all UEFI runtime variables
 
 ## Shreenidhi Shedi
 *yesshedi at gmail dot com*
