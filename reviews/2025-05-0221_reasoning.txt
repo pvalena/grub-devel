@@ -1,0 +1,4 @@
+Critical: Double increment in loop at grub-core/commands/menuentry.c:268. Loop has both for increment
+(t++) and body increment (*t++), skipping every other character in length calculation. Causes wrong
+buffer size allocation. Should be "for (t = title; *t;)" (remove loop increment) or "len += (*t == '\'' ?
+4 : 1)" (remove body increment), matching setparams_prefix pattern at lines 236-237.

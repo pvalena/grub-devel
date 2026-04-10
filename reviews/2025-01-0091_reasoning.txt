@@ -1,0 +1,6 @@
+Critical: FITHAW (unfreeze) return value not checked at line 36 of grub-core/osdep/linux/journaled_fs.c.
+If unfreeze fails after successful freeze, filesystem remains frozen, potentially making system
+unbootable. Must check return value and handle failure.
+
+Minor: ext2 listed in journaled filesystems (util/grub-install.c:2037) but ext2 has no journal. Name
+is misleading though it functionally works since ext3/4 report as "ext2" in GRUB.

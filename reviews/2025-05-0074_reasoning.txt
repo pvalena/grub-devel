@@ -1,0 +1,9 @@
+grub_malloc(0) edge case at grub-core/commands/testpci.c:108 - if argc=0 and no --file, calls
+grub_malloc(0) which may return NULL (implementation-defined), would fail even though empty search is
+valid.
+
+File read errors ignored at lines 129-160 - grub_file_getline() may fail mid-file but grub_errno not
+checked after loop, continues with partial device list, could mask file corruption.
+
+String trimming fragile at line 138 - "buf + grub_strlen(buf) - 1" is out-of-bounds if empty string.
+Works because line 139 checks "p >= buf" before deref, but fragile.

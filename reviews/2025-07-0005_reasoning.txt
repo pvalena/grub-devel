@@ -1,0 +1,5 @@
+Missing header file - grub-core/commands/tpcm.c:24 includes <grub/efi/tpcm.h> but file not added to
+commit. Causes undefined TPCM_MAX_BUF_SIZE and grub_tpcm_measure_memory(). Won't compile.
+
+Wrong type mask at grub-core/commands/tpcm.c:72 - uses (type & GRUB_FILE_TYPE_MASK) but type is enum
+grub_verify_string_type, not enum grub_file_type. Masking operation is meaningless.

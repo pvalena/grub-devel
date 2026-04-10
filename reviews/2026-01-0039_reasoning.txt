@@ -1,0 +1,5 @@
+Double-free bug at grub-core/commands/mfa.c:271-274. password_recover_key() returns pointer to static
+password_ctx.password when password is pre-set. Caller mfa_recover_key() at lines 246-253 frees this
+pointer. Later, password_clear_cmd_handler() at line 508 attempts to free same pointer again, causing
+double-free. Should allocate and copy password data instead of returning static pointer directly, or set
+password_ctx.password = NULL after returning it to transfer ownership.

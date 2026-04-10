@@ -1,0 +1,5 @@
+Cannot thoroughly review due to complexity and platform-specific nature (PowerPC/IEEE1275/Fibre
+Channel/NVMeoFC). Requires specialized hardware for testing. Six commits add: (1) fibre channel discovery
+for ofpathname, (2) FCP methods for WWPN and LUNs, (3) modified device argument parsing logic, (4) NVMeoF
+logical device translation in ofpath, (5) multiple NVMe bootpaths support, (6) core NVMeoFC support to
+IEEE1275. No obvious issues in code structure but extensive testing recommended on target platforms.

@@ -1,0 +1,7 @@
+Minor: Uses %08lx and %lx for grub_uint64_t values. On platforms where long is 32-bit, causes
+truncation. Should use PRIxGRUB_UINT64_T macro or %016llx for consistency. Locations:
+arm64/lspaging.c:67,108,122; x86_64/lspaging.c:64,85,99.
+
+Note: Code directly dereferences physical addresses from page tables without validating entries point to
+valid memory. Assumes identity mapping (valid in GRUB). Could crash if page tables corrupted but
+acceptable for diagnostic tool.

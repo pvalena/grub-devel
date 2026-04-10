@@ -1,0 +1,6 @@
+Critical: Enum grub_luks2_kdf_type in include/grub/luks2.h:26-30 missing LUKS2_KDF_TYPE_ARGON2ID value. Code
+still references this value at luks2.c:107,506,510, causing compilation failure with undeclared
+identifier error. Header must include all three KDF types (ARGON2I, ARGON2ID, PBKDF2) like original
+enum in luks2.c:44-49.
+
+Minor: Redundant extern keyword at grub-core/disk/luks2.c:622 (functions are extern by default).

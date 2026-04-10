@@ -1,0 +1,3 @@
+Terminal cursor left disabled at grub-core/normal/menu_entry.c:302. Early return after allocation failure
+skips grub_term_setcursor(term_screen->term, 1) at line 379, leaving cursor disabled. Line 266 disabled
+cursor but error path doesn't re-enable it.

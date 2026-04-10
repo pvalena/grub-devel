@@ -1,0 +1,3 @@
+Minor: File descriptor leak at grub-core/genmoddep.awk:65-70. Opens mod ".deps" with getline but never
+closes it. Should add close(mod ".deps") after line 70 to avoid file descriptor exhaustion with many
+modules.

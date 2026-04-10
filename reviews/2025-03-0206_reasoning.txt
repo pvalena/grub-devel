@@ -1,0 +1,6 @@
+AC_CHECK_TOOL automatically prepends $ac_tool_prefix ($target_alias-) to tool name. Passing
+${TARGET_CROSS}objcopy causes double-prefix lookup: $target_alias-${TARGET_CROSS}objcopy (e.g.,
+arm-eabi-aarch64-linux-gnu-objcopy). First lookup always fails, then falls back to ${TARGET_CROSS}objcopy
+which succeeds. Inefficient and use case unclear: if TARGET_CROSS replaces target_alias, block won't
+execute (requires target_alias != host_alias); if it supplements target_alias, causes double-prefix
+issue.

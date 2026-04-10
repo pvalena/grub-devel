@@ -1,0 +1,8 @@
+High-risk architectural change from ET_REL to ET_DYN affecting all platforms. Issues: (1) IA-64 trampoline
+removal at util/grub-mkimagexx.c:1050 - R_IA64_PCREL21B now errors, assumes -shared linker handles
+trampolines but needs IA-64 testing. (2) R_IA64_SEGREL64LSB handler removed from relocate_addrs() - if
+linker still emits with -shared, causes unhandled relocation error. (3) Relocation value assumptions
+changed from "old_value + symbol + addend" to "symbol + addend" for R_IA64_DIR64LSB, R_IA64_FPTR64LSB,
+R_LARCH_64 - assumes initial value is 0 (true for ET_DYN, not ET_REL). (4) IA-64 function descriptor GP
+at line 705 changed from 0 to layout->vaddr_diff + layout->dyn_pltoff - correctness unclear without IA-64
+ABI expertise. Needs thorough testing especially IA-64 and LoongArch64.

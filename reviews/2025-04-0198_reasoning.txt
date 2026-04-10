@@ -1,0 +1,9 @@
+Critical: Conflicts with MR !29 which modifies same function with two-tier allocation strategy. Cannot
+coexist.
+
+Concern: Changing to GRUB_EFI_ALLOCATE_ANY_PAGES makes GRUB_EFI_MAX_USABLE_ADDRESS parameter ignored per
+EFI spec ("On input, the address pointed to by Memory is ignored" for AllocateAnyPages). Defeats purpose
+of platform-specific memory limits (e.g., 4GB limit for Snapdragon X Elite). Could allocate memory above
+4GB on platforms that crash when accessing >4GB addresses. MR !29's two-tier strategy (try <4GB first,
+fall back to higher if needed) is better approach - preserves compatibility while solving 710MB kernel
+load issue.

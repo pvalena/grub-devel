@@ -1,0 +1,5 @@
+Critical: Wrong page table pointer at grub-core/kern/x86_64/efi/mm.c:70. Code creates entry in wrong
+table: create_paging_entry(&pt3[pageidx >> 9]) should be create_paging_entry(&pt2[pageidx >> 9]). This
+writes PD (level 2) entry to PDPT (level 3) instead, corrupting page table structure and causing crashes.
+Typo in variable name - bit shifting logic for page table indexing is correct (PML4→PDPT→PD→PT hierarchy)
+but wrong table pointer breaks implementation.

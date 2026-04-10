@@ -1,0 +1,9 @@
+Conflict with MR !43 - include/grub/efi/api.h adds same status codes (28, 31-35) as MR !43. Both MRs
+cannot merge as-is.
+
+Missing error codes in table at grub-core/kern/efi/err.c:32-67 - api.h defines GRUB_EFI_INVALID_LANGUAGE
+and GRUB_EFI_COMPROMISED_DATA but they're not in error table, lookups for these codes will return
+"unknown error".
+
+Misleading comment at grub-core/kern/efi/err.c:31 says "keep entries sorted alphabetically" but code uses
+linear search (line 72) where order doesn't matter for correctness.

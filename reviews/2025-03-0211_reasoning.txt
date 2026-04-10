@@ -1,0 +1,5 @@
+Critical: Compilation error at grub-core/loader/xnu.c:1128. Code adds grub_free(ctx.newdirname) but
+struct grub_xnu_scan_dir_for_kexts_ctx (lines 1050-1055) has no newdirname field, only dirname,
+osbundlerequired, maxrecursion. Will fail with "no member named 'newdirname'" error. Variable newdirname
+exists as local variable in grub_xnu_scan_dir_for_kexts_load() (line 1064) and is already properly freed
+at line 1089. Commit misunderstands code structure; CID 473859 may be false positive or wrong fix.

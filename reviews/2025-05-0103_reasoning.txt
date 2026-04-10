@@ -1,0 +1,11 @@
+Potential double-free at grub-core/bus/usb/xhci.c:2099,2196 - grub_xhci_check_transfer() frees
+transfer->controller_data (line 2099) without setting to NULL. If grub_xhci_cancel_transfer() subsequently
+called on same transfer, retrieves dangling pointer (lines 2142-2143) and frees again (line 2196). Should
+set transfer->controller_data = NULL after line 2099.
+
+Incomplete module cleanup at xhci.c:2574-2578 - GRUB_MOD_FINI halts/resets controllers but doesn't free
+DMA allocations (devs_dma, eseg_dma, cmds_dma, evts_dma, spba_dma, spad_dma) or global xhci controller
+list. Module unload leaks DMA memory.
+
+Note: 2963 lines makes exhaustive review impractical. Focused on resource management and integration.
+Needs extensive hardware testing beyond QEMU, including regression testing on OHCI/UHCI/EHCI controllers.

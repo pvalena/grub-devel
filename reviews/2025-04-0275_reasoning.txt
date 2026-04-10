@@ -1,0 +1,4 @@
+Requires security and cryptography domain expertise for proper review. Implementation involves TPM
+measurements, DRTM (Dynamic Root of Trust for Measurement), and Intel TXT SINIT module interactions
+beyond general code review scope. Recommend review by security team familiar with TCG D-RTM and Intel TXT
+specifications.

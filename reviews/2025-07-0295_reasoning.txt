@@ -1,0 +1,3 @@
+NULL pointer dereference at grub-core/lib/cmdline.c:53. grub_loader_cmdline_size() calls check_arg(argv[i],
+0) passing NULL as second parameter. When argument contains space, line 32 dereferences NULL (if
+(*has_space == 0)) causing crash. Function expects valid pointer but receives NULL.
