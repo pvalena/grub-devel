@@ -1,227 +1,123 @@
 # Instructions for Claude
 
 ## Repository Purpose
-This repository is used for analyzing GRUB2 patches from mailing lists, identifying duplicates in cleanly-applied git branches, and managing merge requests to upstream.
+
+This repository analyzes GRUB2 patches from mailing lists, identifies duplicates in cleanly-applied git branches, and manages merge requests to upstream with comprehensive code reviews.
 
 ## Completed Work Summary
 
 ### Phase 1: Duplicate Detection (COMPLETED)
-- **Initial branches**: 176 (2025-2026 patches from mailing lists)
-- **Duplicates identified**: 65 (39% duplication rate)
-- **Unique branches retained**: 111
-- **Authors analyzed**: 38 unique contributors
-
-**Key files**:
-- `duplicates.txt`: List of 65 duplicate branches removed
-- `authors.txt`: List of 38 unique authors (emails obfuscated)
-- `DUPLICATE_ANALYSIS_PLAN.md`: Complete analysis report with results by author
+- **Initial branches**: 176 → **Unique branches**: 111 (39% duplication rate)
+- **Method**: Author-based analysis, keeping latest submissions
+- **Key files**: `duplicates.txt`, `authors.txt`
 
 ### Phase 2: Branch Analysis (COMPLETED)
-- **Branches analyzed**: 111 unique branches
-- **Sanity check performed**: Merge readiness classification
-- **Results**: 102 MERGE, 8 REVIEW, 1 SKIP
-
-**Key files in `ai-analysis/`**:
-- `branch_analysis.json`: Complete structured data (metadata, classification, reasoning)
-- `BRANCH_ANALYSIS_SUMMARY.md`: Executive summary with statistics
-- `MERGE_PRIORITY_LIST.md`: Priority-based merge guide
-- `ANALYSIS_README.md`: Documentation guide with usage instructions
+- **Branches analyzed**: 111
+- **Classification**: 102 MERGE, 8 REVIEW, 1 SKIP
+- **Key files in `ai-analysis/`**: `branch_analysis.json`, analysis summaries
 
 ### Phase 3: Merge Request Creation (COMPLETED)
-- **MRs created**: 63 (to gnu-grub/grub upstream)
-- **MR range**: !19 to !81
-- **Multi-commit MRs**: Several branches contain multiple commits
+- **MRs created**: 63 (to gnu-grub/grub upstream, !19 to !81)
+- **Key files**: `branches.txt`, `mrs.txt`, `MRS_BY_AUTHOR.md`
 
-**Key files**:
-- `branches.txt`: List of 63 active branches
-- `mrs.txt`: Branch to MR mapping (format: `BRANCH|MR_NUMBER`)
-- `ai-analysis/BRANCHES_BY_AUTHOR_BRIEF.md`: Author-grouped MR listing with links
+### Phase 4: Code Review & Quality Assurance (COMPLETED)
+- **Reviews**: 50 complete (.md) + 22 reasoning files (_reasoning.txt)
+- **Quality**: Zero false positives, all commits reviewed, 120 char width
+- **Key files**: `reviews/*.md`, `reviews/*_reasoning.txt`, `docs/REVIEW_PROCESS.md`
+
+### Phase 5: MR Status Tracking (ONGOING)
+- **Status**: 48 open, 15 closed (24% closure rate)
+- **Key files**: `data/open.txt`, `data/closed.txt`, `MRS_BY_AUTHOR.md`
 
 ---
 
 ## Core Principles
 
 ### 1. Keep Latest Principle
-When branches are duplicates or near-duplicates, **always keep the LATEST submission** (most recent date).
-
-**Rationale**:
-- Latest submission may have updated commit messages
-- Author may have made final corrections or refinements
-- Later dates indicate the author's final intent
+When branches are duplicates or near-duplicates, **always keep the LATEST submission** (most recent date). Latest may have updated commit messages, corrections, or refinements.
 
 ### 2. Author-Based Analysis
-Process branches by author to efficiently identify duplicates. Same author is the most common source of duplicate submissions (resubmissions, corrections, iterations).
+Process branches by author to efficiently identify duplicates. Same author is the most common source of duplicate submissions.
 
 ### 3. Explicit Documentation
-Before marking branches as duplicates, always document explicit reasons and verify the relationship between branches.
+Before marking branches as duplicates, always document explicit reasons and verify the relationship.
 
----
-
-## Duplicate Classification Types
-
-### Type A: Exact Duplicates
-- **Criteria**: Empty `git diff` (100% identical)
-- **Action**: Keep the LATEST submission
-- **Example**: 5 identical submissions → keep most recent
-
-### Type B: Nearly Identical
-- **Criteria**: Only whitespace, comments, or trivial formatting changes
-- **Action**: Keep the LATEST submission
-- **Example**: Same code with different spacing → keep most recent
-
-### Type C: Superseded/Obsoleted Versions
-- **Criteria**: Same commit message and purpose, but later version has significant improvements
-- **Action**: Keep the LATEST/BETTER version
-- **Example**: Initial implementation vs. improved refactoring → keep improved version
-
-### Type D: Different Implementations
-- **Criteria**: Same problem, different approaches
-- **Action**: NOT duplicates - keep both for review
-
----
-
-## Workflow for Duplicate Detection
-
-### 1. Extract Author's Branches
-```bash
-git branch | grep -E '^\s*(2025|2026)' | xargs -I {} sh -c 'author=$(git log "{}" --format="%an" -1); if [ "$author" = "AUTHOR_NAME" ]; then echo "{}"; fi' | sort
-```
-
-### 2. Get Commit Messages
-```bash
-for branch in BRANCH_LIST; do
-  echo "=== $branch ==="
-  git log "$branch" --format="%s" -1
-done
-```
-
-### 3. Group by Similar Commit Messages
-Look for patterns:
-- Identical commit subjects
-- Similar subjects (e.g., with/without version numbers)
-- Related functionality (e.g., different parts of same feature)
-
-### 4. Compare Suspicious Pairs/Groups
-```bash
-git diff branch1 branch2
-```
-
-### 5. Document and Record
-- Add duplicates to `duplicates.txt` (one branch per line)
-- Document reasons for each duplicate
-- Update analysis files
-
----
-
-## Process Order
-
-1. **High-volume authors** (>10 branches) - process individually
-2. **Medium-volume authors** (5-10 branches) - process individually or in small batches
-3. **Low-volume authors** (<5 branches) - process in batches
-
----
-
-## Key Statistics from Completed Analysis
-
-### Duplication Rates by Author Tier
-- **High-volume authors**: 44% duplication rate
-- **Medium-volume authors**: 39% duplication rate
-- **Low-volume authors**: 27% duplication rate
-
-### Top Contributors (by unique branches retained)
-1. Vladimir Serbinenko - 21 branches → 8 unique MRs
-2. Gary Lin - 10 branches → 5 unique MRs
-3. Leo Sandoval - 13 branches → 4 unique MRs
-
-### Common Causes of Duplicates
-1. **Resubmissions** - Same patch submitted multiple times (most common)
-2. **Progressive improvements** - Author iterating on implementation
-3. **Formatting fixes** - Code style corrections in later versions
-4. **Bug fixes** - Correcting issues found in earlier submissions
-5. **Feature additions** - Extending functionality in later versions
+### 4. Review Quality Standards
+- **Zero false positives**: Verify every bug by reading actual code
+- **Complete coverage**: All commits must be reviewed
+- **Evidence-based**: Never report bugs not seen in actual source
+- **Formatting compliance**: 120 character line width mandatory
 
 ---
 
 ## File Organization
 
 ### Root Directory
-- `duplicates.txt`: List of duplicate branches (65 entries)
-- `authors.txt`: List of unique authors with obfuscated emails (38 entries)
-- `branches.txt`: List of active branches (63 entries)
-- `mrs.txt`: Branch to MR mapping (63 entries)
-- `DUPLICATE_ANALYSIS_PLAN.md`: Complete duplicate detection report
-- `CLAUDE.md`: This file - instructions and summary
+- `MRS_BY_AUTHOR.md`: **Active tracking document** (48 open MRs by author)
+- `MEMORY.md`: Complete workflow reference and repository state
+- `CLAUDE.md`: This file - repository instructions
+- `branches.txt`, `mrs.txt`, `duplicates.txt`, `authors.txt`
+- `closed.sh`: MR status checking script
 
-### ai-analysis/ Directory
-- `branch_analysis.json`: Complete structured data for all branches
-- `BRANCH_ANALYSIS_SUMMARY.md`: Executive summary with key findings
-- `MERGE_PRIORITY_LIST.md`: Priority-based merge guide
-- `BRANCHES_BY_AUTHOR_BRIEF.md`: Author-grouped MR listing with GitLab links
-- `ANALYSIS_README.md`: Documentation guide with JQ query examples
-- `analyze_branches.sh`: Script used for analysis
+### data/
+- `open.txt`: 48 open MR numbers (source of truth)
+- `closed.txt`: 15 closed MR numbers
 
-### grub/ Subdirectory
+### reviews/
+- `YYYY-MM-NNNN.md`: Complete code reviews (50 files)
+- `YYYY-MM-NNNN_reasoning.txt`: Brief technical justifications (22 files)
+- All files comply with 120 char line width
+
+### docs/
+- `REVIEW_PROCESS.md`: Complete review workflow documentation
+
+### ai-analysis/
+- `branch_analysis.json`: Structured data for all branches
+- Various analysis summaries and documentation
+
+### grub/
 - Git repository with all branch commits
-- **IMPORTANT**: All branches with commits are in this subdirectory
-- **Must `cd grub/` to access branches** (e.g., `git checkout 2025-05-0010`)
-- Parent directory is for migration management only (reviews, documentation, tracking)
+- **IMPORTANT**: Must `cd grub/` to access branches
+- **Base commit**: c160b58610879a52d959db21b9cae98af5fd095f
 - **DO NOT MODIFY** - analysis only
-
----
-
-## Email Obfuscation
-All email addresses in documentation use standard obfuscation:
-- `@` → ` at `
-- `.` → ` dot `
-
-Example: `user@example.com` → `user at example dot com`
-
----
-
-## GitLab Integration
-
-### Repository URLs
-- **Development fork**: https://gitlab.freedesktop.org/pvalena/grub/
-- **Upstream**: https://gitlab.freedesktop.org/gnu-grub/grub/
-
-### MR Format
-MRs use GitLab's `!XX` notation:
-- Example: `!24` for merge request #24
-- Full URL: `https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/24`
-
-### Documentation Links
-All MRs are documented in `ai-analysis/BRANCHES_BY_AUTHOR_BRIEF.md` with:
-- MR number as clickable link
-- Brief description
-- Multi-commit indicator (where applicable)
-- Organized by author
 
 ---
 
 ## Restrictions and Best Practices
 
 ### DO NOT:
-- Modify any files in the `grub/` repository
-- Create commits, branches, or make git changes in `grub/`
-- Add branches to `duplicates.txt` without documenting reasons
-- Mark branches as duplicates if they have different commit messages (unless clearly superseded)
+- Modify files in `grub/` repository
+- Report bugs without verifying in actual code
+- Create reasoning files for "No issues found" reviews
+- Exceed 120 char line width in documentation
+- Update `ai-analysis/BRANCHES_REVIEWS.md` (historical)
 
 ### DO:
-- Always use author-based analysis approach
-- Document explicit reasons for duplicates
-- Keep the latest version of duplicate submissions
-- Verify branches actually conflict or are truly redundant
-- Update documentation files when making changes
-- Obfuscate email addresses in all documentation
+- Author-based analysis for duplicates
+- Keep latest version of duplicates
+- **Verify every bug by reading actual code**
+- **Count commits and ensure all reviewed**
+- **Update MRS_BY_AUTHOR.md when MRs close**
+- **Maintain accuracy** between `data/open.txt` and `MRS_BY_AUTHOR.md`
+- **Format all files to 120 char width**
+- Obfuscate email addresses (` at `, ` dot `)
 
 ---
 
-## Future Reference
+## Key Documentation
 
-This repository contains a complete example of:
-1. Systematic duplicate detection in git branches (176 → 111 branches)
-2. Comprehensive branch analysis and classification
-3. MR creation and tracking (63 MRs)
-4. Documentation generation and maintenance
+- **MEMORY.md**: Complete workflow reference, current state, essential commands
+- **docs/REVIEW_PROCESS.md**: Detailed review process with verification procedures
+- **CLAUDE.md**: This file - repository purpose and principles
 
-All methodology, principles, and results are documented for future similar projects.
+---
+
+## Repository URLs
+
+- **Development fork**: https://gitlab.freedesktop.org/pvalena/grub/
+- **Upstream**: https://gitlab.freedesktop.org/gnu-grub/grub/
+- **MR format**: `!XX` (e.g., !24 = https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/24)
+
+---
+
+**Last updated**: 2026-04-10

@@ -1,0 +1,37 @@
+[Severity]: [Issue description at location]. [Technical explanation]. [Consequences].
+
+[Next issue if multiple - separate with blank line]
+
+---
+
+SEVERITY LEVELS:
+- Critical: Crashes, memory corruption, security vulnerabilities, compilation errors
+- Minor: Style issues, misleading names, non-critical leaks
+- Note: Observations, limitations, requires specialized review
+- Concern: Potential issues needing deeper analysis
+
+FORMAT REQUIREMENTS:
+- Brief and focused (no unnecessary prose)
+- Include file path and line number in first sentence
+- State WHAT is wrong (not HOW to fix)
+- Use precise terminology (double-free, NULL dereference, resource leak, etc.)
+- State consequences/impact
+- Lines must not exceed 120 characters
+
+EXAMPLES:
+
+Critical: Double-free at grub-core/bus/usb/xhci.c:2099,2196. grub_xhci_check_transfer() frees
+transfer->controller_data (line 2099) without setting to NULL. If grub_xhci_cancel_transfer()
+subsequently called on same transfer, retrieves dangling pointer (lines 2142-2143) and frees
+again (line 2196).
+
+Minor: ext2 listed in journaled filesystems (util/grub-install.c:2037) but ext2 has no journal.
+Name is misleading though it functionally works since ext3/4 report as "ext2" in GRUB.
+
+Note: Cannot thoroughly review due to platform-specific nature (PowerPC/IEEE1275). Requires
+specialized hardware. No obvious issues in code structure but extensive testing recommended.
+
+---
+
+DO NOT CREATE THIS FILE if review shows "No issues found"
+Only create for reviews with actual issues that were verified in code

@@ -2,7 +2,7 @@
 
 Complete listing of all active MRs organized by author with brief descriptions.
 
-**Total MRs**: 50 | **Total authors**: 35
+**Total MRs**: 48 | **Total authors**: 34
 
 ---
 
@@ -94,10 +94,9 @@ Complete listing of all active MRs organized by author with brief descriptions.
 ## Sudhakar Kuppusamy
 *sudhakar at linux dot ibm dot com*
 
-**MRs**: 2
+**MRs**: 1
 
 - **[!80](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/80)**: powerpc_ieee1275: Excluding the PKS for grub-emu on 32-bit PowerPC
-- **[!81](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/81)**: appendedsig: Exclude PKS support for grub-emu
 
 ## Egor Ignatov
 *egori at altlinux dot org*
@@ -126,13 +125,6 @@ Complete listing of all active MRs organized by author with brief descriptions.
 **MRs**: 1
 
 - **[!25](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/25)**: loader/xnu: Fix memory leak
-
-## Mike Gilbert
-*floppym at gentoo dot org*
-
-**MRs**: 1
-
-- **[!26](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/26)**: build: include missing header files in source tarball
 
 ## Adriano Cordova
 *adrianox at gmail dot com*

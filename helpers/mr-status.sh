@@ -15,7 +15,8 @@ M="$(cat "$O")" ||:
 [[ -n "$M" ]] || M="$(cat "$S" | cut -d'|' -f2 | grep -v '^$')"
 [[ -n "$M" ]]
 
-rm "$F" ||:
+# Let's not remove closed.txt, as we're resuming from open.txt
+#rm "$F" ||:
 rm "$O" ||:
 
 for mr in `echo $M`; do

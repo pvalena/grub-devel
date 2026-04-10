@@ -15,9 +15,12 @@ We maintain AI-assisted reviews of all MRs in the `reviews/` directory. Each rev
 grub-devel/
 ├── grub/                          # Submodule: branches with all MR commits
 ├── reviews/                       # Individual MR reviews (one per branch)
-│   └── YYYY-MM-NNNN.md            # Format matches branch name
-├── MRS_BY_AUTHOR.md               # Summary table grouping by severity
+│   ├── YYYY-MM-NNNN.md            # Complete review (50 files)
+│   └── YYYY-MM-NNNN_reasoning.txt # Brief reasoning (22 files, only for reviews with issues)
+├── MRS_BY_AUTHOR.md               # Active tracking document (48 open MRs)
 ├── data/
+│   ├── open.txt                   # List of 48 open MR numbers
+│   ├── closed.txt                 # List of 15 closed MR numbers
 │   └── mrs.txt                    # Branch to MR number mapping
 └── docs/
     └── REVIEW_PROCESS.md          # This file
@@ -178,6 +181,92 @@ Adds USB 3.0 (xHCI) controller driver. 2963 lines based on SeaBIOS implementatio
 management. Needs extensive hardware testing.
 ```
 
+### Reasoning Files (`reviews/YYYY-MM-NNNN_reasoning.txt`)
+
+**Only create for reviews with issues found.**
+
+Reasoning files provide brief, technical justifications for issues discovered in code reviews.
+
+**Format:**
+```
+[Severity]: [Issue description at location]. [Technical explanation].
+[Consequences].
+
+[Next issue if multiple]
+```
+
+**Severity Levels:**
+- **Critical**: Crashes, memory corruption, security vulnerabilities, compilation errors
+- **Minor**: Style issues, misleading names, non-critical leaks
+- **Note**: Observations, limitations, requires specialized review
+- **Concern**: Potential issues needing deeper analysis
+
+**Requirements:**
+- Brief and focused (no unnecessary prose)
+- Include file paths and line numbers
+- State what is wrong (not how to fix)
+- Use precise terminology
+- State consequences/impact
+- **Do NOT create for "No issues found" reviews**
+
+**Example:**
+```
+Critical: Double-free at grub-core/bus/usb/xhci.c:2099,2196. grub_xhci_check_transfer() frees
+transfer->controller_data (line 2099) without setting to NULL. If grub_xhci_cancel_transfer()
+subsequently called on same transfer, retrieves dangling pointer (lines 2142-2143) and frees again
+(line 2196). Should set transfer->controller_data = NULL after line 2099.
+
+Minor: ext2 listed in journaled filesystems (util/grub-install.c:2037) but ext2 has no journal.
+Name is misleading though it functionally works since ext3/4 report as "ext2" in GRUB.
+```
+
+**Current state**: 22 reasoning files for reviews with issues.
+
+### Formatting Requirements
+
+**Constraint**: 120 character line width (mandatory for ALL files).
+
+**Check formatting:**
+```bash
+# Check review files
+awk 'length > 120 {print NR": " $0}' reviews/BRANCH.md
+
+# Check reasoning files
+awk 'length > 120 {print NR": " $0}' reviews/BRANCH_reasoning.txt
+
+# Check all files
+for file in reviews/*.md reviews/*_reasoning.txt; do
+  cnt=$(awk 'length > 120' "$file" | wc -l)
+  if [ "$cnt" -gt 0 ]; then
+    echo "$file: $cnt lines over 120 chars"
+  fi
+done
+```
+
+**Fix long lines:**
+
+Break at natural points:
+- After commas, periods
+- Before conjunctions (and, but, or)
+- Before opening parentheses
+- After closing parentheses
+
+Preserve:
+- Code blocks and indentation
+- Bullet point structure
+- Markdown formatting
+- Technical terms (don't break function names)
+
+**Example:**
+```markdown
+Before (>120 chars):
+- **NULL pointer dereference** (grub-core/lib/cmdline.c:53): `grub_loader_cmdline_size()` calls `check_arg(argv[i], 0)` passing NULL as second parameter.
+
+After (<120 chars):
+- **NULL pointer dereference** (grub-core/lib/cmdline.c:53): `grub_loader_cmdline_size()` calls
+  `check_arg(argv[i], 0)` passing NULL as second parameter.
+```
+
 ### Summary Table (`MRS_BY_AUTHOR.md`)
 
 Update when adding/moving MRs between categories:
@@ -336,7 +425,8 @@ Before finalizing any review:
 - [ ] All reported bugs include file:line references
 - [ ] Verified bugs by reading actual code (no false positives)
 - [ ] Classified issues by severity correctly
-- [ ] Updated MRS_BY_AUTHOR.md summary table
+- [ ] Created reasoning file (if issues found)
+- [ ] All files formatted to 120 char width
 - [ ] Used proper markdown formatting with code blocks
 - [ ] Commit hash references are correct and complete
 
@@ -359,6 +449,7 @@ Before finalizing any review:
 
 ---
 
-**Last updated**: 2026-03-26
-**Review count**: 63 MRs (19-81)
+**Last updated**: 2026-04-10
+**Open MRs**: 48
+**Review files**: 50 (.md) + 22 (_reasoning.txt)
 **Master base**: c160b58610879a52d959db21b9cae98af5fd095f
