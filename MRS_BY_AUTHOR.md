@@ -2,7 +2,7 @@
 
 Complete listing of all active MRs organized by author with brief descriptions.
 
-**Total MRs**: 48 | **Total authors**: 34
+**Total MRs**: 42 | **Total authors**: 29
 
 ---
 
@@ -66,14 +66,6 @@ Complete listing of all active MRs organized by author with brief descriptions.
 
 - **[!46](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/46)**: Customization of GRUB menu title
 - **[!47](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/47)**: Option to set title of submenus
-
-## Khalid Ali
-*khaliidcaliy at gmail dot com*
-
-**MRs**: 2
-
-- **[!51](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/51)**: kern/efi: Add centralized UEFI error printer
-- **[!73](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/73)**: efi: Always close protocols after usage (2 commits)
 
 ## Frediano Ziglio
 *frediano dot ziglio at cloud dot com*
@@ -140,33 +132,12 @@ Complete listing of all active MRs organized by author with brief descriptions.
 
 - **[!37](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/37)**: efi/chainloader: support Secure Launch (20 commits)
 
-## Collin Funk
-*collin dot funk1 at gmail dot com*
-
-**MRs**: 1
-
-- **[!40](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/40)**: ia64: Fix left shift overflow.
-
 ## Yair Yarom
 *irush at cs dot huji dot ac dot il*
 
 **MRs**: 1
 
 - **[!41](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/41)**: testpci: initial module
-
-## Waldemar Brodkorb
-*wbx at openadk dot org*
-
-**MRs**: 1
-
-- **[!42](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/42)**: Add xHCI support
-
-## khaalid
-*khaliidcaliy at gmail dot com*
-
-**MRs**: 1
-
-- **[!43](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/43)**: include/efi/api: Complete UEFI status codes
 
 ## Jiří 'bindiff' Wolker
 *jwo at jwo dot cz*
@@ -223,13 +194,6 @@ Complete listing of all active MRs organized by author with brief descriptions.
 **MRs**: 1
 
 - **[!68](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/68)**: blsuki: search default location on XBOOTLDR partition, even if entries found on ESP (2 commits)
-
-## Glenn Washburn
-*development at efficientek dot com*
-
-**MRs**: 1
-
-- **[!70](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/70)**: libgcrypt: Re-encode versioninfo.rc.in to UTF8 from latin-1
 
 ## Martin Castillo
 *castilma at uni-bremen dot de*
