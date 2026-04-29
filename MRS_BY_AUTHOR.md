@@ -2,7 +2,7 @@
 
 Complete listing of all active MRs organized by author with brief descriptions.
 
-**Total MRs**: 42 | **Total authors**: 29
+**Total MRs**: 41 | **Total authors**: 28
 
 ---
 
@@ -194,13 +194,6 @@ Complete listing of all active MRs organized by author with brief descriptions.
 **MRs**: 1
 
 - **[!68](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/68)**: blsuki: search default location on XBOOTLDR partition, even if entries found on ESP (2 commits)
-
-## Martin Castillo
-*castilma at uni-bremen dot de*
-
-**MRs**: 1
-
-- **[!72](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/72)**: grub.texi: remove old notice about unsupported Argon2
 
 ## Christian Schoenebeck
 *linux_oss at crudebyte dot com*
