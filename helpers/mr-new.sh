@@ -1,0 +1,50 @@
+#!/usr/bin/zsh
+
+set -e
+
+zsh -n "$0"
+
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
+
+F="../data/closed.txt"
+O="../data/open.txt"
+N='../data/new.txt'
+
+mr="$(cat "$O" "$F" "$N" 2>/dev/null|sort -n|grep -v ^$|tail -n 1)" ||:
+
+[[ -n "$mr" ]] || M=0
+
+while [[ ${mr} -ge 0 ]]; do
+
+    mr=$(($mr+1))
+
+    s="$(glab mr view $mr --repo gnu-grub/grub 2>/dev/null | grep '^state:' | tr -s '\t' ' ' | cut -d' ' -f2)"
+
+    [[ -z "$s" ]] && s='' || \
+        echo ">>> $mr: $s"
+
+    case $s in
+        open)
+            echo $O
+            echo "$mr" >> "$N"
+            ;;
+
+        merged|closed)
+            echo "$mr" >> "$F"
+            ;;
+
+        '')
+            exit
+            ;;
+
+        *)
+            echo "=> IDK">&2
+            exit 2;;
+
+    esac
+
+    sleep 0.5
+done
+
+echo "ERROR: mr|$mr OOB">&2
+exit 3
