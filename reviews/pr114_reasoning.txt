@@ -1,0 +1,6 @@
+Minor: Dead free(NULL) in util/grub-install.c line 881. The guard
+condition !bootloader_id ensures the pointer is NULL when free() is
+called, making it a guaranteed no-op. Likely copy-pasted from the
+subsequent fallback block where free(bootloader_id) is needed for a
+non-NULL empty string. No runtime impact but should be removed for
+clarity.

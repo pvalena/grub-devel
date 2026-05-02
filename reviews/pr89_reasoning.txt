@@ -1,0 +1,18 @@
+Critical: Documentation/code delimiter mismatch in GRUB_USERS parsing. Documentation
+in grub.texi specifies semicolon-separated fields with example
+"root;0;pbkdf2;grub.pbkdf2.sha512.10000.BIGLONGSTRING", but 00_header.in and
+grub-mkconfig_lib.in both use "cut -d :" (colon delimiter). Users following the
+documentation will get completely broken authentication: the entire semicolon-delimited
+string becomes the username, access level parses as empty, and password type check fails.
+
+Minor: Dead code in 00_header.in case statement. The "x)" branch for empty password type
+is placed after "x*)" which matches everything including the empty case. The empty
+password type error message ("No password type specified") can never be reached; instead
+the "Unrecognized password type" message from the "x*)" branch fires. The "x)" branch
+must be placed before "x*)" to be reachable.
+
+Minor: grub_get_auth_user_list outputs space-separated unquoted user list for --users.
+GRUB's menuentry parser captures only one argument for --users; with output like
+"--users user1 user2", only user1 is recognized. user2 becomes a stray positional
+argument. The fix is to use comma separation ("--users user1,user2") matching GRUB's
+documented USERNAME[,USERNAME] format, or to quote the argument.

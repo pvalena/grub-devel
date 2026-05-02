@@ -1,0 +1,6 @@
+Minor: Error return conflated with "registered" in grub_install_register_efi().
+grub_install_efi_is_registered() returns errno (non-zero) on pipe/fdopen failure,
+but the caller interprets any non-zero as "already registered" and returns 0
+(success), silently skipping EFI boot entry creation. The old code propagated
+the error. If efibootmgr pipe setup fails for any reason, grub-install will
+silently fail to register the boot entry while appearing to succeed.
