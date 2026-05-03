@@ -1,6 +1,11 @@
 Minor: Error return conflated with "registered" in grub_install_register_efi().
 grub_install_efi_is_registered() returns errno (non-zero) on pipe/fdopen failure,
 but the caller interprets any non-zero as "already registered" and returns 0
-(success), silently skipping EFI boot entry creation. The old code propagated
-the error. If efibootmgr pipe setup fails for any reason, grub-install will
-silently fail to register the boot entry while appearing to succeed.
+(success), silently skipping EFI boot entry creation. If efibootmgr pipe setup
+fails for any reason, grub-install will silently fail to register the boot entry
+while appearing to succeed.
+
+Minor: Missing fclose(fp) in grub_install_efi_is_registered() at
+grub-core/osdep/unix/platform.c. FILE stream opened via fdopen(fd, "r") is
+never closed before return. Leaks the FILE stream and underlying fd on every
+call. get_ofpathname() in the same file properly calls fclose(fp).
