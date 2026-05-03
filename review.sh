@@ -1,8 +1,10 @@
 #!/usr/bin/env zsh
 
-set -xe
+set -e
 
 zsh -n "$0"
+
+[[ "$1" == '-n' ]] && { DRY=y; shift||: ; } || DRY=
 
 [[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
@@ -11,24 +13,31 @@ R='../reviews/'
 
 for F in $(ls -d "${R}"*.md); do
 
-  [[ -r "$F" ]]
+    [[ -r "$F" ]]
 
-  b="$(cut -d'/' -f3 <<< "$F" | cut -d'.' -f1)"
-  m="$(head -n 1 "$F" | grep '^# AI Review: MR' | cut -d'!' -f2 | cut -d' ' -f1)"
+    b="$(cut -d'/' -f3 <<< "$F" | cut -d'.' -f1)"
+    m="$(head -n 1 "$F" | grep '^# AI Review: MR' | cut -d'!' -f2 | cut -d' ' -f1)"
 
-  [[ -n "$b" ]]
-  [[ -n "$m" ]]
+    [[ -n "$b" ]]
+    [[ -n "$m" ]]
 
-  grep -qE "^${b}|${m}$" ../data/mrs.txt
+    grep -qE "^${m}$" '../done.txt' && continue
 
-  grep -qE "^${m}$" '../done.txt' && continue
+    echo -e "\n\n>>> $b: $m\n"
 
-  C="#$(cat "$F")"
-  [[ -n "$C" ]]
+#    grep -qE "^${b}|${m}$" ../data/mrs.txt
 
-  glab mr comment "${m}" --repo gnu-grub/grub -m "${C}"
+    C="$(cat "$F")"
+    [[ -n "$C" ]]
 
-  echo "$m" >> '../done.txt'
+    echo "$C"
+    echo
 
-  sleep 5
+    [[ -n "$DRY" ]] && continue
+
+    glab mr comment "${m}" --repo gnu-grub/grub -m "${C}"
+
+    echo "$m" >> '../done.txt'
+
+    sleep 5
 done
