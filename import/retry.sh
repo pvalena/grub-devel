@@ -6,7 +6,7 @@ zsh -n "$0"
 
 [[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
-M='../missing.txt'
+M='../import/missing.txt'
 [[ -r "$M" ]]
 
 for B in $(<"$M"); do
@@ -30,5 +30,5 @@ for B in $(<"$M"); do
   # git am --show-current-patch=diff -3 | patch -p1
   # git am --resolve
 
-  echo "$B" >> ../skip.txt
+  echo "$B" >> ../import/skip.txt
 done

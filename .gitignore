@@ -1,5 +1,3 @@
 /logs/*.log
-/202*-d/
-/*.log
-/202*
+/import/202*
 /.claude/

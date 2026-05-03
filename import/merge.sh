@@ -18,7 +18,7 @@ while [[ -n "$1" ]]; do
 
   [[ -n "$C" ]] || {
 
-    echo "$B" >> ../missing.txt
+    echo "$B" >> ../import/missing.txt
     continue
   }
 
@@ -26,5 +26,5 @@ while [[ -n "$1" ]]; do
 
   gity "$C"
 
-  echo "$B" >> ../skip.txt
+  echo "$B" >> ../import/skip.txt
 done
