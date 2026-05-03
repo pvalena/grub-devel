@@ -1,18 +1,113 @@
-Critical: Documentation/code delimiter mismatch in GRUB_USERS parsing. Documentation
-in grub.texi specifies semicolon-separated fields with example
-"root;0;pbkdf2;grub.pbkdf2.sha512.10000.BIGLONGSTRING", but 00_header.in and
-grub-mkconfig_lib.in both use "cut -d :" (colon delimiter). Users following the
-documentation will get completely broken authentication: the entire semicolon-delimited
-string becomes the username, access level parses as empty, and password type check fails.
+Critical: Documentation/code delimiter mismatch in GRUB_USERS parsing.
 
-Minor: Dead code in 00_header.in case statement. The "x)" branch for empty password type
-is placed after "x*)" which matches everything including the empty case. The empty
-password type error message ("No password type specified") can never be reached; instead
-the "Unrecognized password type" message from the "x*)" branch fires. The "x)" branch
-must be placed before "x*)" to be reachable.
+Discovery: Reading util/grub.d/00_header.in, lines 49-52 parse GRUB_USERS entries
+with `cut -d : -f 1` through `-f 4`, using colon as the field separator. Then
+reading docs/grub.texi, the "Configuring access levels" section at line 1690 states
+fields are "separated by semicolons" and shows the example:
+  root;0;pbkdf2;grub.pbkdf2.sha512.10000.BIGLONGSTRING
+The same colon delimiter appears in grub-mkconfig_lib.in at lines 362-363.
 
-Minor: grub_get_auth_user_list outputs space-separated unquoted user list for --users.
-GRUB's menuentry parser captures only one argument for --users; with output like
-"--users user1 user2", only user1 is recognized. user2 becomes a stray positional
-argument. The fix is to use comma separation ("--users user1,user2") matching GRUB's
-documented USERNAME[,USERNAME] format, or to quote the argument.
+Analysis: The code consistently uses colon (`:`) in all four `cut -d :` calls
+across two files. The documentation consistently uses semicolon (`;`) in both the
+prose description and the example. A user configuring GRUB_USERS according to the
+documentation would write:
+  GRUB_USERS="root;0;pbkdf2;grub.pbkdf2.sha512.10000.HASH"
+The code would then execute `echo "$pw_user_entry" | cut -d : -f 1`, which finds
+no colons, so field 1 is the entire string
+"root;0;pbkdf2;grub.pbkdf2.sha512.10000.HASH". Fields 2-4 would be empty. The
+password type check (`case "x$pw_user_passtype"`) would match `x)` (empty) or
+`x*)` (wildcard), both of which abort with an error. The configuration is
+completely non-functional.
+
+The intent is ambiguous: the documentation forbids semicolons in usernames (line
+1697: "should not contain spaces, commas, semicolons, pipes, ampersands"), which
+suggests the author was aware of semicolons as delimiters. Yet the code uses colons
+everywhere. Colons work for PBKDF2/Argon2 hashes (which use dots, not colons), but
+plaintext passwords could contain colons, breaking `cut -d :`. Semicolons avoid
+that but conflict with GRUB's shell syntax where semicolon is a command separator.
+
+Consequence: Any user following the official documentation will get a broken GRUB
+authentication configuration. The mismatch must be resolved but requires author
+clarification on which delimiter is intended.
+
+---
+
+Minor: Dead code in 00_header.in case statement at lines 68-77.
+
+Discovery: Reading the case statement in util/grub.d/00_header.in that checks
+"x$pw_user_passtype", the branch ordering is:
+  1. xplain)    -> valid type
+  2. xpbkdf2)   -> valid type
+  3. xargon2)   -> valid type
+  4. x*)        -> "Unrecognized password type" error
+  5. x)         -> "No password type specified" error
+
+Analysis: In POSIX shell `case` statements, patterns are tested in order and the
+first match wins. The pattern `x*` matches the character `x` followed by zero or
+more characters. When $pw_user_passtype is empty, the value tested is "x" (just
+the literal `x` prefix). The pattern `x*` matches "x" with zero trailing
+characters, so it matches. The `x)` pattern (exact match for "x") comes after
+`x*)` and can never be reached, because `x*` already consumed the empty case.
+
+Step-by-step for empty pw_user_passtype:
+  1. Value to match: "x" (the prefix "x" + empty variable)
+  2. Try xplain) -> "x" != "xplain" -> no match
+  3. Try xpbkdf2) -> "x" != "xpbkdf2" -> no match
+  4. Try xargon2) -> "x" != "xargon2" -> no match
+  5. Try x*) -> "x" matches "x" followed by zero chars -> MATCH
+  6. x) is never reached
+
+Consequence: An empty password type triggers "Unrecognized password type ''
+specified for user ..." instead of the intended "No password type specified for
+user ...". The error message is misleading but the script still aborts, so this
+is a minor UX issue rather than a security or correctness problem.
+
+Fix: Swap the x) and x*) branches so x) is tested first.
+
+---
+
+Minor: grub_get_auth_user_list() outputs broken --users argument for multiple
+users, at util/grub-mkconfig_lib.in lines 351-380.
+
+Discovery: Reading the function grub_get_auth_user_list() in
+grub-mkconfig_lib.in, the user list is built at line 375:
+  ggaul_user_list="$ggaul_user_list $ggaul_user_name"
+Starting from empty string, this produces " user1" for one user or
+" user1 user2" for two users. The output at line 377 is:
+  echo "--users$ggaul_user_list "
+Which produces "--users user1 " (one user) or "--users user1 user2 " (two users).
+
+Analysis of the caller: In util/grub.d/10_linux.in, the function is called as:
+  allowed_user_list="$(grub_get_auth_user_list $GRUB_RECOVERY_ACCESS_LEVEL)"
+And used in:
+  echo "menuentry '...' ... ${allowed_user_list}{"
+The variable is expanded inside double quotes of the echo command, so the output
+string is preserved as-is in the generated grub.cfg line:
+  menuentry 'title' --class os --users user1 user2 {
+
+GRUB's menuentry parser processes arguments sequentially. The --users option takes
+one argument: the next word. With space-separated output:
+  --users  -> option
+  user1    -> argument to --users (captured)
+  user2    -> stray positional argument to menuentry (ignored or causes error)
+
+GRUB's documented format for multiple users is comma-separated:
+  --users user1,user2
+or equivalently:
+  --users=user1,user2
+
+Step-by-step for two non-superuser users (e.g., "editor" and "viewer") at the
+same access level:
+  1. First iteration: ggaul_user_list=" editor"
+  2. Second iteration: ggaul_user_list=" editor viewer"
+  3. Output: "--users editor viewer "
+  4. In grub.cfg: menuentry 'title' --users editor viewer {
+  5. GRUB parser: --users="editor", "viewer" is stray
+  6. Only "editor" has access; "viewer" is silently dropped
+
+Consequence: Any configuration with two or more non-superuser users at the same
+access level will silently grant access to only the first user. No error or
+warning is produced. The second (and subsequent) users are locked out despite
+being configured.
+
+Fix: Build a comma-separated list and output "--users user1,user2 ".

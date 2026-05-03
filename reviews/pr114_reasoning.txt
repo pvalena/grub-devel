@@ -1,6 +1,46 @@
-Minor: Dead free(NULL) in util/grub-install.c line 881. The guard
-condition !bootloader_id ensures the pointer is NULL when free() is
-called, making it a guaranteed no-op. Likely copy-pasted from the
-subsequent fallback block where free(bootloader_id) is needed for a
-non-NULL empty string. No runtime impact but should be removed for
-clarity.
+Minor: Dead free(NULL) in util/grub-install.c at line 881.
+
+Discovery: Reading util/grub-install.c, the bootloader_id fallback logic at
+lines 879-887 has two sequential blocks:
+
+  Block 1 (line 879-883):
+    if (!bootloader_id && config.grub_distributor)
+      {
+        free (bootloader_id);
+        bootloader_id = xstrdup (config.grub_distributor);
+      }
+
+  Block 2 (line 884-887):
+    if (!bootloader_id || bootloader_id[0] == '\0')
+      {
+        free (bootloader_id);
+        bootloader_id = xstrdup ("grub");
+      }
+
+Analysis of Block 1: The guard condition is `!bootloader_id`, which is true only
+when bootloader_id is NULL. Inside the block body, `free(bootloader_id)` is
+called. Since the guard guarantees bootloader_id is NULL at this point,
+free(NULL) is executed, which is defined by the C standard (C99 7.20.3.2) as a
+no-op. The call has no effect.
+
+Analysis of Block 2: The guard condition is `!bootloader_id || bootloader_id[0]
+== '\0'`. The second disjunct handles the case where bootloader_id points to an
+allocated empty string (e.g., from xstrdup("")). In that case, free(bootloader_id)
+is meaningful -- it frees the non-NULL pointer to the empty string before
+replacing it with xstrdup("grub").
+
+Step-by-step trace through Block 1:
+  1. Enter: bootloader_id == NULL (guaranteed by !bootloader_id guard)
+  2. free(NULL) -> no-op (C standard guarantees this)
+  3. bootloader_id = xstrdup(config.grub_distributor) -> now non-NULL
+  4. Exit: bootloader_id points to a copy of grub_distributor
+
+The free() on line 881 appears to be copy-pasted from Block 2, where the same
+pattern is used but the pointer can be non-NULL (pointing to an empty string).
+In Block 1, the pointer is always NULL, making the free() dead code.
+
+Consequence: No runtime impact. free(NULL) is safe and has no side effects. The
+issue is purely dead code that suggests a copy-paste oversight. Removing it
+improves clarity without changing behavior.
+
+Fix: Delete the `free (bootloader_id);` line from Block 1.

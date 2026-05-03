@@ -1,11 +1,115 @@
-Minor: Error return conflated with "registered" in grub_install_register_efi().
-grub_install_efi_is_registered() returns errno (non-zero) on pipe/fdopen failure,
-but the caller interprets any non-zero as "already registered" and returns 0
-(success), silently skipping EFI boot entry creation. If efibootmgr pipe setup
-fails for any reason, grub-install will silently fail to register the boot entry
-while appearing to succeed.
+Minor: Error return conflated with "registered" in grub_install_register_efi()
+at grub-core/osdep/unix/platform.c.
+
+Discovery: Reading grub_install_efi_is_registered(), the function has three
+return paths:
+
+  Path A -- grub_util_exec_pipe() fails (line 91-95):
+    pid = grub_util_exec_pipe({"efibootmgr", NULL}, &fd);
+    if (!pid) {
+        grub_util_warn("Unable to open stream from %s: %s", ...);
+        return errno;
+    }
+
+  Path B -- fdopen() fails (line 97-101):
+    FILE *fp = fdopen(fd, "r");
+    if (!fp) {
+        grub_util_warn("Unable to open stream from %s: %s", ...);
+        return errno;
+    }
+
+  Path C -- normal completion (line 129):
+    return rc;   // rc = 0 (not found) or 1 (found)
+
+The return value semantics are:
+  0     = not registered (from Path C when no match found)
+  1     = registered (from Path C when match found)
+  errno = error (from Path A or B; always > 0)
+
+Reading the caller in grub_install_register_efi() at lines 154-156:
+  ret = grub_install_efi_is_registered(efifile_path);
+  if (ret)
+    return 0;
+
+Analysis: The caller tests `if (ret)`, which is true for any non-zero value.
+This conflates two distinct conditions:
+  - ret == 1 (registered): correct, skip registration, return success
+  - ret == errno (error): incorrect, treated as "registered", skips
+    registration AND returns 0 (success) to the caller's caller
+
+Step-by-step for a pipe failure scenario:
+  1. efibootmgr version check passes (lines 147-151) -- efibootmgr exists
+  2. grub_util_exec_pipe() is called to run "efibootmgr" (line 85)
+  3. Pipe creation fails (e.g., fd exhaustion under load, fork failure)
+  4. grub_util_exec_pipe() returns 0, errno is set (e.g., EMFILE=24)
+  5. grub_install_efi_is_registered() warns and returns 24
+  6. Caller: ret = 24, if (24) is true
+  7. Caller returns 0 (success) without creating the boot entry
+  8. grub-install reports success to the user
+  9. System has no EFI boot entry -- will not boot GRUB on next reboot
+
+The prior code used grub_install_remove_efi_entries_by_distributor() which had
+the same error return pattern, but the caller propagated the error:
+  if (ret) return ret;
+This at least surfaced the error code to the caller's caller, rather than
+silently converting it to success.
+
+Consequence: If efibootmgr pipe setup fails for any transient reason after the
+initial version check passes, grub-install silently fails to create the EFI boot
+entry while reporting success. The system may become unbootable after the next
+firmware boot order reset. The failure window is narrow (between version check
+and actual invocation) but the impact is severe (silent boot failure).
+
+Not a straightforward fix: requires API redesign to distinguish three return
+states (error / registered / not-registered).
+
+---
 
 Minor: Missing fclose(fp) in grub_install_efi_is_registered() at
-grub-core/osdep/unix/platform.c. FILE stream opened via fdopen(fd, "r") is
-never closed before return. Leaks the FILE stream and underlying fd on every
-call. get_ofpathname() in the same file properly calls fclose(fp).
+grub-core/osdep/unix/platform.c, before `return rc` on line 129.
+
+Discovery: Reading the function's resource management, the FILE stream is opened
+at line 97:
+  FILE *fp = fdopen(fd, "r");
+Then used in the while loop (lines 103-127) to read efibootmgr output via
+getline(). After the loop, line 128-129:
+  free(line);
+  return rc;
+
+The function frees the `line` buffer but never calls fclose(fp).
+
+Analysis: Tracing resource lifecycle:
+  1. grub_util_exec_pipe() creates a pipe and returns fd (line 85)
+  2. fdopen(fd, "r") wraps fd into FILE* fp (line 97)
+  3. getline() reads from fp in the loop (line 108)
+  4. free(line) releases the line buffer (line 128)
+  5. return rc -- fp is NOT closed (line 129)
+
+After fdopen() succeeds, the fd is owned by the FILE stream. Calling fclose(fp)
+would close both the FILE stream and the underlying fd. Without fclose():
+  - The FILE stream's internal buffer is leaked (allocated by stdio)
+  - The file descriptor is leaked (not returned to the OS)
+  - The child process (efibootmgr) may not receive EOF on its stdout pipe
+
+Comparison with get_ofpathname() in the same file (lines 36-78): that function
+follows the identical pattern (exec_pipe -> fdopen -> read loop) but correctly
+calls fclose(fp) at line 73 before returning. The omission in
+grub_install_efi_is_registered() appears to be an oversight.
+
+Step-by-step resource state at return:
+  1. pid: child process has exited (all output consumed by getline loop)
+  2. fd: owned by fp, not independently closeable
+  3. fp: FILE stream with internal buffer, still open
+  4. line: freed (line 128)
+  5. rc: return value (0 or 1)
+  -> fp leaks, taking fd with it
+
+Consequence: Each call to grub_install_efi_is_registered() leaks one FILE
+stream and one file descriptor. In the current code the function is called at
+most once per grub-install invocation, so the leak is not practically harmful
+(the process exits shortly after). However, it is a correctness defect and
+would become a real leak if the function were ever called in a loop or from a
+long-lived process.
+
+Fix: Add `fclose(fp);` before `return rc;` on line 129, matching the pattern
+used by get_ofpathname() in the same file.
