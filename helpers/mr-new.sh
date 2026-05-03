@@ -6,11 +6,11 @@ zsh -n "$0"
 
 [[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
-F="../data/closed.txt"
-O="../data/open.txt"
+D='../data/done.txt'
+F='../data/closed.txt'
 N='../data/new.txt'
 
-mr="$(cat "$O" "$F" "$N" 2>/dev/null|sort -n|grep -v ^$|tail -n 1)" ||:
+mr="$(cat "$D" "$F" "$N" 2>/dev/null|sort -n|grep -v ^$|tail -n 1)" ||:
 
 [[ -n "$mr" ]] || M=0
 
@@ -25,7 +25,6 @@ while [[ ${mr} -ge 0 ]]; do
 
     case $s in
         open)
-            echo $O
             echo "$mr" >> "$N"
             ;;
 

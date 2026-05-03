@@ -11,6 +11,9 @@ zsh -n "$0"
 R='../reviews/'
 [[ -d "$R" ]]
 
+D='../data/done.txt'
+[[ -r "$D" ]]
+
 for F in $(ls -d "${R}"*.md); do
 
     [[ -r "$F" ]]
@@ -21,7 +24,7 @@ for F in $(ls -d "${R}"*.md); do
     [[ -n "$b" ]]
     [[ -n "$m" ]]
 
-    grep -qE "^${m}$" '../done.txt' && continue
+    grep -qE "^${m}$" "$D" && continue
 
     echo -e "\n\n>>> $b: $m\n"
 
@@ -37,7 +40,7 @@ for F in $(ls -d "${R}"*.md); do
 
     glab mr comment "${m}" --repo gnu-grub/grub -m "${C}"
 
-    echo "$m" >> '../done.txt'
+    echo "$m" >> "$D"
 
     sleep 5
 done
