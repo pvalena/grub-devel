@@ -2,54 +2,35 @@
 
 Complete listing of all active MRs organized by author with brief descriptions.
 
-**Total MRs**: 41 | **Total authors**: 28
+**Total MRs**: 26 | **Total authors**: 20
 
 ---
 
 ## Vladimir Serbinenko
 *phcoder at gmail dot com*
 
-**MRs**: 8
+**MRs**: 6
 
 - **[!24](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/24)**: Add convenience TARGET_CROSS
 - **[!27](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/27)**: Add support for qemu emulation of malta board
-- **[!30](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/30)**: Implement __aeabi_uldivmod
-- **[!31](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/31)**: Enable (u)divdi3 and (u)moddi3 for mips
 - **[!33](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/33)**: Command lspaging to show paging table
 - **[!35](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/35)**: x86_64-efi: Ensure that memory is mapped when allocating
 - **[!38](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/38)**: Use ET_DYN images and PHDRs for creating relocatable images (5 commits)
 - **[!39](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/39)**: render-label: Supports canonical paths not starting with / (9 commits)
 
-## Gary Lin
-*glin at suse dot com*
-
-**MRs**: 1
-
-- **[!69](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/69)**: tests: Add mfa_key_protector_test (3 commits)
-
 ## Mate Kukri
 *mate dot kukri at canonical dot com*
 
-**MRs**: 2
+**MRs**: 1
 
-- **[!75](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/75)**: efi: Drop support for UGA Draw and Console Control protocols
 - **[!76](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/76)**: normal/menu_entry: Add support for jump/delete word shortcuts
 
 ## Michael Chang
 *mchang at suse dot com*
 
-**MRs**: 2
+**MRs**: 1
 
 - **[!20](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/20)**: grub-install: force journal draining to ensure data integrity
-- **[!61](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/61)**: getroot: Skip mount points in grub_find_device
-
-## Tobias Heider
-*tobias dot heider at canonical dot com*
-
-**MRs**: 2
-
-- **[!28](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/28)**: arm64: Limit memory allocations to 4GB boundary
-- **[!29](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/29)**: kern/efi/mm: try allocating in the lower 4GB first
 
 ## Paymon MARANDI
 *paymon at encs dot concordia dot ca*
@@ -67,42 +48,12 @@ Complete listing of all active MRs organized by author with brief descriptions.
 - **[!46](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/46)**: Customization of GRUB menu title
 - **[!47](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/47)**: Option to set title of submenus
 
-## Frediano Ziglio
-*frediano dot ziglio at cloud dot com*
-
-**MRs**: 2
-
-- **[!53](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/53)**: kern/list: Add a grub_list_length function
-- **[!54](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/54)**: arm64/xen: Allows to use xen_hypervisor and xen_module on x86_64-efi
-
 ## Avnish Chouhan
 *avnish at linux dot ibm dot com*
 
-**MRs**: 2
+**MRs**: 1
 
-- **[!71](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/71)**: Mandatory install device check for PowerPC
 - **[!78](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/78)**: ieee1275: add support for NVMeoFC (6 commits)
-
-## Sudhakar Kuppusamy
-*sudhakar at linux dot ibm dot com*
-
-**MRs**: 1
-
-- **[!80](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/80)**: powerpc_ieee1275: Excluding the PKS for grub-emu on 32-bit PowerPC
-
-## Egor Ignatov
-*egori at altlinux dot org*
-
-**MRs**: 1
-
-- **[!21](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/21)**: fs/xfs: Handle root inode read failure in grub_xfs_mount
-
-## Tony W Wang-oc
-*TonyWWang-oc at zhaoxin dot com*
-
-**MRs**: 1
-
-- **[!22](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/22)**: i386: Reduce the time of set VESA mode by clearing FB directly for Zhaoxin/Glenfly card (2 commits)
 
 ## Yann Diorcet
 *diorcet dot yann at gmail dot com*
@@ -194,20 +145,6 @@ Complete listing of all active MRs organized by author with brief descriptions.
 **MRs**: 1
 
 - **[!68](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/68)**: blsuki: search default location on XBOOTLDR partition, even if entries found on ESP (2 commits)
-
-## Christian Schoenebeck
-*linux_oss at crudebyte dot com*
-
-**MRs**: 1
-
-- **[!74](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/74)**: zfs: fix root dataset detection on encrypted pools
-
-## Mikhail Lappo
-*miklelappo at gmail dot com*
-
-**MRs**: 1
-
-- **[!79](https://gitlab.freedesktop.org/gnu-grub/grub/-/merge_requests/79)**: loader/efi/fdt: Ensure FDT blob is 8-byte aligned
 
 ---
 
