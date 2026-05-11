@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-set -xe
+set -e
 
 zsh -n "$0"
 
@@ -13,7 +13,7 @@ N="$(cat "$N" 2>/dev/null)"
 [[ -n "$N" ]]
 
 gitc master
-gitf
+gitp
 
 for mr in `echo $N`; do
 
