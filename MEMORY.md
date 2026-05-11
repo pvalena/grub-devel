@@ -1,34 +1,36 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-04-10
+**Last updated**: 2026-05-11
 
-Quick reference for working in this repository. See `CLAUDE.md` for repository overview and `docs/REVIEW_PROCESS.md` for detailed procedures.
+Quick reference for working in this repository. See `CLAUDE.md` for repository overview
+and `docs/REVIEW_PROCESS.md` for detailed procedures.
 
 ---
 
 ## Current Status
 
-- **Total MRs tracked**: 63 (originally created)
-- **Open MRs**: 48
-- **Closed/Merged MRs**: 15
-- **Active authors**: 34
+- **Total MRs tracked**: 79 (63 original + 16 new upstream MRs)
+- **Open MRs**: 26
+- **Closed/Merged MRs**: 53
+- **Active authors**: 19
 
 **Review files**:
-- Complete reviews: 50 (.md files)
-- Reasoning files: 22 (_reasoning.txt files, only for reviews with issues)
+- Complete reviews: 73 (.md files)
+- Reasoning files: 25 (_reasoning.txt files, only for reviews with issues)
 
 ---
 
 ## Quick File Reference
 
 **Tracking**:
-- `MRS_BY_AUTHOR.md` - Active MRs by author (48 open)
+- `MRS_BY_AUTHOR.md` - Active MRs by author (26 open)
 - `data/open.txt` - Open MR numbers (source of truth)
 - `data/closed.txt` - Closed MR numbers
 
 **Reviews**:
-- `reviews/YYYY-MM-NNNN.md` - Complete code reviews
-- `reviews/YYYY-MM-NNNN_reasoning.txt` - Brief technical justifications (only for issues)
+- `reviews/YYYY-MM-NNNN.md` - Code reviews (older branches, named by mailing list date)
+- `reviews/prNN.md` - Code reviews (new MRs, named by MR number)
+- `reviews/*_reasoning.txt` - Deep technical justifications (only for reviews with issues)
 
 **Documentation**:
 - `CLAUDE.md` - Repository instructions and essentials
@@ -37,138 +39,74 @@ Quick reference for working in this repository. See `CLAUDE.md` for repository o
 
 **Data**:
 - `grub/` - Git repo with all branches (**DO NOT MODIFY**)
-- Base commit: `c160b58610879a52d959db21b9cae98af5fd095f`
-- Branch format: `YYYY-MM-NNNN` (e.g., 2025-05-0103)
+- Base commit (older branches): `c160b58610879a52d959db21b9cae98af5fd095f`
+- Base for new MRs: `origin/master` (branches are rebased)
+- Branch format: `YYYY-MM-NNNN` (older) or `prNN` (new MRs, e.g., pr89)
 
 ---
 
 ## Review Workflow
 
-Complete process for reviewing GRUB merge requests.
+Complete process for reviewing GRUB merge requests. See global review skill for
+full details.
 
-### Phase 0: Perform Code Review
+### Phase 1: Perform Code Review
 
 **Critical principle**: NEVER report a bug without verifying it by reading actual code.
 
-**Process**:
-
-1. **Checkout and count commits**:
+1. **Count commits** (use correct base):
    ```bash
    cd grub/
-   git checkout BRANCH_NAME
-   git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD | wc -l
-   # Remember this number - ALL commits must be reviewed
+   # For new MRs (prNN branches):
+   git log --oneline origin/master..prNN
+   # For older branches (YYYY-MM-NNNN):
+   git log --oneline c160b5861..BRANCH
    ```
 
-2. **Examine changes**:
+2. **Read full diff**, then **read actual source** at the branch:
    ```bash
-   git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD
-   git diff c160b58610879a52d959db21b9cae98af5fd095f..HEAD
+   git diff origin/master..prNN
+   git show prNN:path/to/file.c | sed -n 'START,ENDp'
    ```
 
-3. **Read actual code** (not just diffs!):
-   ```bash
-   git show HEAD:path/to/file.c | less
-   git show HEAD:path/to/file.c | sed -n 'START,ENDp'
-   ```
+3. **Create review file**: `reviews/prNN.md` (or `reviews/YYYY-MM-NNNN.md`)
 
-4. **Verify EVERY bug** before documenting:
-   ```bash
-   # Example: Verify double-free claim
-   git show HEAD:file.c | sed -n '2090,2105p'  # First free
-   git show HEAD:file.c | sed -n '2190,2200p'  # Second free
-   git show HEAD:file.c | grep "= NULL"        # Check NULL assignment
-   # Only document if VERIFIED in actual code
-   ```
+### Phase 2: Verify Findings
 
-5. **Create review file**: `reviews/BRANCH_NAME.md`
+Re-read actual source for every reported issue. Check for false positives
+(missed NULL checks, cleanup code outside the diff, API guarantees).
+Also re-check clean reviews for missed issues.
 
-**Review checklist**:
-- [ ] All commits counted and listed
-- [ ] Every bug verified by reading actual code
-- [ ] No false positives (checked cleanup code, NULL assignments)
-- [ ] File paths and line numbers accurate
-- [ ] Impact/consequences stated
+### Phase 3: Draft Fixes
 
-### Phase 1: Generate Reasoning Files
+For each confirmed issue, add a diff patch if the fix is straightforward
+(1-10 lines, obvious, self-contained). Otherwise, explain why it is not
+a straightforward fix.
 
-**Only for reviews with issues found.**
+### Phase 4: Deep Reasoning
 
-Create `reviews/BRANCH_NAME_reasoning.txt`:
+**Only for reviews with issues.** Create `reviews/prNN_reasoning.txt` with
+Discovery / Analysis / Step-by-step / Consequence sections for each issue.
+Add "For more details" link in the review .md file pointing to the reasoning file.
 
-**Format**:
-```
-[Severity]: [Issue at location]. [Technical explanation]. [Consequences].
-```
+### Phase 5: Format and Verify
 
-**Severity levels**:
-- **Critical**: Crashes, memory corruption, security bugs, compilation errors
-- **Minor**: Style issues, misleading names, non-critical leaks
-- **Note**: Observations, limitations, requires specialized review
-- **Concern**: Potential issues needing deeper analysis
-
-**Example**:
-```
-Critical: Double-free at grub-core/bus/usb/xhci.c:2099,2196. grub_xhci_check_transfer() frees
-transfer->controller_data (line 2099) without setting to NULL. If grub_xhci_cancel_transfer()
-subsequently called, retrieves dangling pointer and frees again (line 2196).
-```
-
-### Phase 2: Format Documentation
-
-**Constraint**: 120 character line width (mandatory).
-
-**Check formatting**:
+120 character line width (mandatory). Verify commit count matches review.
 ```bash
-awk 'length > 120 {print NR": " $0}' reviews/BRANCH.md
+awk 'length > 120' reviews/prNN.md
 ```
-
-**Fix long lines** - break at commas, periods, before conjunctions.
-
-### Phase 3: Verification & Quality Assurance
-
-**Zero tolerance for false positives.**
-
-**Verify accuracy**:
-```bash
-# Read actual code to confirm bug exists
-git show HEAD:file.c | sed -n 'START,ENDp'
-
-# Check for cleanup code outside diff
-git show HEAD:file.c | grep -E "(= NULL|cleanup|free)"
-```
-
-**Common false positive patterns**:
-- **Double-free**: Missed `ptr = NULL` between frees
-- **NULL dereference**: Missed early NULL check
-- **Resource leak**: Value is invalid (0, NULL) so no leak
-
-**Verify completeness**:
-```bash
-# Count commits
-git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD | wc -l
-
-# Compare with review file - numbers MUST match
-```
-
-**If commits missing**: Review ALL missing commits thoroughly.
 
 ### MR Status Update Workflow
 
 When MRs close:
 
 1. **Check status**: `./closed.sh`
-2. **Update tracking**:
-   - Move MR numbers from `data/open.txt` to `data/closed.txt`
-3. **Update MRS_BY_AUTHOR.md**:
-   - Remove closed MRs
-   - Update author counts
-   - Remove authors with only closed MRs
+2. **Update tracking**: Move MR numbers from `data/open.txt` to `data/closed.txt`
+3. **Update MRS_BY_AUTHOR.md**: Remove closed MRs, update counts, remove empty authors
 4. **Verify**:
    ```bash
-   wc -l data/open.txt
-   grep -c 'merge_requests' MRS_BY_AUTHOR.md
-   # Should match
+   diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | sed -E 's/.*!([0-9]+).*/\1/' \
+     | sort -n) <(sort -n data/open.txt)
    ```
 
 ---
@@ -200,20 +138,23 @@ glab mr view <N> --repo gnu-grub/grub 2>/dev/null | grep "^state:"
 
 ## Important Review Cases
 
-### MR !42 - xHCI Support (2025-05-0103)
-**Issue**: Double-free vulnerability
-**Location**: grub-core/bus/usb/xhci.c:2099,2196
-**Status**: Verified as real bug (not false positive)
-**Lesson**: Always check for NULL assignment between frees
+### MR !89 - Authentication Access Levels (pr89)
+**Issues**: 3 found -- dead code (case branch ordering), doc/code delimiter mismatch, multi-user
+list formatting. All verified with draft fixes or "not straightforward" explanations.
+**Lesson**: Shell case `x*)` matches before `x)` -- always put exact matches first.
 
-### MR !39 - Cygwin/Windows Build Fixes (2025-05-0016)
-**Issue**: Review was incomplete (listed 5 commits, actually 9)
-**Critical commit**: 030e96cbb (prevents crash)
-**Lesson**: Always count commits with git log, don't trust manual counts
+### MR !115 - EFI Skip Registration (pr115)
+**Issues**: 2 found -- error/success return conflation (errno treated as "registered"), missing
+fclose(fp). The fclose was found during verification pass, not initial review.
+**Lesson**: Always trace return value semantics through caller. Run verification as a separate pass.
+
+### MR !42 - xHCI Support (2025-05-0103)
+**Issue**: Double-free vulnerability at grub-core/bus/usb/xhci.c:2099,2196
+**Lesson**: Always check for NULL assignment between frees.
 
 ### MR !78 - NVMeoFC Support (2026-02-0071)
 **Issue**: Review was incomplete (listed 3 commits, actually 6)
-**Lesson**: Verify commit count before finalizing review
+**Lesson**: Verify commit count before finalizing review.
 
 ---
 
@@ -221,18 +162,18 @@ glab mr view <N> --repo gnu-grub/grub 2>/dev/null | grep "^state:"
 
 **Essential commands**:
 ```bash
-# Review workflow
-cd grub/ && git checkout BRANCH
-git log --oneline c160b5861..HEAD | wc -l  # Count commits
-git show HEAD:file.c | sed -n 'LINE1,LINE2p'  # Verify bug
+# Review workflow (new MRs)
+cd grub/
+git log --oneline origin/master..prNN         # Count commits
+git diff origin/master..prNN                  # Full diff
+git show prNN:file.c | sed -n 'LINE1,LINE2p' # Read actual source
 
 # Formatting
-awk 'length > 120' reviews/FILE.md  # Check line width
+awk 'length > 120' reviews/prNN.md            # Check line width
 
-# Verification
-grep -c 'merge_requests' MRS_BY_AUTHOR.md  # Count MRs in doc
-wc -l data/open.txt  # Count MRs in data file
-diff -u data/open.txt <(grep -oE '!([0-9]+)' MRS_BY_AUTHOR.md | tr -d '!' | sort -n)
+# Verification (MRS_BY_AUTHOR vs data/open.txt)
+diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
+  sed -E 's/.*!([0-9]+).*/\1/' | sort -n) <(sort -n data/open.txt)
 ```
 
 **Key principles**:
@@ -245,18 +186,18 @@ diff -u data/open.txt <(grep -oE '!([0-9]+)' MRS_BY_AUTHOR.md | tr -d '!' | sort
 
 ## Statistics
 
-**Current (2026-04-10)**:
-- Open MRs: 48
-- Active authors: 34
-- Largest contributor: Vladimir Serbinenko (8 MRs)
-- Closed rate: 24% (15/63)
+**Current (2026-05-11)**:
+- Open MRs: 26
+- Active authors: 19
+- Largest contributor: Vladimir Serbinenko (6 MRs)
+- Closed rate: 67% (53/79)
+- Review files: 73 reviews, 25 reasoning files
 
 **Historical**:
 - Initial branches: 176 (from mailing lists)
 - Duplicates removed: 65 (39% rate)
 - Unique branches: 111
-- MRs created: 63
-- Original authors: 38
+- Original MRs created: 63, plus 16 new upstream MRs reviewed
 
 ---
 
@@ -276,4 +217,5 @@ diff -u data/open.txt <(grep -oE '!([0-9]+)' MRS_BY_AUTHOR.md | tr -d '!' | sort
 
 ---
 
-**Note**: This file contains working knowledge for the repository. See `CLAUDE.md` for project overview and `docs/REVIEW_PROCESS.md` for detailed procedures.
+**Note**: This file contains working knowledge for the repository. See `CLAUDE.md`
+for project overview and `docs/REVIEW_PROCESS.md` for detailed procedures.
