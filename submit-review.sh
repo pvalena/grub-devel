@@ -48,9 +48,9 @@ N='../data/new.txt'
 
         echo "$m" >> "$D"
 
-        Z="$(grep -vE "^${m}$" "$N")"
+        Z="$(grep -vE "^${m}$" "$N" | grep -v ^$ | sort -n)"
 
-        echo "$Z" > "$N"
+        [[ -z "$Z" || "$Z" == "${m}" ]] && rm "$N" || echo "$Z" > "$N"
 
         sleep 5
     done
