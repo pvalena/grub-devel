@@ -89,4 +89,4 @@ git show
 
 con "Push the reviews to git"
 
-git push
+run "git push"

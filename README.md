@@ -8,6 +8,15 @@ and posted as MR comments via `glab`.
 
 ## Quick Start
 
+Run the full pipeline interactively (prompts for confirmation at each step):
+
+```bash
+./pipeline.sh                  # checkout, view, review, submit, commit, push
+./pipeline.sh -n               # dry run -- no submissions or pushes
+```
+
+Or run individual steps manually:
+
 ```bash
 # 1. Discover new MRs (polls GitLab API starting after the last known MR)
 helpers/mr-new.sh
@@ -33,9 +42,10 @@ helpers/view-new.sh
 
 | Script | Purpose |
 |--------|---------|
+| `pipeline.sh` | End-to-end: checkout, view, review (manual), submit, commit, push. Interactive. |
 | `submit-review.sh` | Post reviews as MR comments. Processes `data/new.txt` first, then all unsubmitted. |
 
-**Flags**: `-d` debug, `-n` dry run (print only), `-v` verbose (print + post).
+**Flags** (both scripts): `-d` debug, `-n` dry run (print only), `-v` verbose.
 
 ### helpers/
 
