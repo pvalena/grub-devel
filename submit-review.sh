@@ -44,7 +44,7 @@ N='../data/new.txt'
 
         [[ -n "$DRY" ]] && continue
 
-        glab mr comment "${m}" --repo gnu-grub/grub -m "${C}"
+        glab mr note create "${m}" --repo gnu-grub/grub -m "${C}"
 
         echo "$m" >> "$D"
 
