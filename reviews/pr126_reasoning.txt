@@ -1,0 +1,63 @@
+PR126 Reasoning -- efibootnext: Require target boot entry to exist and show its label
+1 commit (a97584dbb). AI-assisted: Co-Authored-By: Claude Opus 4.7.
+
+== Issue 1: Leaked grub_errno from best-effort label decode ==
+
+Discovery:
+The commit adds a "best-effort" label decode block that attempts to parse the
+EFI_LOAD_OPTION structure from the BootXXXX variable to extract a human-readable
+label. The commit message and inline comments explicitly say this is non-fatal.
+However, grub_errno is a global variable that persists until explicitly cleared,
+and the code never clears it after the best-effort block.
+
+Source files read:
+- grub-core/commands/efi/efibootnext.c (full file, 152 lines on pr126 branch)
+
+Analysis -- the error propagation chain:
+1. grub_cmd_bootnext() calls grub_efi_get_variable() to read BootXXXX (line ~80)
+2. If the variable exists, it enters the best-effort decode block (lines ~98-123)
+3. The decode block calls grub_malloc() twice:
+   a. For desc (aligned CHAR16 copy of the Description field)
+   b. For label (UTF-8 conversion buffer)
+4. If either grub_malloc fails, grub_errno is set to GRUB_ERR_OUT_OF_MEMORY
+   (this happens inside grub-core/kern/mm.c, grub_memalign)
+5. The code handles the failure correctly in terms of control flow -- label stays
+   NULL, and the code falls through to set BootNext anyway
+6. But grub_errno remains GRUB_ERR_OUT_OF_MEMORY when the function returns
+   GRUB_ERR_NONE
+
+Consequence -- why the leaked grub_errno causes a user-visible problem:
+After any GRUB command returns, the script executor calls grub_print_error().
+Verified at grub-core/script/execute.c:1083. grub_print_error() (defined in
+grub-core/kern/err.c:117) checks the global grub_errno: if it is not
+GRUB_ERR_NONE, it prints "error: <message>." and clears it. So the user sees:
+
+    BootNext set to Boot0002
+    error: out of memory.
+
+This is confusing because BootNext was successfully set. The "error" message
+comes from the stale grub_errno left by the best-effort decode, not from any
+actual failure in the BootNext write path.
+
+Plausibility: GRUB runs with a constrained heap (often 256KB-1MB depending on
+firmware). The desc buffer is sizeof(EFI_LOAD_OPTION) + Description length,
+and label is up to 4x the CHAR16 count for UTF-8. In a fragmented heap, these
+small allocations can genuinely fail.
+
+Verification of the fix:
+The fix inserts grub_errno = GRUB_ERR_NONE after the decode block (line ~123)
+and before grub_efi_set_variable (line ~125). This is correct because:
+- It only clears errors from the best-effort decode, not from prior validation
+  (the entry existence check returns early on failure, so we only reach this
+  point if the entry was found successfully)
+- It does not mask errors from grub_efi_set_variable, which is called after
+  the clear and has its own error check
+- The pattern of clearing grub_errno after best-effort operations is standard
+  in GRUB (e.g., grub-core/kern/disk.c after optional reads)
+
+AI-assistance scrutiny:
+Commit message claims "best-effort" decode is "not fatal" -- verified true for
+control flow, but the grub_errno leak contradicts the intent. This is a subtle
+interaction between the local error handling and GRUB's global error state that
+is easy to miss, especially for AI-generated code that may handle the local
+control flow correctly without understanding the global grub_errno contract.

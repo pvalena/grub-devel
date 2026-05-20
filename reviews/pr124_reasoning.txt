@@ -1,0 +1,209 @@
+PR124 Reasoning -- BLS Boot Loader Interface Extensions (11 commits)
+
+Source files read during review and verification:
+- grub-core/commands/bli.c (full file on pr124 branch)
+- grub-core/commands/bls_bumpcounter.c (full file on pr124 branch)
+- grub-core/normal/menu.c (relevant sections on pr124 branch)
+- include/grub/efi/filesystem.h (full file on pr124 branch)
+- include/grub/efi/tpm.h (in-tree, to confirm guard conflict)
+- grub-core/kern/misc.c lines 523-598 (grub_strtoull implementation)
+- grub-core/Makefile.core.def (bli module platform config)
+
+== Issue 1: Memory leak in set_loader_default_entry() (bli.c) ==
+
+Discovery:
+Reading set_loader_default_entry() at line ~216. The function calls
+get_efivar("LoaderEntryOneShot") and get_efivar("LoaderEntryDefault").
+Traced get_efivar() (line ~177): it calls grub_efi_get_variable() which
+returns a malloc'd buffer, then allocates a new buffer via grub_malloc()
+for the UTF-16 to char* conversion, frees the original, and returns the
+new allocation. So the return value is always heap-allocated.
+
+grub_env_set() (grub-core/kern/env.c) copies the value string into its
+own storage via grub_strdup(). It does not take ownership of the passed
+pointer. Confirmed by reading grub_env_set implementation.
+
+Neither oneshot_entry nor default_entry is freed after grub_env_set().
+Both are leaked on every call. This function is called during BLI init,
+so it leaks once per boot -- not catastrophic but a real leak in a
+memory-constrained environment.
+
+Fix verification: grub_free() after each grub_env_set() is correct.
+The values are not referenced again after the set call.
+
+== Issue 2: Incorrect error check in bump_counter() (bls_bumpcounter.c) ==
+
+Discovery:
+Reading bump_counter(), the code does:
+  tries_left = grub_strtol(++tmp, (const char**) &tmp, 10);
+  if (tmp != NULL)
+
+This looked suspicious because grub_strtol's endptr semantics differ from
+libc's strtol. Traced the call chain:
+
+grub_strtol (grub-core/kern/misc.c:609) calls grub_strtoull (line 523).
+grub_strtoull behavior for the end pointer:
+- On success: *end points past the last parsed digit (line ~570)
+- On parse failure (no digits): *end = str (the input, line ~540),
+  grub_errno = GRUB_ERR_BAD_NUMBER
+- On overflow: *end points past digits, grub_errno = GRUB_ERR_OUT_OF_RANGE
+
+In NO case does grub_strtoull set *end to NULL. The pointer always points
+somewhere into the input string. Therefore "if (tmp != NULL)" is always
+true regardless of whether parsing succeeded or failed.
+
+Consequence: If the boot counter string is malformed (e.g., "3-abc" or
+"+nodigits"), grub_strtol returns 0 with grub_errno set, but the code
+proceeds as if parsing succeeded. tries_left becomes 0, and the entry
+gets renamed with tries_left=0 -- effectively consuming the boot attempt
+on a malformed counter rather than reporting an error.
+
+The same bug appears twice in bump_counter(): once for tries_left and
+once for tries (the original count after the '-').
+
+Fix verification: Checking grub_errno == GRUB_ERR_NONE is the standard
+GRUB pattern for strtol error detection. See e.g. grub-core/kern/misc.c
+grub_strtoul_real() callers throughout the codebase.
+
+== Issue 3: Mutation of const environment value in get_entry_number() (menu.c) ==
+
+Discovery:
+Reading the new code in get_entry_number() for .conf suffix handling.
+The variable val is declared const char * and assigned from grub_env_get().
+grub_env_get() returns a pointer directly into the environment hash table's
+internal storage -- it does NOT return a copy.
+
+The new code does:
+  ext = grub_strrchr(val, '.');
+  if (ext && grub_strcmp(ext, ".conf") == 0)
+    {
+      *ext = '\0';              // NUL-terminate to strip .conf
+      res = menuentry_eq(e->id, val);
+      *ext = '.';               // restore
+    }
+
+This writes through a const char * into the environment's internal buffer.
+
+Why this is a real bug, not just pedantic:
+1. It is undefined behavior per the C standard. The compiler is entitled to
+   assume const memory is not modified and may optimize based on that
+   assumption (e.g., caching the value in a register across the write).
+2. Even ignoring UB, the environment table is shared global state. If
+   menuentry_eq() or anything it calls reads the "default" environment
+   variable (which is the one being mutated here), it would see the
+   truncated value. While menuentry_eq is simple string comparison today,
+   this is fragile against future changes.
+3. On some platforms, grub_env_get values could theoretically be in
+   read-only memory (though currently they're heap-allocated).
+
+Fix verification: grub_strndup(val, ext - val) creates a heap copy of
+just the portion before ".conf", without modifying the original. The
+NULL check on val_dup is needed because grub_strndup can fail (OOM).
+The fix correctly preserves the existing "if (res)" check after the block.
+
+== Issue 4: Mutation of environment variable blsdir via cast (bls_bumpcounter.c) ==
+
+Discovery:
+Reading grub_cmd_bls_bumpcounter() at lines ~157-161:
+  blsdir = grub_env_get("blsdir");
+  if (blsdir)
+    use_efi_delimiter_for_path((char*) blsdir);
+
+grub_env_get returns const char * to internal storage (same as Issue 3).
+The cast to (char*) strips const. use_efi_delimiter_for_path() (defined
+earlier in the file) iterates the string replacing '/' with '\\'.
+
+This permanently modifies the blsdir value in the environment table.
+Every subsequent grub_env_get("blsdir") will return the backslash version.
+If any other code (e.g., blsuki's BLS entry loading) relies on blsdir
+having forward slashes, it will break silently.
+
+Unlike Issue 3 where the mutation is "restored", here the change is
+permanent and intentional -- the author wanted backslashes for EFI path
+operations. The correct approach is grub_strdup() before mutation, use
+the copy, then grub_free().
+
+No draft diff was included in the review because the fix requires
+restructuring the surrounding code (the strdup'd copy needs to be used
+in the subsequent path construction and freed at the end).
+
+== Issue 5: handle not closed on error paths (bls_bumpcounter.c) ==
+
+Discovery:
+Reading the EFI file operations in grub_cmd_bls_bumpcounter(). The file
+is opened via root->Open(&handle, ...) at line ~167. After this point,
+handle is a valid EFI_FILE_PROTOCOL pointer that must be closed.
+
+The function has a finish: label used by error gotos. At the finish label:
+  finish:
+    grub_free(file_info);
+    return GRUB_ERR_BUG;
+
+handle->Close(handle) is only called in the success path at line ~253,
+just before the SetInfo call. The error paths that jump to finish:
+- GetInfo failure (line ~175)
+- bump_counter() failure
+- filename too long for buffer
+All leak the file handle.
+
+In EFI, leaked file handles consume firmware memory from boot services
+pool and may exhaust handle table entries. In practice this function is
+called once per boot for the current BLS entry, so one leaked handle per
+failed boot attempt -- not catastrophic but clearly a bug.
+
+Fix: Add "if (handle) handle->Close(handle);" to the finish label before
+grub_free(file_info). handle should be initialized to NULL at declaration
+so the Close is only called when the file was actually opened.
+
+== Issue 6: Incorrect include guard name (filesystem.h) ==
+
+Discovery:
+Reading include/grub/efi/filesystem.h, the include guard is:
+  #ifndef GRUB_EFI_TPM_HEADER
+  #define GRUB_EFI_TPM_HEADER 1
+
+This is obviously a copy-paste from another header. To verify it causes
+a real conflict (not just a cosmetic issue), checked whether the "real"
+TPM header exists: include/grub/efi/tpm.h exists in-tree and uses:
+  #ifndef GRUB_EFI_TPM_HEADER
+  #define GRUB_EFI_TPM_HEADER 1
+
+Confirmed: both files use the identical guard. If any translation unit
+includes both (directly or transitively), whichever is included second
+will be silently skipped entirely. This means either TPM definitions or
+filesystem definitions would be missing, causing compile errors or worse,
+missing declarations leading to implicit function calls.
+
+Fix: Rename the guard in filesystem.h to GRUB_EFI_FILESYSTEM_HEADER.
+
+== Issue 7: LoaderFeatures uses platform-dependent sizeof(long) (bli.c) ==
+
+Discovery:
+Reading set_loader_features() in bli.c:
+  static long loader_features = ...;
+  return grub_efi_set_variable("LoaderFeatures", &bli_vendor_guid,
+                               &loader_features, sizeof(long));
+
+The Boot Loader Interface specification (systemd BLI, adopted by other
+bootloaders) defines LoaderFeatures as a 64-bit unsigned integer.
+
+sizeof(long) is platform-dependent:
+- x86_64-efi, aa64-efi: sizeof(long) = 8 (correct by accident)
+- i386-efi, arm-efi: sizeof(long) = 4 (incorrect, writes only 4 bytes)
+
+To verify that 32-bit EFI platforms are actually affected, checked
+grub-core/Makefile.core.def for the bli module configuration:
+  module = {
+    name = bli;
+    ...
+    enable = efi;
+  };
+
+"enable = efi" means the module is built for ALL EFI platforms, including
+i386-efi. On i386-efi, sizeof(long) == 4, so the EFI variable would be
+set with only 4 bytes instead of 8. EFI variable consumers (e.g., systemd
+reading LoaderFeatures) expect an 8-byte value and would either read
+garbage in the upper 4 bytes or reject the variable as malformed.
+
+Fix: Use grub_uint64_t for the variable type and sizeof(grub_uint64_t)
+for the size parameter. This is consistent across all platforms.
