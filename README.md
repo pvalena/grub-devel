@@ -56,6 +56,7 @@ helpers/view-new.sh
 | `view-new.sh` | Show `git log -p` for each new MR branch (diff against `origin/master`). |
 | `watch.sh` | Loop: run `mr-new.sh` every hour. Use to watch for new upstream MRs. |
 | `mr-status.sh` | Re-check open/closed status of all tracked MRs. Updates `data/open.txt` and `data/closed.txt`. |
+| `mr-status-new.sh` | Re-check status of MRs in `data/new.txt`. Removes closed/merged ones before checkout. |
 
 Other helpers (`view.sh`, `show.sh`, `status.sh`, `rebase.sh`, etc.) are
 for branch management and are less frequently used.
