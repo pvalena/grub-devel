@@ -58,7 +58,7 @@ N='../data/new.txt'
     exit
 }
 
-# Let's just go through all of them
+# LEGACY: Let's just go through all of them
 
 for F in $(ls -d "${R}"*.md); do
 

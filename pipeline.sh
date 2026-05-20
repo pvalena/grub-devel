@@ -60,6 +60,10 @@ H='helpers/'
 
 # Expects new MRs are present in new.txt; see helpers/watch.sh
 
+run "${H}mr-new.sh"
+
+run "${H}mr-status-new.sh"
+
 run "${H}checkout-new.sh"
 
 run "${H}view-new.sh"
