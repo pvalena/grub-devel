@@ -43,11 +43,11 @@ reviews () {
 ## OPTS
 [[ "${1}" == '-c' ]] && { CON="${1}"; shift||:; } || CON=
 [[ "${1}" == '-d' ]] && { DEBUG="echo "; set -x; shift||:; } || DEBUG=
+[[ "${1}" == '-l' ]] && { LOP="${1}"; shift||:; } || LOP=
 [[ "${1}" == '-n' ]] && { DRY="${1}"; shift||:; } || DRY=
 [[ "${1}" == '-v' || -n "${DRY}${DEBUG}" ]] && { V='set -x; '; } || V=
 [[ "${1}" == '-v' ]] && { shift||:; }
-# For later if we want to run it in a loop or something
-[[ "${1}" == '-w' ]] && { W="$2"; shift 2||:; } || W=0
+[[ "${1}" == '-w' ]] && { W="$2"; shift 2||:; } || W=3600
 
 [[ -z "${1}" ]]
 
@@ -62,40 +62,53 @@ H='helpers/'
 
 [[ -d "${H}" ]]
 
-[[ -z "${CON}" ]] && {
+while :; do
 
-    run "${H}mr-new.sh"
+    [[ -z "${CON}" ]] && {
 
-    run "${H}mr-status-new.sh"
+        run "${H}mr-new.sh"
 
-    run "${H}checkout-new.sh"
+        run "${H}mr-status-new.sh"
 
-    run "${H}view-new.sh"
+        run "${H}checkout-new.sh"
 
-    echo -e "\n>>> TODO: Run some Magic AI review here (e.g.: 'claude ...')\n" >&2
-}
+        run "${H}view-new.sh"
 
-con "Is the AI review done"
+        echo -e "\n>>> TODO: Run some Magic AI review here (e.g.: 'claude ...')\n" >&2
+    }
 
-run "./submit-review.sh -n ${V}"
+    con "Is the AI review done"
 
-con "Really submit the reviews"
+    run "./submit-review.sh -n ${V}"
 
-run "./submit-review.sh ${V}"
+    con "Really submit the reviews"
+
+    run "./submit-review.sh ${V}"
 
 
-# Let's handle git as well (not tested)
+    # Let's handle git as well (not tested)
 
-run "git add reviews/*.(md|txt)"
+    run "git add reviews/*.(md|txt)"
 
-R="$(reviews)"
+    R="$(reviews)"
 
-[[ -n "$R" && "$R" != ' ' ]]
+    [[ -n "$R" && "$R" != ' ' ]]
 
-run "git commit -am 'Add review(s): $R'"
+    run "git commit -am 'Add review(s): $R'"
 
-git show
+    git show
 
-con "Push the reviews to git"
+    con "Push the reviews to git"
 
-run "git push"
+    run "git push"
+
+    [[ -z "$LOP" ]] && break
+
+    CON=
+
+    sleep "$W"
+
+    con 'Again'
+done
+
+echo '=> DONE'
