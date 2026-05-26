@@ -4,6 +4,8 @@ set -e
 
 zsh -n "$0"
 
+
+## FUNC
 con () {
     local s
     [[ -n "$1" ]] && s="$1" || s='Continue'
@@ -40,6 +42,7 @@ reviews () {
     echo
 }
 
+
 ## OPTS
 [[ "${1}" == '-c' ]] && { CON="${1}"; shift||:; } || CON=
 [[ "${1}" == '-d' ]] && { DEBUG="echo "; set -x; shift||:; } || DEBUG=
@@ -47,34 +50,60 @@ reviews () {
 [[ "${1}" == '-n' ]] && { DRY="${1}"; shift||:; } || DRY=
 [[ "${1}" == '-v' || -n "${DRY}${DEBUG}" ]] && { V='set -x; '; } || V=
 [[ "${1}" == '-v' ]] && { shift||:; }
-[[ "${1}" == '-w' ]] && { W="$2"; shift 2||:; } || W=3600
+[[ "${1}" == '-w' ]] && { W="$2"; shift 2||:; } || W=
 
 [[ -z "${1}" ]]
 
+# Defaults
 [[ -n "${V}" ]] && { PRE="$V"; V="-v"; } || PRE=
+[[ -n "${W}" ]] || W='1h'
 
-# MAIN
+
+## INIT
 cd "$(dirname "$0")"
 
 echo
 
 H='helpers/'
-
 [[ -d "${H}" ]]
 
+
+## MAIN
+F=y
 while :; do
+
+    [[ -z "$F" ]] && {
+
+        # Default path
+        [[ -z "$LOP" ]] && break
+
+        CON=
+
+        sleep "$W"
+
+        con 'Again'
+    }
+    F=
 
     [[ -z "${CON}" ]] && {
 
         run "${H}mr-new.sh"
 
-        run "${H}mr-status-new.sh"
+        # Fails on no new MRs
+        run "${H}mr-status-new.sh" || continue
 
         run "${H}checkout-new.sh"
 
         run "${H}view-new.sh"
 
         echo -e "\n>>> TODO: Run some Magic AI review here (e.g.: 'claude ...')\n" >&2
+
+        ## WIP ##
+        [[ -z "$LOP" ]] || [[ "$W" != '0' ]] || {
+
+            echo "!!! NYI !!!" >&2
+            exit 3
+        }
     }
 
     con "Is the AI review done"
@@ -101,14 +130,6 @@ while :; do
     con "Push the reviews to git"
 
     run "git push"
-
-    [[ -z "$LOP" ]] && break
-
-    CON=
-
-    sleep "$W"
-
-    con 'Again'
 done
 
 echo '=> DONE'
