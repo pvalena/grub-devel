@@ -1,0 +1,45 @@
+PR132 Reasoning -- CI: Refactor scheduled pipeline (4 commits)
+
+Source files read during review:
+- .gitlab-ci/yml/matrix.yml (pr132 branch, full file)
+- .gitlab-ci/yml/matrix.yml (origin/master, for comparison)
+- .gitlab-ci.yml (pr132 branch)
+- .gitlab-ci/yml/scheduled.yml (pr132 branch, renamed from trigger-check.yml)
+- .gitlab-ci/yml/check.yml (pr132 branch)
+- .gitlab-ci/yml/global.yml (pr132 branch)
+- .gitlab-ci/yml/build-clang.yml (pr132 branch, new file)
+
+== Issue 1: partmap_test misclassified as native ==
+
+Discovery:
+Commit 89a4bce70 moves 6 flaky tests from .test-matrix into a new
+.test-matrix-allow-failure. Cross-referenced the TYPE classification
+of each test between the two matrices.
+
+Source trace:
+On origin/master, .test-matrix has two TYPE sections. partmap_test
+appears in the non-native section (verified by: `grep -B 50
+'partmap_test' matrix.yml | grep 'TYPE:'` returning only
+`TYPE: non-native`).
+
+In the new .test-matrix-allow-failure on pr132, partmap_test is under
+`TYPE: native`. The other 4 native tests (hfs_test, luks2_test,
+zfs_test, zfs_zstd_test) are correctly classified as native -- they
+were native in the original. serial_test is correctly classified as
+non-native.
+
+Consequence:
+The allow-failure CI job for partmap_test will run with the wrong test
+type. The test configuration differences between native and non-native
+(different grub-shell arguments, different platform matrix) mean the
+test could pass/fail differently than expected, or test the wrong
+configuration entirely.
+
+Fix verification:
+Moving partmap_test from the native list to the non-native list in
+.test-matrix-allow-failure is the correct fix. The non-native section
+would become:
+  - TYPE: non-native
+    TEST:
+      - partmap_test
+      - serial_test
