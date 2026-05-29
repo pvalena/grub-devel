@@ -79,7 +79,7 @@ while :; do
 
         CON=
 
-        sleep "$W"
+        run "sleep $W"
 
         con 'Again'
     }
@@ -130,6 +130,8 @@ while :; do
     con "Push the reviews to git"
 
     run "git push"
+
+    run "${H}cleanup-new.sh"
 done
 
 echo '=> DONE'
