@@ -1,149 +1,61 @@
-PR135 Reasoning -- Change login error message (1 commit)
+PR135 Reasoning -- Change login error message (1 commit, re-review)
 
 Source files read during review:
-- grub-core/commands/password.c (pr135 branch, full file)
-- grub-core/commands/password_argon2.c (pr135 branch, full file)
-- grub-core/commands/password_pbkdf2.c (pr135 branch, diff only -- same pattern as argon2)
-- grub-core/normal/auth.c (pr135 branch, full file)
-- include/grub/crypto.h (origin/master, line 607 for GRUB_ACCESS_DENIED macro)
-- include/grub/err.h (origin/master, full file for grub_error signature and macro)
-- grub-core/kern/err.c (origin/master, full file for grub_error and grub_print_error impl)
-- grub-core/normal/menu.c (origin/master, callers of grub_auth_check_authentication)
-- grub-core/normal/main.c (origin/master, callers of grub_auth_check_authentication)
+- grub-core/kern/err.c (pr135 branch, grub_user_error implementation)
+- grub-core/normal/auth.c (pr135 branch, grub_auth_check_authentication)
+- grub-core/commands/password.c (pr135 branch, check_password)
+- grub-core/commands/password_argon2.c (pr135 branch, check_password)
+- grub-core/commands/password_pbkdf2.c (pr135 branch, diff only)
+- include/grub/err.h (pr135 branch, grub_user_error declaration)
+- include/grub/err.h (origin/master, grub_error declaration for comparison)
 
-== Issue 1: grub_errno not set on authentication failure ==
+== Re-review summary ==
+
+The initial review found that replacing GRUB_ACCESS_DENIED (which calls
+grub_error(), setting grub_errno) with bare GRUB_ERR_ACCESS_DENIED left
+grub_errno unset. Callers in menu.c and main.c call grub_print_error()
+which checks grub_errno, not the return value.
+
+The updated commit introduces grub_user_error() in kern/err.c: a variant
+of grub_error() that sets grub_errno and formats grub_errmsg WITHOUT the
+__FILE__:__FUNCTION__:__LINE__: prefix. This cleanly solves both the
+original complaint (unfriendly file:line in error messages) and the bug
+(grub_errno not set).
+
+All paths to the access_denied label in grub_auth_check_authentication
+now call grub_user_error() before the goto:
+- grub_username_get failure (line ~258)
+- grub_password_get failure (line ~264)
+- unknown user or no callback (line ~275)
+- callback called but is_authenticated false -- grub_user_error was
+  called inside check_password (password.c, argon2, pbkdf2)
+
+The bare "return GRUB_ERR_ACCESS_DENIED" at the access_denied label
+(line ~291) is correct because grub_errno was set by the grub_user_error
+call earlier in the flow.
+
+== Issue 1: Missing format attribute ==
 
 Discovery:
-The patch replaces GRUB_ACCESS_DENIED with GRUB_ERR_ACCESS_DENIED in
-four files. Checked whether these are equivalent.
+Compared grub_user_error declaration with grub_error declaration in
+include/grub/err.h. grub_error has:
+  __attribute__ ((format (GNU_PRINTF, 5, 6)));
+grub_user_error has no format attribute.
 
-Source trace -- macro definition:
-include/grub/crypto.h:607:
-  #define GRUB_ACCESS_DENIED grub_error (GRUB_ERR_ACCESS_DENIED, N_("access denied"))
-
-include/grub/err.h, grub_error macro:
-  #define grub_error(n, fmt, ...) \
-    grub_error (n, __FILE__, __FUNCTION__, __LINE__, fmt, ##__VA_ARGS__)
-
-So GRUB_ACCESS_DENIED expands to the function call
-  grub_error(GRUB_ERR_ACCESS_DENIED, __FILE__, __FUNCTION__, __LINE__,
-             N_("access denied"))
-
-Source trace -- grub_error implementation:
-grub-core/kern/err.c:
-  grub_error() does:
-    1. grub_errno = n;
-    2. grub_snprintf(grub_errmsg, ..., "%s:%s:%d:", file, function, line);
-    3. grub_vsnprintf(grub_errmsg + m, ..., fmt, ap);
-    4. return n;
-
-So GRUB_ACCESS_DENIED: sets grub_errno, formats grub_errmsg with
-file:function:line prefix, returns GRUB_ERR_ACCESS_DENIED.
-
-Bare GRUB_ERR_ACCESS_DENIED: just the enum value (60). Does not call
-grub_error(). Does not set grub_errno. Does not set grub_errmsg.
-
-Source trace -- what the patch does in auth.c:
-Old code (access_denied label, line ~285 on master):
-  return GRUB_ACCESS_DENIED;
-  // expands to grub_error(...) which sets grub_errno + grub_errmsg
-
-New code (line ~288 on pr135):
-  return GRUB_ERR_ACCESS_DENIED;
-  // bare return, grub_errno unchanged
-
-The patch also adds grub_puts_ calls to print user-friendly messages
-to the console, but grub_puts_ does not interact with grub_errno or
-grub_errmsg at all -- it is a direct console output function.
-
-Source trace -- caller impact:
-grub-core/normal/menu.c:216:
-  err = grub_auth_check_authentication (entry->users);
-  if (err)
-    {
-      grub_print_error ();
-      grub_errno = GRUB_ERR_NONE;
-      return;
-    }
-
-grub-core/normal/menu.c:919:
-  err2 = grub_auth_check_authentication (NULL);
-  if (err2)
-    {
-      grub_print_error ();
-      grub_errno = GRUB_ERR_NONE;
-      continue;
-    }
-
-grub-core/normal/main.c:458:
-  err = grub_auth_check_authentication (NULL);
-  // later: grub_print_error ();
-
-All callers check the return value (err) for flow control, then call
-grub_print_error() to display the error.
-
-grub_print_error() implementation (kern/err.c):
-  do {
-    if (grub_errno != GRUB_ERR_NONE)
-      grub_err_printf (_("error: %s.\n"), grub_errmsg);
-  } while (grub_error_pop ());
-
-grub_print_error() checks grub_errno, NOT the return value. If
-grub_errno is GRUB_ERR_NONE (because the patch never set it),
-grub_print_error() prints nothing. If grub_errno has a stale value
-from a previous grub_error() call elsewhere, it prints the wrong
-message.
+Source trace:
+grub_user_error takes (grub_err_t n, const char *fmt, ...) where fmt
+is argument 2 and varargs start at argument 3. The correct attribute
+would be format(GNU_PRINTF, 2, 3).
 
 Consequence:
-On origin/master: authentication failure returns via GRUB_ACCESS_DENIED
-→ grub_errno set → caller's grub_print_error() prints
-"error: auth.c:grub_auth_check_authentication:285:access denied."
-(the message the commit author correctly identifies as unfriendly).
-
-On pr135: authentication failure returns via bare GRUB_ERR_ACCESS_DENIED
-→ grub_errno NOT set → caller's grub_print_error() either prints
-nothing (grub_errno is GRUB_ERR_NONE) or prints a stale unrelated
-error. The user does see "Authentication error" from the grub_puts_
-call earlier, but grub_errno is in an incorrect state.
-
-This also creates an inconsistency within grub_auth_check_authentication
-itself: the grub_is_cli_disabled() path (line ~226 on pr135) still
-returns GRUB_ACCESS_DENIED (sets grub_errno), while the access_denied
-label returns bare GRUB_ERR_ACCESS_DENIED (does not set grub_errno).
-
-Note on check_password callbacks: the return value of callback in
-password.c, password_argon2.c, password_pbkdf2.c is ignored by the
-caller in auth.c (line ~274: `cur->callback(login, entered, cur->arg);`
-with no assignment). The old GRUB_ACCESS_DENIED set grub_errno as a
-side effect; the new bare return does not. Since the caller ignores
-the return value, the direct impact of the change in the callbacks
-is limited to grub_errno state. However, using bare GRUB_ERR_ACCESS_DENIED
-in a grub_err_t-returning function without setting grub_errno is
-inconsistent with the GRUB error handling convention (every function
-returning non-GRUB_ERR_NONE should have called grub_error() first).
+Without the attribute, passing mismatched format arguments (e.g.,
+grub_user_error(GRUB_ERR_X, "value: %d")) compiles without warning
+but produces garbage output or crashes at runtime from va_arg type
+mismatch. Current callers all use plain strings with no format args,
+so there is no immediate bug, but the missing attribute is inconsistent
+with grub_error and removes a safety net for future callers.
 
 Fix assessment:
-The commit author's motivation is valid: the old error message included
-source file/function/line info because grub_error() embeds __FILE__,
-__FUNCTION__, __LINE__ into grub_errmsg. This is not user-friendly.
-
-The fix should set grub_errno without going through grub_error() (to
-avoid the file:line prefix). The simplest approach:
-  grub_errno = GRUB_ERR_ACCESS_DENIED;
-  grub_puts_ (N_("Authentication error"));
-  return GRUB_ERR_ACCESS_DENIED;
-
-This sets grub_errno for callers, prints the user-friendly message
-directly (bypassing grub_errmsg formatting), and returns the error
-code. Callers' grub_print_error() would see grub_errno set but
-grub_errmsg would be stale -- however, since grub_puts_ already
-printed the message, the caller could skip grub_print_error() or
-the stale message is acceptable. A cleaner approach would be to
-also manually set grub_errmsg:
-  grub_errno = GRUB_ERR_ACCESS_DENIED;
-  grub_snprintf(grub_errmsg, sizeof(grub_errmsg), "%s",
-                _("Authentication error"));
-  return GRUB_ERR_ACCESS_DENIED;
-
-This fully replaces what grub_error() would have done, but with a
-user-friendly message and no file:line prefix.
+Adding __attribute__ ((format (GNU_PRINTF, 2, 3))) to the declaration
+is a one-line change with no side effects. It matches the project's
+existing pattern for grub_error.
