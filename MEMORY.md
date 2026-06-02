@@ -1,6 +1,6 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-05-11
+**Last updated**: 2026-05-29
 
 Quick reference for working in this repository. See `CLAUDE.md` for repository overview
 and `docs/REVIEW_PROCESS.md` for detailed procedures.
@@ -9,21 +9,21 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 
 ## Current Status
 
-- **Total MRs tracked**: 79 (63 original + 16 new upstream MRs)
+- **Total MRs tracked**: 82 (63 original + 19 new upstream MRs)
 - **Open MRs**: 26
-- **Closed/Merged MRs**: 53
-- **Active authors**: 19
+- **Closed/Merged MRs**: 56
+- **Active authors**: 20
 
 **Review files**:
-- Complete reviews: 73 (.md files)
-- Reasoning files: 25 (_reasoning.txt files, only for reviews with issues)
+- Complete reviews: 86 (.md files)
+- Reasoning files: 31 (_reasoning.txt files, only for reviews with issues)
 
 ---
 
 ## Quick File Reference
 
 **Tracking**:
-- `MRS_BY_AUTHOR.md` - Active MRs by author (26 open)
+- `MRS_BY_AUTHOR.md` - Active MRs by author (26 open, 20 authors)
 - `data/open.txt` - Open MR numbers (source of truth)
 - `data/closed.txt` - Closed MR numbers
 
@@ -186,18 +186,18 @@ diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
 
 ## Statistics
 
-**Current (2026-05-11)**:
+**Current (2026-05-29)**:
 - Open MRs: 26
-- Active authors: 19
+- Active authors: 20
 - Largest contributor: Vladimir Serbinenko (6 MRs)
-- Closed rate: 67% (53/79)
-- Review files: 73 reviews, 25 reasoning files
+- Closed rate: 68% (56/82)
+- Review files: 86 reviews, 31 reasoning files
 
 **Historical**:
 - Initial branches: 176 (from mailing lists)
 - Duplicates removed: 65 (39% rate)
 - Unique branches: 111
-- Original MRs created: 63, plus 16 new upstream MRs reviewed
+- Original MRs created: 63, plus 19 new upstream MRs reviewed
 
 ---
 
