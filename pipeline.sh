@@ -7,10 +7,16 @@ zsh -n "$0"
 
 ## FUNC
 con () {
-    local s
-    [[ -n "$1" ]] && s="$1" || s='Continue'
+    [[ "$1" == '-s' && -n "$SKI" ]] || {
 
-    read -q "?--> $s (y/N)? " || exit 2
+        [[ "$1" == '-s' ]] && shift ||:
+
+        local s
+
+        [[ -n "$1" ]] && s="$1" || s='Continue'
+
+        read -q "?--> $s (y/N)? " || exit 2
+    }
 
     echo ; echo
 }
@@ -27,7 +33,7 @@ run () {
     [[ -z "$DRY" ]] && zsh -c "$m"
     echo
 
-    con
+    con -s
 }
 
 # Get numbers of reviews (inlined) from the staged files in reviews/
@@ -48,6 +54,7 @@ reviews () {
 [[ "${1}" == '-d' ]] && { DEBUG="echo "; set -x; shift||:; } || DEBUG=
 [[ "${1}" == '-l' ]] && { LOP="${1}"; shift||:; } || LOP=
 [[ "${1}" == '-n' ]] && { DRY="${1}"; shift||:; } || DRY=
+[[ "${1}" == '-s' ]] && { SKI="${1}"; shift||:; } || SKI=
 [[ "${1}" == '-v' || -n "${DRY}${DEBUG}" ]] && { V='set -x; '; } || V=
 [[ "${1}" == '-v' ]] && { shift||:; }
 [[ "${1}" == '-w' ]] && { W="$2"; shift 2||:; } || W=
