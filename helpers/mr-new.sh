@@ -14,6 +14,10 @@ mr="$(cat "$D" "$F" "$N" 2>/dev/null|sort -n|grep -v ^$|tail -n 1)" ||:
 
 [[ -n "$mr" ]] || M=0
 
+p="$(glab mr list --repo gnu-grub/grub -l Pending-AI-Review | grep -v '^No open merge requests match your search in ' | grep -v '^$')" ||:
+
+[[ -n "$p" ]] && echo ">>$p<<"
+
 while [[ ${mr} -ge 0 ]]; do
 
     mr=$(($mr+1))
