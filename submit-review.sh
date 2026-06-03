@@ -46,6 +46,8 @@ N='../data/new.txt'
 
         glab mr note create "${m}" --repo gnu-grub/grub -m "${C}"
 
+        glab mr update "${m}" --repo gnu-grub/grub -u Pending-AI-Review
+
         echo "$m" >> "$D"
 
         Z="$(grep -vE "^${m}$" "$N" | grep -v ^$ | sort -n)"
@@ -59,6 +61,7 @@ N='../data/new.txt'
 }
 
 # LEGACY: Let's just go through all of them
+exit 7
 
 for F in $(ls -d "${R}"*.md); do
 
