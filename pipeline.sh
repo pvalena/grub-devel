@@ -84,8 +84,6 @@ while :; do
         # Default path
         [[ -z "$LOP" ]] && break
 
-        CON=
-
         run "sleep $W"
 
         con 'Again'
@@ -111,7 +109,8 @@ while :; do
             echo "!!! NYI !!!" >&2
             exit 3
         }
-    }
+
+    } || CON=
 
     con "Is the AI review done"
 

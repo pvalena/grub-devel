@@ -10,17 +10,12 @@ D='../data/done.txt'
 F='../data/closed.txt'
 N='../data/new.txt'
 
-mr="$(cat "$D" "$F" "$N" 2>/dev/null|sort -n|grep -v ^$|tail -n 1)" ||:
+M="$(glab mr list --repo gnu-grub/grub -l Pending-AI-Review | tr -s '\t' ' ' | grep '^!' | cut -d' ' -f1 | cut -d'!' -f2 | grep -v '^$')" ||:
 
-[[ -n "$mr" ]] || M=0
+[[ -n "$M" ]] || exit
 
-p="$(glab mr list --repo gnu-grub/grub -l Pending-AI-Review | grep -v '^No open merge requests match your search in ' | grep -v '^$')" ||:
 
-[[ -n "$p" ]] && echo ">>$p<<"
-
-while [[ ${mr} -ge 0 ]]; do
-
-    mr=$(($mr+1))
+for mr in `echo ${M}` ; do
 
     s="$(glab mr view $mr --repo gnu-grub/grub 2>/dev/null | grep '^state:' | tr -s '\t' ' ' | cut -d' ' -f2)"
 
@@ -29,7 +24,15 @@ while [[ ${mr} -ge 0 ]]; do
 
     case $s in
         open)
-            echo "$mr" >> "$N"
+            grep -q "^${mr}$" "$N" || echo "$mr" >> "$N"
+
+            grep -q "^${mr}$" "$D" && {
+
+                Z="$(grep -v "^${mr}$" "$D")"
+
+                echo "$Z" > "$D"
+
+            } ||:
             ;;
 
         merged|closed)
@@ -48,6 +51,3 @@ while [[ ${mr} -ge 0 ]]; do
 
     sleep 0.5
 done
-
-echo "ERROR: mr|$mr OOB">&2
-exit 3
