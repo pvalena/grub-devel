@@ -13,6 +13,9 @@ Run the full pipeline interactively (prompts for confirmation at each step):
 ```bash
 ./pipeline.sh                  # checkout, view, review, submit, commit, push
 ./pipeline.sh -n               # dry run -- no submissions or pushes
+./pipeline.sh -l               # loop mode -- repeat the cycle (with -w interval)
+./pipeline.sh -s               # skip confirmations
+./pipeline.sh -c               # continue -- skip discovery/checkout, go to submit
 ```
 
 Or run individual steps manually:
@@ -42,24 +45,47 @@ helpers/view-new.sh
 
 | Script | Purpose |
 |--------|---------|
-| `pipeline.sh` | End-to-end: checkout, view, review (manual), submit, commit, push. Interactive. |
-| `submit-review.sh` | Post reviews as MR comments. Processes `data/new.txt` first, then all unsubmitted. |
+| `pipeline.sh` | End-to-end: discover, checkout, view, review (manual), submit, commit, push, cleanup. |
+| `submit-review.sh` | Post reviews as MR comments and set `Pending-AI-Review` label. |
 
-**Flags** (both scripts): `-d` debug, `-n` dry run (print only), `-v` verbose.
+**pipeline.sh flags**: `-c` continue (skip discovery), `-d` debug, `-l` loop,
+`-n` dry run, `-s` skip confirmations, `-v` verbose, `-w INTERVAL` loop wait (default `1h`).
+
+**submit-review.sh flags**: `-d` debug, `-n` dry run (print only), `-v` verbose.
 
 ### helpers/
 
+**Discovery and checkout** (current workflow):
+
 | Script | Purpose |
 |--------|---------|
-| `mr-new.sh` | Discover new MRs by polling GitLab API. Appends to `data/new.txt` or `data/closed.txt`. |
-| `checkout-new.sh` | Checkout branches for MRs listed in `data/new.txt` as `pr${MR}` in `grub/`. |
+| `mr-new.sh` | Find MRs labeled `Pending-AI-Review` via `glab`. Appends to `data/new.txt`. `-l`: loop 10m. |
+| `watch.sh` | Poll GitLab API from last known MR number. Appends closed to `data/closed.txt`. `-l`: loop hourly. |
+| `checkout-new.sh` | Checkout branches for MRs in `data/new.txt` as `pr${MR}` in `grub/`. |
 | `view-new.sh` | Show `git log -p` for each new MR branch (diff against `origin/master`). |
-| `watch.sh` | Loop: run `mr-new.sh` every hour. Use to watch for new upstream MRs. |
 | `mr-status.sh` | Re-check open/closed status of all tracked MRs. Updates `data/open.txt` and `data/closed.txt`. |
 | `mr-status-new.sh` | Re-check status of MRs in `data/new.txt`. Removes closed/merged ones before checkout. |
+| `cleanup-new.sh` | Delete `pr*` branches from `grub/` after reviews are submitted. Run by pipeline. |
 
-Other helpers (`view.sh`, `show.sh`, `status.sh`, `rebase.sh`, etc.) are
-for branch management and are less frequently used.
+**Verification tools**:
+
+| Script | Purpose |
+|--------|---------|
+| `check_format.sh` | Verify 120-char line width across all documentation and review files. |
+| `verify_docs.sh` | Cross-check statistics consistency across CLAUDE.md, MEMORY.md, and docs/. |
+| `search.sh` | Grep wrapper that excludes `grub/`, `history/`, and `import/` directories. |
+
+**Branch management** (mailing list import era, less frequently used):
+
+| Script | Purpose |
+|--------|---------|
+| `show.sh` | Show `git show --stat -p` for each `202*` branch. |
+| `view.sh` | Obsolete -- points to `show.sh`. |
+| `status.sh` | Show git status for each `202*` branch (skips clean ones). |
+| `rebase.sh` | Rebase all `202*` branches onto `origin/master`. |
+| `rebase-force.sh` | Force-rebase `202*` branches; logs failures to `fail.log`. |
+| `cleanup.sh` | Delete all `202*` branches and logs. Requires `--yes-really-remove-everything`. |
+| `remove-local.sh` | Delete local duplicate/skip/closed branches. |
 
 ## Review Files
 
@@ -81,7 +107,7 @@ straightforward, and links to the reasoning file for details.
 | `data/open.txt` | Open MR numbers (source of truth) |
 | `data/closed.txt` | Closed/merged MR numbers |
 | `data/new.txt` | Newly discovered MRs awaiting review (transient) |
-| `data/done.txt` | MRs whose reviews have been submitted |
+| `data/done.txt` | MRs whose reviews have been submitted (prevents double-posting) |
 | `data/mrs.txt` | Historical MR mapping (branch name to MR number) |
 
 ## Other Files
