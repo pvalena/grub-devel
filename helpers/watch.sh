@@ -4,12 +4,47 @@ set -e
 
 zsh -n "$0"
 
-[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
-
 D='../data/done.txt'
 F='../data/closed.txt'
 N='../data/new.txt'
+L='logs/watch.log'
 
+srlz () {
+    local i="$(cut -d' ' -f2 | cut -d':' -f1 | xargs -ri echo -n "|{}")"
+
+    echo "${1}${i}" \
+        | sed -e 's/^|//'
+
+}
+
+[[ "$1" == '-d' ]] && { DEB="$1"; set -x; shift||: } || DEB=
+
+[[ "$1" == '-l' ]] && {
+
+    [[ -r "$L" ]] && I="$(cat "$L" | srlz)" || I=
+
+    clear
+    while :; do
+
+        Z="$($0 $DEB | grep -vE "^>>> ($I): ")" ||:
+
+        [[ -n "$Z" ]] && {
+
+            echo "$Z" | tee -a "$L"
+
+            I="$(echo "$Z" | srlz "$i")"
+        }
+
+        sleep 1h
+    done
+
+    exit 3
+}
+
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
+
+
+# MAIN
 mr="$(cat "$D" "$F" "$N" 2>/dev/null|sort -n|grep -v ^$|tail -n 1)" ||:
 
 [[ -n "$mr" ]] || M=0

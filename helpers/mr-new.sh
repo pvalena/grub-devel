@@ -15,7 +15,7 @@ N='../data/new.txt'
     clear
     while :; do
 
-        ./helpers/mr-new.sh $DEB
+        $0 $DEB
 
         sleep 10m
     done
