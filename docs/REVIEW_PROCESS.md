@@ -15,12 +15,12 @@ We maintain AI-assisted reviews of all MRs in the `reviews/` directory. Each rev
 grub-devel/
 ├── grub/                          # Submodule: branches with all MR commits
 ├── reviews/                       # Individual MR reviews (one per branch)
-│   ├── YYYY-MM-NNNN.md            # Complete review (50 files)
-│   └── YYYY-MM-NNNN_reasoning.txt # Brief reasoning (22 files, only for reviews with issues)
-├── MRS_BY_AUTHOR.md               # Active tracking document (48 open MRs)
+│   ├── YYYY-MM-NNNN.md            # Complete review (90 files)
+│   └── YYYY-MM-NNNN_reasoning.txt # Brief reasoning (31 files, only for reviews with issues)
+├── MRS_BY_AUTHOR.md               # Active tracking document (26 open MRs)
 ├── data/
-│   ├── open.txt                   # List of 48 open MR numbers
-│   ├── closed.txt                 # List of 15 closed MR numbers
+│   ├── open.txt                   # List of 26 open MR numbers
+│   ├── closed.txt                 # List of 56 closed MR numbers
 │   └── mrs.txt                    # Branch to MR number mapping
 └── docs/
     └── REVIEW_PROCESS.md          # This file
@@ -220,7 +220,7 @@ Minor: ext2 listed in journaled filesystems (util/grub-install.c:2037) but ext2 
 Name is misleading though it functionally works since ext3/4 report as "ext2" in GRUB.
 ```
 
-**Current state**: 22 reasoning files for reviews with issues.
+**Current state**: 31 reasoning files for reviews with issues.
 
 ### Formatting Requirements
 
@@ -449,7 +449,7 @@ Before finalizing any review:
 
 ---
 
-**Last updated**: 2026-04-10
-**Open MRs**: 48
-**Review files**: 50 (.md) + 22 (_reasoning.txt)
+**Last updated**: 2026-06-08
+**Open MRs**: 26
+**Review files**: 90 (.md) + 31 (_reasoning.txt)
 **Master base**: c160b58610879a52d959db21b9cae98af5fd095f

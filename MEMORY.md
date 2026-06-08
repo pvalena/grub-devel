@@ -1,6 +1,6 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-05-29
+**Last updated**: 2026-06-08
 
 Quick reference for working in this repository. See `CLAUDE.md` for repository overview
 and `docs/REVIEW_PROCESS.md` for detailed procedures.
@@ -15,7 +15,7 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 - **Active authors**: 20
 
 **Review files**:
-- Complete reviews: 86 (.md files)
+- Complete reviews: 90 (.md files)
 - Reasoning files: 31 (_reasoning.txt files, only for reviews with issues)
 
 ---
@@ -186,18 +186,18 @@ diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
 
 ## Statistics
 
-**Current (2026-05-29)**:
+**Current (2026-06-08)**:
 - Open MRs: 26
 - Active authors: 20
 - Largest contributor: Vladimir Serbinenko (6 MRs)
 - Closed rate: 68% (56/82)
-- Review files: 86 reviews, 31 reasoning files
+- Review files: 90 reviews, 31 reasoning files
 
 **Historical**:
 - Initial branches: 176 (from mailing lists)
 - Duplicates removed: 65 (39% rate)
 - Unique branches: 111
-- Original MRs created: 63, plus 19 new upstream MRs reviewed
+- Original MRs created: 63, plus 27 new upstream MRs reviewed
 
 ---
 
