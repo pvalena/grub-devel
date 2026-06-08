@@ -4,15 +4,32 @@ set -e
 
 zsh -n "$0"
 
-[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
-
 D='../data/done.txt'
 F='../data/closed.txt'
 N='../data/new.txt'
 
-M="$(glab mr list --repo gnu-grub/grub -l Pending-AI-Review | tr -s '\t' ' ' | grep '^!' | cut -d' ' -f1 | cut -d'!' -f2 | grep -v '^$')" ||:
+[[ "$1" == '-d' ]] && { DEB="$1"; set -x; shift||: } || DEB=
 
-[[ -n "$M" ]] || exit
+[[ "$1" == '-l' ]] && {
+
+    clear
+    while :; do
+
+        ./helpers/mr-new.sh $DEB
+
+        sleep 10m
+    done
+
+    exit 3
+}
+
+[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
+
+
+# MAIN
+M="$(glab mr list --repo gnu-grub/grub -l Pending-AI-Review 2>&1 | tr -s '\t' ' ' | grep '^!' | cut -d' ' -f1 | cut -d'!' -f2 | grep -v '^$')" ||:
+
+[[ -n "$M" ]] || exit 0
 
 
 for mr in `echo ${M}` ; do
@@ -40,7 +57,7 @@ for mr in `echo ${M}` ; do
             ;;
 
         '')
-            exit
+            exit 1
             ;;
 
         *)
