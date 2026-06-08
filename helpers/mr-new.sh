@@ -4,20 +4,40 @@ set -e
 
 zsh -n "$0"
 
+W='10m'
+
 D='../data/done.txt'
 F='../data/closed.txt'
 N='../data/new.txt'
+L='logs/new.log'
+
+srlz () {
+    local i="$(cut -d' ' -f2 | cut -d':' -f1 | xargs -ri echo -n "|{}")"
+
+    echo "${1}${i}" \
+        | sed -e 's/^|//'
+
+}
 
 [[ "$1" == '-d' ]] && { DEB="$1"; set -x; shift||: } || DEB=
 
 [[ "$1" == '-l' ]] && {
 
+    [[ -r "$L" ]] && I="$(cat "$L" | srlz)" || I=
+
     clear
     while :; do
 
-        $0 $DEB
+        Z="$($0 $DEB | grep -vE "^>>> ($I): ")" ||:
 
-        sleep 10m
+        [[ -n "$Z" ]] && {
+
+            echo "$Z" | tee -a "$L"
+
+            I="$(echo "$Z" | srlz "$i")"
+        }
+
+        sleep "$W"
     done
 
     exit 3
