@@ -41,7 +41,7 @@ for mr in `echo ${M}` ; do
 
     case $s in
         open)
-            grep -q "^${mr}$" "$N" || echo "$mr" >> "$N"
+            grep -q "^${mr}$" "$N" 2>/dev/null || echo "$mr" >> "$N"
 
             grep -q "^${mr}$" "$D" && {
 
