@@ -1,0 +1,158 @@
+PR !146 - NVMeoFC support for IEEE1275 - 6 commits - 3 issues found
+
+Source files read during review and verification:
+  grub-core/disk/ieee1275/ofdisk.c (pr146 branch)
+  grub-core/kern/ieee1275/openfw.c (pr146 branch)
+  grub-core/osdep/linux/ofpath.c (pr146 branch, lines 436-830)
+  grub-core/osdep/unix/platform.c (pr146 branch, lines 186-295)
+  include/grub/util/install.h (pr146 branch, diff only)
+  include/grub/util/ofpath.h (pr146 branch, diff only)
+
+== Issue 1: Missing fopen NULL check (ofpath.c) ==
+
+Discovery:
+Reading of_find_fc_host() at line ~516 in ofpath.c. The function
+iterates over a list of "port_name" files found by recursive search
+of /sys/devices (via find_file with max_depth=10). For each file:
+
+    fp = fopen(node->filename, "r");
+    buf = malloc (sizeof (char) * 512);
+    if (!buf)
+        break;
+    fscanf (fp, "%s", buf);
+    fclose (fp);
+
+The if-check guards buf (malloc failure) but not fp (fopen failure).
+
+Source trace:
+of_find_fc_host (ofpath.c:487) calls find_file("port_name",
+"/sys/devices", ..., 10, 0) which recursively walks /sys/devices to
+depth 10, calling add_filename_to_pile for each matching entry. The
+list may include files that exist during traversal but become
+inaccessible before fopen (sysfs race), or files with restricted
+permissions.
+
+At line ~516, fopen is called. If it returns NULL:
+  - line ~520: fscanf(NULL, "%s", buf) is undefined behavior per
+    C99 7.19.6.2 (FILE* must be valid). In practice, glibc
+    dereferences the FILE struct pointer and segfaults.
+  - line ~521: fclose(NULL) is also undefined behavior per C99
+    7.19.5.1 (stream must point to a FILE). glibc segfaults.
+
+Same pattern in of_path_get_nvme_nsid (ofpath.c:679):
+    fp = fopen(buf, "r");
+    fscanf (fp, "%u", &(nsid));
+    fclose (fp);
+
+No NULL check on fp. The path constructed is
+"<sysfs_path>/<devname>/nsid". If this file doesn't exist (device
+removed, incorrect devname), same crash.
+
+Cross-reference: of_path_get_nvmeof_adapter_info in the same file
+(lines 571-620) correctly handles fopen failure using the pattern:
+    if (!(fp = fopen(buf, "r")) || fscanf(fp, ...) != 1)
+This confirms the missing checks are omissions, not intentional.
+
+Consequence:
+If any "port_name" file under /sys/devices cannot be opened
+(permissions, removed device, sysfs race), grub-ofpathname or
+grub-install crashes with a segfault during NVMeoFC path discovery.
+For of_path_get_nvme_nsid, the nsid sysfs file for the NVMe device
+must be readable or the tool crashes.
+
+Fix assessment:
+For of_find_fc_host: check fp after fopen, skip to next node on
+failure (continue). This matches the function's existing error
+handling pattern (break on malloc failure, continue on
+add_filename_to_pile failure).
+
+For of_path_get_nvme_nsid: check fp after fopen, return 0 on failure
+(consistent with the existing malloc failure return). Must free
+sysfs_path and buf before returning. Callers already handle nsid==0
+(they skip namespace path construction).
+
+== Issue 2: Heap buffer overflow via strcat (platform.c) ==
+
+Discovery:
+Reading add_multiple_nvme_bootdevices() at line ~207 in platform.c.
+After calling nvme_get_syspath(), the returned buffer is extended
+with strcat:
+
+    sysfs_path = nvme_get_syspath (nvme_ns);
+    // ...
+    strcat (sysfs_path, "/device");
+
+Source trace:
+nvme_get_syspath (ofpath.c:688) returns either:
+  (a) block_device_get_sysfs_path_and_link(nvmedev) directly, or
+  (b) xrealpath(buf) after resolving an nvme-subsystem path.
+
+Both return malloc'd buffers sized exactly for the string content
+plus null terminator:
+  - block_device_get_sysfs_path_and_link allocates via xmalloc
+    with strlen-based sizing
+  - xrealpath wraps realpath() which returns a malloc'd buffer
+    sized to the resolved path
+
+strcat(sysfs_path, "/device") appends 7 bytes (plus the null
+terminator moves) past the allocated buffer boundary.
+strcat(sysfs_path, "/subsystem") appends 10 bytes past.
+
+Consequence:
+Heap metadata corruption. On glibc's malloc, the chunk size and
+fd/bk pointers for the next heap chunk are overwritten. This can
+cause:
+  - Crash on next malloc/free call
+  - Silent memory corruption leading to incorrect boot device paths
+  - On adversarial input, potentially exploitable heap corruption
+    (though the data written is a fixed string, not attacker-
+    controlled)
+
+Fix assessment:
+Replace strcat with xasprintf to build the extended path in a
+properly sized buffer. Free the original sysfs_path before
+reassignment to avoid a secondary leak. xasprintf is already used
+extensively in this file.
+
+== Issue 3: Memory leaks in of_path_of_nvme (ofpath.c) ==
+
+Discovery:
+Reading of_path_of_nvme() at lines ~740-830. In the NVMeoFC path
+(strstr(sysfs_path, "nvme-fabrics") is true), the code reassigns
+sysfs_path without freeing the old value, and frees nvmeof_info
+without freeing its dynamically allocated members.
+
+Source trace:
+(a) sysfs_path leak:
+Line ~740: sysfs_path = nvme_get_syspath(nvmedev) allocates buffer A.
+Line ~748: of_path_get_nvmeof_adapter_info(sysfs_path, ...) uses A
+  as a read-only path.
+Line ~756: sysfs_path = of_find_fc_host(...) allocates buffer B and
+  assigns it to sysfs_path. Buffer A is now unreachable and leaked.
+
+Same pattern at line ~800 (no-partition branch).
+
+(b) nvmeof_info member leak:
+of_path_get_nvmeof_adapter_info (line 547) allocates three 256-byte
+buffers: nvmeof_info->host_wwpn, ->target_wwpn, ->nqn.
+
+Line ~775 (or ~822): free(nvmeof_info) frees only the 16-byte struct
+itself. The three member pointers (768 bytes total) are leaked.
+
+The members are used up to the snprintf(disk,...) call at line ~764
+(or ~812), after which they are no longer referenced and can be freed.
+
+Consequence:
+Each call to of_path_of_nvme leaks one sysfs path buffer (~100 bytes)
+and three WWPN/NQN strings (768 bytes). In grub-install, this
+function is called once per NVMe device. The leak is bounded and the
+utility exits shortly after, so practical impact is low. However, it
+is a correctness defect.
+
+Fix assessment:
+(a) Add free(sysfs_path) before the reassignment on both code paths.
+(b) Add free(nvmeof_info->host_wwpn), free(nvmeof_info->target_wwpn),
+and free(nvmeof_info->nqn) before free(nvmeof_info) on both paths.
+The members are safe to free at this point because the snprintf that
+uses target_wwpn and nqn has already completed, and host_wwpn was
+only needed by of_find_fc_host which has returned.
