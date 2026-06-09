@@ -34,7 +34,7 @@ srlz () {
 
             echo "$Z" | tee -a "$L"
 
-            I="$(echo "$Z" | srlz "$i")"
+            I="$(echo "$Z" | srlz "$I")"
         }
 
         sleep "$W"
