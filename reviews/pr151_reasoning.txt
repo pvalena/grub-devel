@@ -1,0 +1,108 @@
+PR !151 - EFI TPCM module - 2 commits - 2 issues found
+
+Source files read during review and verification:
+  grub-core/commands/tpcm.c (pr151 branch)
+  grub-core/commands/efi/tpcm.c (pr151 branch)
+  include/grub/efi/tpcm.h (pr151 branch)
+  include/grub/verify.h (pr151 branch, enum definition)
+  include/grub/err.h (pr151 branch, diff only)
+  grub-core/Makefile.core.def (pr151 branch, diff only)
+
+== Issue 1: NULL dereference in grub_tpcm_verify_string (tpcm.c) ==
+
+Discovery:
+Reading grub_tpcm_verify_string() in tpcm.c. The function
+declares `const char *prefix = NULL` and sets it via a switch
+on `type`. The switch covers GRUB_VERIFY_KERNEL_CMDLINE,
+GRUB_VERIFY_MODULE_CMDLINE, and GRUB_VERIFY_COMMAND but has
+no default case.
+
+Source trace:
+Checked include/grub/verify.h for the enum definition:
+
+  enum grub_verify_string_type {
+    GRUB_VERIFY_KERNEL_CMDLINE,
+    GRUB_VERIFY_MODULE_CMDLINE,
+    GRUB_VERIFY_COMMAND,
+  };
+
+All three values are handled. However, after the switch, the
+code immediately calls:
+
+  context = grub_zalloc(grub_strlen(str) + grub_strlen(prefix) + 1 + 4);
+
+If type does not match any case (enum extension, cast from int,
+or corrupted value), prefix is NULL. grub_strlen(NULL)
+dereferences address 0x0. On x86_64 EFI, this is an unmapped
+page and causes a page fault / machine check.
+
+The function is a verifier callback registered via
+grub_verifier_register and called by the framework's
+grub_verify_string. The framework passes the type as-is from
+callers throughout GRUB (grub_script_execute, grub_loader,
+etc.), so the path from external input to this function is
+indirect but real.
+
+Consequence:
+If grub_verify_string_type is extended with a new value and
+this function is not updated, GRUB crashes on any string
+verification of the new type. Since this is a security
+verifier, a crash during verification blocks the boot path.
+
+Fix assessment:
+Adding a default case that returns GRUB_ERR_NONE is the
+minimal fix. Returning GRUB_ERR_NONE (rather than an error)
+means unknown string types pass through without measurement,
+matching the module's existing policy of being permissive when
+TPCM is absent or disabled. Alternatively, returning
+GRUB_ERR_BUG would be more defensive but would block boot on
+unknown types.
+
+== Issue 2: Missing strchr NULL check (efi/tpcm.c) ==
+
+Discovery:
+Reading grub_tpcm_measure_memory() in efi/tpcm.c. The
+function parses a context string with format "%d|%s" by
+searching for '|':
+
+  p = grub_strchr(p_context, '|');
+  p_desc = p + 1;
+  grub_memcpy(tmp, p_context, (p - p_context));
+
+No NULL check on the return value of grub_strchr.
+
+Source trace:
+Traced all callers of grub_tpcm_measure_memory:
+
+1. grub_tpcm_verify_write (tpcm.c:46) passes context set by
+   grub_tpcm_verify_init, which uses:
+   grub_snprintf(context_buf, ..., "%d|%s", type, io->name);
+   This always contains '|'. Safe.
+
+2. grub_tpcm_verify_string (tpcm.c:78) builds context with:
+   grub_snprintf(context, 4, "%d|", type);
+   This always contains '|'. Safe.
+
+Both current callers guarantee '|' in the context string.
+However, grub_tpcm_measure_memory is declared in
+include/grub/efi/tpcm.h as a public function. Any module
+including the header could call it with a malformed context.
+
+If p is NULL:
+  - p_desc = NULL + 1 = (void*)1
+  - (p - p_context) = (0 - valid_pointer) = huge negative
+    value, interpreted as huge size_t
+  - grub_memcpy reads far past the source buffer into unmapped
+    memory, crashing
+
+Consequence:
+Crash on malformed context string. Not currently reachable
+through existing callers but represents an unvalidated
+assumption in an exported function. In security-sensitive
+code, defensive input validation is expected.
+
+Fix assessment:
+Adding `if (p == NULL) return GRUB_ERR_BUG;` after the
+grub_strchr call is correct and minimal. The NULL context
+check already exists (line 148), so adding a delimiter check
+follows the same pattern.
