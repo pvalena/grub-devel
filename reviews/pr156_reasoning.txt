@@ -1,0 +1,178 @@
+PR !156 - NVMe native disk support - 1 commit - 3 issues found
+
+Source files read during review and verification:
+  grub-core/disk/nvme.c (pr156 branch)
+  grub-core/commands/nativedisk.c (pr156 branch, diff only)
+  include/grub/disk.h (pr156 branch, diff only)
+  grub-core/Makefile.core.def (pr156 branch, diff only)
+
+== Issue 1: Wrong opcode and QID in delete_io_completion_queue (nvme.c) ==
+
+Discovery:
+Reading delete_io_completion_queue() at lines ~298-304.
+The command entry sets dw[0] = 1 and dw[10] = ioc.
+Comparing with the create functions:
+  create_io_submission_queue: dw[0] = 0x01 (Create IO SQ)
+  create_io_completion_queue: dw[0] = 0x05 (Create IO CQ)
+
+The delete function's dw[0] = 1 matches the CREATE IO SQ
+opcode, not DELETE IO CQ (which is 0x04).
+
+Source trace:
+NVMe admin command opcodes (from the NVMe specification):
+  0x00 = Delete I/O Submission Queue
+  0x01 = Create I/O Submission Queue
+  0x04 = Delete I/O Completion Queue
+  0x05 = Create I/O Completion Queue
+  0x06 = Identify
+
+delete_io_submission_queue: dw[0] = 0 → opcode 0x00 ✓
+delete_io_completion_queue: dw[0] = 1 → opcode 0x01 ✗
+  Should be: dw[0] = 4 → opcode 0x04
+
+For the QID bug, the enum is:
+  enum nvme_queue {
+    NVME_ADMIN_QUEUE = 0,
+    ads = 0, adc = 1,
+    NVME_IO_QUEUE = 2,
+    ios = 2, ioc = 3,
+  };
+
+These are array indices for nvme->queue[4], NOT NVMe QIDs.
+Creation commands convert: dw[10] = ... | ios >> 1 = 1 and
+dw[10] = ... | ioc >> 1 = 1. So both IO queues are created
+with NVMe QID 1.
+
+Delete commands pass raw enum values:
+  delete_io_submission_queue: dw[10] = ios = 2 (should be 1)
+  delete_io_completion_queue: dw[10] = ioc = 3 (should be 1)
+
+Both attempt to delete queues with QIDs that were never
+created. The controller will return an error status.
+
+Consequence:
+grub_nvme_fini_hw() (the preboot hook) sends two malformed
+admin commands before disabling the controller. The delete
+commands fail silently (nvme_cmd returns error status, which
+is returned but ignored by fini_hw). The subsequent
+controller_config = 0 resets the controller, which
+implicitly destroys all queues. So the practical impact is
+masked: the queues are cleaned up by the reset, not by the
+delete commands.
+
+The real risk is if the malformed "Create IO SQ" command in
+delete_io_completion_queue actually SUCCEEDS (creating a
+stale queue 3 just before the controller reset). On most
+controllers this will fail because no matching CQ exists, but
+controller behavior for malformed commands varies.
+
+Fix assessment:
+Changing dw[0] from 1 to 4 and dw[10] from ioc to ioc >> 1
+(and similarly ios to ios >> 1 for the SQ delete) is correct
+and matches the create commands' QID derivation. No other
+fields are affected.
+
+== Issue 2: Unchecked IO queue creation returns (nvme.c) ==
+
+Discovery:
+Reading grub_nvme_pciinit() at lines ~432-433. The two
+create_io_*_queue() calls appear without any return value
+check, unlike the create_admin_queues() call at line ~390
+which is properly checked.
+
+Source trace:
+create_io_completion_queue() at lines ~214-243:
+  - Allocates DMA memory for ioc_buffer
+  - Sends Create IO CQ admin command
+  - On failure: calls grub_dma_free(nvme->ioc_buffer) and
+    returns res (non-zero)
+  - On success: sets up queue[ioc] state and returns 0
+
+create_io_submission_queue() at lines ~185-212:
+  - Allocates DMA memory for ios_buffer
+  - Sends Create IO SQ admin command
+  - On failure: calls grub_dma_free(nvme->ios_buffer) and
+    returns res (non-zero)
+  - On success: sets up queue[ios] state and returns 0
+
+In grub_nvme_pciinit():
+  create_io_completion_queue(nvmedev);   // return ignored
+  create_io_submission_queue(nvmedev);   // return ignored
+
+If CQ creation fails, the ioc_buffer is freed and queue[ioc]
+state is not initialised. Then create_io_submission_queue
+tries to send an admin command (which needs the admin queue,
+not the IO CQ, so this part actually works). But after both
+calls, identify() is called. If identify succeeds (it uses
+the admin queue), the device is added to grub_nvme_devices
+with broken IO queues.
+
+When a disk read later calls nvme_cmd() for the IO queue:
+  struct nvme_s_queue_entry *s_entry =
+    &((struct nvme_s_queue_entry *)nvme->queue[sq].base)
+        [nvme->queue[sq].idx];
+
+If queue[ios].base was never set (queue creation failed and
+freed the buffer), this dereferences NULL or an uninitialised
+pointer. On systems without NULL-page mapping, this crashes.
+
+Consequence:
+A device where IO queue creation fails (DMA allocation
+failure, admin command rejected) is added to the device list
+and appears as a valid NVMe disk. The first read attempt
+crashes GRUB with a NULL pointer dereference or memory
+corruption.
+
+Fix assessment:
+Checking both return values and returning early on failure
+(matching the create_admin_queues pattern at line ~390) is
+correct. The DMA buffers are already freed by the create
+functions on their failure paths, so only grub_free(nvmedev)
+is needed in the cleanup.
+
+== Issue 3: restore_hw doesn't wait for controller ready (nvme.c) ==
+
+Discovery:
+Reading grub_nvme_restore_hw() at lines ~466-476. The
+function sets controller_config to enable the controller
+and immediately creates IO queues.
+
+Source trace:
+grub_nvme_restore_hw():
+  (*pdev)->regs->controller_config = NVME_CC_EN | ...;
+  create_io_completion_queue(*pdev);
+  create_io_submission_queue(*pdev);
+
+After writing CC.EN = 1, the controller begins its enable
+sequence. The host must poll CSTS.RDY until it becomes 1
+before submitting any admin commands (NVMe spec section
+3.5.1: "The host should wait for CSTS.RDY to become '1'
+before submitting commands to the controller").
+
+grub_nvme_pciinit() correctly implements this polling loop
+(lines ~399-415) with a CAP.TO-based timeout.
+grub_nvme_restore_hw() skips it entirely.
+
+Additionally, restore_hw doesn't reprogram AQA/ASQ/ACQ
+registers. After a controller reset (CC.EN = 0 → 1), the
+admin queue base address registers need to be reprogrammed
+because the reset may have cleared them. The create_io_*
+commands are submitted via the admin queue, which points
+to stale or invalid addresses after the reset.
+
+Consequence:
+When the preboot hook fires (e.g., chainloading another
+bootloader, kexec), grub_nvme_fini_hw resets the controller,
+then grub_nvme_restore_hw re-enables it. The admin commands
+for IO queue creation are submitted before the controller
+finishes its enable sequence, and potentially to an admin
+queue with stale addresses. This makes the NVMe disk
+unusable after a preboot hook cycle.
+
+Fix assessment:
+Not a straightforward fix. The restore path needs to
+replicate the full initialisation sequence: wait for CSTS.RDY
+= 0 after disable, reprogram AQA/ASQ/ACQ, set CC.EN, wait
+for CSTS.RDY = 1, then create IO queues. This is essentially
+the second half of grub_nvme_pciinit. A shared helper
+function would be the cleanest approach.

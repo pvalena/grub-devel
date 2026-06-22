@@ -1,0 +1,158 @@
+PR !155 - NVMe SeaBIOS-based driver - 1 commit - 3 issues found
+
+Source files read during review and verification:
+  grub-core/disk/nvme.c (pr155 branch)
+  grub-core/disk/nvme-int.h (pr155 branch)
+  grub-core/commands/nativedisk.c (pr155 branch, diff only)
+  include/grub/disk.h (pr155 branch, diff only)
+  Makefile.am (pr155 branch, diff only)
+  grub-core/Makefile.core.def (pr155 branch, diff only)
+
+== Issue 1: No timeout in nvme_wait() (nvme.c) ==
+
+Discovery:
+Reading nvme_wait() at lines ~397-412. The function polls
+nvme_poll_cq() in a tight loop with no exit condition other
+than a successful completion entry. The SeaBIOS timer_calc /
+timer_check code is commented out with "// FIXME" but never
+replaced with GRUB equivalents (grub_get_time_ms is available).
+
+Source trace:
+nvme_wait() is the completion path for ALL NVMe commands:
+
+1. nvme_admin_identify() at line 466 calls nvme_wait() for
+   the Identify Controller/Namespace admin commands
+2. nvme_create_io_cq() at line 343 calls nvme_wait() for
+   Create IO CQ admin command
+3. nvme_create_io_sq() at line 389 calls nvme_wait() for
+   Create IO SQ admin command
+4. nvme_io_xfer() at line 426 calls nvme_wait() for every
+   read/write I/O operation
+
+If the controller doesn't post a completion entry (hardware
+hang, device removal, firmware bug), every one of these paths
+enters an infinite busy-wait.
+
+nvme_wait_csts_rdy() at lines 537-555 has the same pattern
+for controller enable/disable. It checks for CSTS_FATAL (bit
+1) as an exit, but a non-fatal hang (controller simply stops
+responding) also loops forever. The commented-out SeaBIOS
+timeout used CAP.TO * 500ms as the limit.
+
+Consequence:
+GRUB hangs permanently with no error message. The only
+recovery is a hardware reset (power cycle or reset button).
+This can happen during normal boot if the NVMe controller is
+in a bad state, making the system unbootable via GRUB without
+hardware intervention.
+
+Fix assessment:
+Adding grub_get_time_ms()-based timeouts following the
+existing pattern in the file (the commented-out SeaBIOS code
+used 5000ms) is straightforward. nvme_wait() already returns
+nvme_error_cqe() for error cases, so the timeout return path
+exists. nvme_wait_csts_rdy() already returns -1 for FATAL, so
+a timeout return follows the same pattern.
+
+== Issue 2: 32-bit BAR only (nvme.c) ==
+
+Discovery:
+Reading grub_nvme_pci_probe() at lines ~656-658. The BAR is
+read as a single 32-bit PCI config read from
+GRUB_PCI_REG_ADDRESS_REG0, masked with GRUB_PCI_ADDR_MEM_MASK,
+and passed to grub_pci_device_map_range. No read of BAR1.
+
+Source trace:
+The variable `bar` is declared as `grub_uint32_t` (line 649),
+confirming only 32 bits are stored. The NVMe specification
+(section 2.1.10) requires BAR0 to be a 64-bit memory BAR. The
+BAR type field (bits 2:1) indicates 64-bit, and BAR1 holds the
+upper 32 bits of the base address.
+
+Cross-reference: PR156's NVMe driver (same repo) correctly
+handles this:
+  bar = grub_pci_read(... GRUB_PCI_REG_ADDRESS_REG0);
+  // checks for GRUB_PCI_ADDR_MEM_TYPE_64
+  bar |= ((grub_uint64_t) grub_pci_read(
+      ... GRUB_PCI_REG_ADDRESS_REG1)) << 32;
+
+The in-tree AHCI driver (grub-core/disk/ahci.c) also reads
+both BAR halves for 64-bit BARs.
+
+Consequence:
+On systems where the NVMe controller's MMIO is assigned above
+4 GB (common on servers with large MMIO ranges), the upper
+address bits are lost. grub_pci_device_map_range maps a wrong
+physical region. Subsequent register reads/writes hit unmapped
+or unrelated memory, causing controller initialization to fail
+silently (garbage status reads) or causing memory corruption.
+On typical desktop/laptop systems with MMIO below 4 GB, the
+driver works correctly because the upper 32 bits are zero.
+
+Fix assessment:
+Reading BAR1 and combining with BAR0 is the standard approach.
+The fix mirrors what PR156 and the AHCI driver already do.
+Adding a BAR type check (verify bits 2:1 indicate 64-bit
+memory) before the 64-bit read is a minor improvement but not
+strictly necessary since NVMe mandates 64-bit BARs.
+
+== Issue 3: Missing disk->log_sector_size (nvme.c) ==
+
+Discovery:
+Reading grub_nvme_open() at lines ~718-738. The function
+sets disk->total_sectors, disk->max_agglomerate, disk->id,
+and disk->data, but never sets disk->log_sector_size.
+
+Source trace:
+GRUB's disk layer defaults disk->log_sector_size to
+GRUB_DISK_SECTOR_BITS (9 = 512 bytes). The driver stores
+the NVMe namespace's block size in ns->block_size (set in
+nvme_probe_ns from the LBA format: 1U << fmt->lbads), but
+doesn't expose it to GRUB.
+
+When GRUB reads a disk, it converts byte offsets to sectors
+using disk->log_sector_size and passes those sector numbers
+and counts to the driver's read function. The driver then
+forwards those sector numbers as NVMe LBAs.
+
+For 512-byte-sector drives (lbads = 9): disk->log_sector_size
+defaults to 9, matching ns->block_size = 512. Correct.
+
+For 4K-sector drives (lbads = 12): disk->log_sector_size
+remains 9 (512 bytes), but ns->block_size = 4096.
+
+Traced the read path for a 4K-sector drive:
+
+1. Filesystem requests 4096 bytes at byte offset 0
+2. GRUB disk layer: sector = 0, size = 8 (in 512-byte units)
+3. grub_nvme_read calls nvme_readwrite(ns, sector=0, 8, buf)
+4. nvme_readwrite: blocks_remaining = 8
+5. nvme_prpl_xfer: sends NVMe read with LBA=0, count=8
+6. NVMe controller: reads 8 × 4096 = 32768 bytes (8 4K sectors)
+7. But the caller's buffer is only 8 × 512 = 4096 bytes
+
+Step 6→7 writes 32KB into a 4KB buffer: heap buffer overflow.
+
+Additionally, nvme_readwrite uses buf + i * ns->block_size
+(= buf + i * 4096) for the buffer offset, but i increments
+in GRUB-sector units (512 bytes). After the first transfer
+of 8 blocks (i += 8), the buffer offset jumps by 8 * 4096 =
+32768 bytes, far past the end of the actual buffer.
+
+Cross-reference: PR156's grub_nvme_open correctly sets
+disk->log_sector_size = dev->log_sector_size, avoiding this.
+
+Consequence:
+On NVMe drives with non-512-byte logical sectors (e.g., 4K),
+every read/write operation overflows the buffer, corrupting
+the GRUB heap. This causes unpredictable crashes or data
+corruption. Most consumer NVMe drives report 512-byte logical
+sectors, so the bug primarily affects enterprise drives
+formatted with 4K logical sectors.
+
+Fix assessment:
+Computing log2(ns->block_size) and assigning to
+disk->log_sector_size is the minimal fix. Since block_size is
+always a power of 2 (set from 1U << fmt->lbads), a simple
+bit-shift loop is sufficient. Alternatively, store lbads
+directly in the namespace struct during probe.
