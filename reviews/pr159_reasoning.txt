@@ -1,0 +1,103 @@
+PR !159 - FDT bootargs fallback - 1 commit - 1 issue found
+
+Source files read during review and verification:
+  grub-core/loader/efi/linux.c (pr159 branch, full file)
+  grub-core/lib/cmdline.c (master, full file)
+  include/grub/lib/cmdline.h (master, LINUX_IMAGE definition)
+  grub-core/lib/fdt.c (master, grub_fdt_get_prop)
+
+== Issue 1: First FDT bootarg consumed by BOOT_IMAGE= (linux.c) ==
+
+Discovery:
+Reading the DT bootargs path in grub_cmd_linux() at lines
+~610-622. The code builds the kernel command line by
+concatenating LINUX_IMAGE and dt_bootargs:
+
+  grub_memcpy (linux_args, LINUX_IMAGE, sizeof (LINUX_IMAGE));
+  grub_memcpy (linux_args + sizeof (LINUX_IMAGE) - 1,
+               dt_bootargs, dt_len + 1);
+
+Noticed that sizeof(LINUX_IMAGE) - 1 is the offset of
+LINUX_IMAGE's null terminator, so dt_bootargs overwrites
+the null directly. Checked what LINUX_IMAGE is defined as.
+
+Source trace:
+LINUX_IMAGE is defined in include/grub/lib/cmdline.h:26:
+
+  #define LINUX_IMAGE "BOOT_IMAGE="
+
+sizeof(LINUX_IMAGE) = 12 (11 chars + null terminator).
+
+The concatenation produces:
+  "BOOT_IMAGE=" + dt_bootargs
+without any space between them. Example:
+  dt_bootargs = "console=ttyS0 root=/dev/mmcblk0p2"
+  result = "BOOT_IMAGE=console=ttyS0 root=/dev/mmcblk0p2"
+
+The kernel command line parser splits by whitespace:
+  token 1: "BOOT_IMAGE=console=ttyS0"
+  token 2: "root=/dev/mmcblk0p2"
+
+"console=ttyS0" is consumed as BOOT_IMAGE's value.
+
+Cross-reference with the original code path:
+grub_create_loader_cmdline (grub-core/lib/cmdline.c)
+processes argv elements sequentially. For each element, it
+writes the arg content followed by a space (replacing the
+last space with null). The buffer starts at
+linux_args + sizeof(LINUX_IMAGE) - 1.
+
+For argc=3, argv=["/vmlinuz", "console=ttyS0", "root=..."]:
+  writes "/vmlinuz console=ttyS0 root=...\0"
+  linux_args = "BOOT_IMAGE=/vmlinuz console=ttyS0 root=..."
+
+argv[0] (the kernel path) is written immediately after
+"BOOT_IMAGE=" with no space — this is the BOOT_IMAGE value.
+Subsequent args are space-separated.
+
+The DT path should produce the same format:
+  "BOOT_IMAGE=/vmlinuz console=ttyS0 root=..."
+where argv[0] fills the BOOT_IMAGE value and dt_bootargs
+are appended with a space separator.
+
+Buffer size verification for the fix:
+  sizeof(LINUX_IMAGE) - 1 = 11 (BOOT_IMAGE= without null)
+  + img_len (argv[0] content)
+  + 1 (space separator)
+  + dt_len (FDT bootargs content)
+  + 1 (null terminator)
+  = sizeof(LINUX_IMAGE) + img_len + 1 + dt_len
+
+The fix allocates sizeof(LINUX_IMAGE) + img_len + 1 + dt_len
+bytes and writes:
+  offset 0: "BOOT_IMAGE=" (11 bytes)
+  offset 11: argv[0] (img_len bytes)
+  offset 11 + img_len: ' ' (1 byte)
+  offset 12 + img_len: dt_bootargs (dt_len bytes)
+  offset 12 + img_len + dt_len: '\0' (1 byte)
+  total: 13 + img_len + dt_len bytes — matches allocation.
+
+The grub_verify_string offset remains
+linux_args + sizeof(LINUX_IMAGE) - 1 = offset 11, which
+points to "kernel_path dt_bootargs" — consistent with what
+grub_create_loader_cmdline verifies on the original path.
+
+Consequence:
+On ARM/ARM64 boards where GRUB is loaded by firmware that
+provides FDT bootargs (e.g., U-Boot), booting with
+`linux /vmlinuz` (no explicit args) drops the first FDT
+bootarg. If the first arg is console=ttyS0, serial console
+is silently not configured. If it's root=, the kernel panics
+with "unable to mount root fs." The failure mode depends on
+the order of parameters in the firmware FDT, which varies
+by board and firmware version.
+
+Fix assessment:
+The fix adds argv[0] after BOOT_IMAGE= and a space before
+the DT bootargs, matching the format produced by
+grub_create_loader_cmdline on the original path. The buffer
+size calculation accounts for the additional bytes.
+argv[0] is guaranteed to be valid when argc >= 1 (checked
+earlier in the function). The verify_string call at the
+same offset now covers "kernel_path dt_bootargs" — matching
+the original code's verification scope.
