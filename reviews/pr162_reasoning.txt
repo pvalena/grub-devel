@@ -1,0 +1,87 @@
+PR !162 - calc command - 3 commits - 1 issue found
+
+Source files read during review and verification:
+  grub-core/commands/calc.c (pr162 branch, full file)
+  tests/grub_cmd_calc.in (pr162 branch, full file)
+  docs/grub.texi (pr162 branch, diff only)
+  grub-core/Makefile.core.def (pr162 branch, diff only)
+  Makefile.util.def (pr162 branch, diff only)
+
+== Issue 1: pow with exponent 0 returns 0 (calc.c) ==
+
+Discovery:
+Reading the CALC_OP_POW case in grub_cmd_calc() at lines
+~243-262. The code handles three ranges of the exponent
+(num2): zero, negative, and positive. For num2 == 0 with
+nonzero num1, the code sets num1 = 0 and breaks. This
+caught my attention because x^0 = 1 for all nonzero x.
+
+Source trace:
+The pow implementation:
+
+  case CALC_OP_POW:
+      if (num2 == 0)
+      {  if (num1 == 0)
+            return( grub_error(..., "cannot raise zero
+                    to the power of zero") );
+         num1 = 0;       // <-- line ~247
+         break;
+      };
+      if (num2 < 0)
+      {  if (num1 == 0)
+            return( grub_error(..., "cannot raise zero
+                    to a negative power") );
+         num1 = 0;
+         break;
+      };
+      num3 = 1;
+      for(count = 0; (count < num2); count++)
+         num3 *= num1;
+      num1 = num3;
+      break;
+
+Traced for input `calc 5 pow 0`:
+1. parse_number("5", &num1) sets num1 = 5
+2. parse_operation("pow") returns CALC_OP_POW, req_num=1
+3. parse_number("0", &num2) sets num2 = 0
+4. switch enters CALC_OP_POW
+5. num2 == 0: true
+6. num1 == 0: false (num1 is 5)
+7. num1 = 0 ← wrong, should be 1
+8. break → result is 0
+
+The loop at lines ~257-258 would handle this correctly:
+num3 starts at 1, loop runs 0 times (count < 0 is false),
+num1 = num3 = 1. But the early return at line ~247
+prevents the loop from being reached.
+
+Cross-reference: the test file (tests/grub_cmd_calc.in)
+tests `0 pow 1` (= 0, correct) and `12 pow 5` (= 248832,
+correct), but does not test any nonzero base with exponent
+0. A test like `calc -s result 5 pow 0` would catch this
+bug immediately.
+
+Also noted: the num2 < 0 case sets num1 = 0 for all
+nonzero num1. This is correct for integer arithmetic when
+|num1| > 1 (e.g., 2^(-3) = 1/8 = 0 in integer division),
+but wrong for num1 = 1 (1^(-n) = 1) and num1 = -1
+((-1)^(-n) = (-1)^n = +/-1). Since negative exponents in
+integer math are unusual, this is a minor secondary issue
+compared to the num2 == 0 bug.
+
+Consequence:
+Any calculation using `pow 0` produces 0 instead of 1.
+In GRUB scripts that compute values dynamically (e.g.,
+`calc $base pow $exp`), an exponent of 0 silently
+produces the wrong result. No error message is shown —
+the command succeeds with an incorrect value.
+
+Fix assessment:
+Changing `num1 = 0` to `num1 = 1` on line ~247 is the
+minimal fix. Alternatively, removing the entire num2 == 0
+early-return block and letting the loop handle it would
+also work, since the loop naturally produces 1 when
+num2 == 0 (0 iterations, num3 stays 1). The 0^0 check
+could be moved into the loop preamble if desired. Both
+approaches are equally correct; the one-character fix is
+simpler.
