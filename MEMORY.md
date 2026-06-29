@@ -1,6 +1,6 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-06-08
+**Last updated**: 2026-06-25
 
 Quick reference for working in this repository. See `CLAUDE.md` for repository overview
 and `docs/REVIEW_PROCESS.md` for detailed procedures.
@@ -9,22 +9,22 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 
 ## Current Status
 
-- **Total MRs tracked**: 82 (63 original + 19 new upstream MRs tracked)
-- **Total MRs reviewed**: 93 (63 original + 30 new upstream)
+- **Total MRs tracked**: 84 (26 open + 58 closed)
+- **Total MRs reviewed**: 105
 - **Open MRs**: 26
-- **Closed/Merged MRs**: 56
+- **Closed/Merged MRs**: 58
 - **Active authors**: 20
 
 **Review files**:
-- Complete reviews: 93 (.md files)
-- Reasoning files: 31 (_reasoning.txt files, only for reviews with issues)
+- Complete reviews: 105 (.md files)
+- Reasoning files: 36 (_reasoning.txt files, only for reviews with issues)
 
 ---
 
 ## Quick File Reference
 
 **Tracking**:
-- `MRS_BY_AUTHOR.md` - Active MRs by author (26 open, 20 authors)
+- `MRS_BY_AUTHOR.md` - Active MRs by author (26 open MRs, 20 authors)
 - `data/open.txt` - Open MR numbers (source of truth)
 - `data/closed.txt` - Closed MR numbers
 
@@ -101,6 +101,13 @@ Add "For more details" link in the review .md file pointing to the reasoning fil
 ```bash
 awk 'length > 120' reviews/prNN.md
 ```
+
+### Phase 6: Double-Check
+
+Independent re-verification after all review artifacts are written.
+Re-read source for each finding, verify draft fix correctness, look
+for missed issues. Final quality gate — added after re-verification
+caught a real bug (PR155 Issue 3) that the initial review missed.
 
 ### MR Status Update Workflow
 
@@ -192,18 +199,18 @@ diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
 
 ## Statistics
 
-**Current (2026-06-08)**:
+**Current (2026-06-25)**:
 - Open MRs: 26
 - Active authors: 20
 - Largest contributor: Vladimir Serbinenko (6 MRs)
-- Closed rate: 68% (56/82)
-- Review files: 93 reviews, 31 reasoning files
+- Closed rate: 69% (58/84)
+- Review files: 105 reviews, 36 reasoning files
 
 **Historical**:
 - Initial branches: 176 (from mailing lists)
 - Duplicates removed: 65 (39% rate)
 - Unique branches: 111
-- Original MRs created: 63, plus 30 new upstream MRs reviewed
+- Original MRs created: 63, plus 42 new upstream MRs reviewed
 
 ---
 

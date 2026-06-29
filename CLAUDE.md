@@ -21,12 +21,12 @@ This repository analyzes GRUB2 patches from mailing lists, identifies duplicates
 - **Key files**: `branches.txt`, `mrs.txt`, `MRS_BY_AUTHOR.md`
 
 ### Phase 4: Code Review & Quality Assurance (COMPLETED)
-- **Reviews**: 90 complete (.md) + 31 reasoning files (_reasoning.txt)
+- **Reviews**: 105 complete (.md) + 36 reasoning files (_reasoning.txt)
 - **Quality**: Zero false positives, all commits reviewed, 120 char width
 - **Key files**: `reviews/*.md`, `reviews/*_reasoning.txt`, `docs/REVIEW_PROCESS.md`
 
 ### Phase 5: MR Status Tracking (ONGOING)
-- **Status**: 26 open, 56 closed (68% closure rate)
+- **Status**: 26 open, 58 closed (69% closure rate)
 - **Key files**: `data/open.txt`, `data/closed.txt`, `MRS_BY_AUTHOR.md`
 
 ---
@@ -120,4 +120,4 @@ Before marking branches as duplicates, always document explicit reasons and veri
 
 ---
 
-**Last updated**: 2026-06-08
+**Last updated**: 2026-06-25
