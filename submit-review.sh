@@ -19,9 +19,13 @@ D='../data/done.txt'
 [[ -r "$D" ]]
 
 N='../data/new.txt'
+read_new () {
+    grep -vE "^${1}$" "$N" | grep -v "^\s*$" | sort -n
+}
+
 [[ -r "$N" && -n "$(cat "$N")" ]] && {
 
-    # TODO: unify implementations / wrap in some method
+    # TODO: refactor
 
     for m in $(cat $N); do
 
@@ -31,28 +35,38 @@ N='../data/new.txt'
         F="${R}${b}.md"
         [[ -r "$F" ]]
 
-        [[ "$m" == "$(head -n 1 "$F" | grep '^# AI Review: MR' | cut -d'!' -f2 | cut -d' ' -f1)" ]]
+        # sanity checks
 
-        grep -qE "^${m}$" "$D" && continue
+            [[ "$m" == "$(head -n 1 "$F" | grep '^# AI Review: MR' | cut -d'!' -f2 | cut -d' ' -f1)" ]]
 
-        echo -e "\n\n>>> $b: $m\n"
+            grep -qE "^${m}$" "$D" && continue
 
-        C="$(cat "$F")"
-        [[ -n "$C" ]]
+            echo -e "\n\n>>> $b: $m\n"
+
+            C="$(cat "$F")"
+            [[ -n "$C" ]]
 
         [[ -n "$V" ]] && echo "$C" && echo
 
         [[ -n "$DRY" ]] && continue
 
-        glab mr note create "${m}" --repo gnu-grub/grub -m "${C}"
+        # submit comment
 
-        glab mr update "${m}" --repo gnu-grub/grub -u Pending-AI-Review
+            glab mr note create "${m}" --repo gnu-grub/grub -m "${C}"
 
-        echo "$m" >> "$D"
+            glab mr update "${m}" --repo gnu-grub/grub -u Pending-AI-Review
 
-        Z="$(grep -vE "^${m}$" "$N" | grep -v ^$ | sort -n)"
+            echo "$m" >> "$D"
 
-        [[ -z "$Z" || "$Z" == "${m}" ]] && rm "$N" || echo "$Z" > "$N"
+        # update data/new.txt file
+
+            Z="$(read_new "^${m}$")"
+
+            echo "$Z" > "$N"
+
+            Z="$(read_new "^\s*$")"
+
+            [[ -z "$Z" || "$(wc -l <<< "$Z")" -eq 0 || "${Z}" == "${m}" ]] && rm "$N"
 
         sleep 5
     done
