@@ -323,7 +323,6 @@
 2025-05-0078: [PATCH 0/2] commands/efi/lsefi: Fix memory leak
 2025-05-0079: [PATCH 1/2] loader/efi/linux: Fix memory leak
 2025-05-0082: Fwd: [PATCH] efi/tpcm: Add TPCM module support
-[PATCH] efi/tpcm: Add TPCM module support
 2025-05-0083: Re: [PATCH v2] grub-probe: detect DDF container similar to IMSM
 2025-05-0084: [PATCH 1/2] envblk: ignore empty new lines while parsing env files
 2025-05-0108: [PATCH v2 0/3] commands/efi/lsefi: Fix memory leak

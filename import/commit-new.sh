@@ -7,8 +7,10 @@ zsh -n "$0"
 [[ "$(basename "$PWD")" == 'import' ]] || cd import
 
 F=failed.txt
+FF=failed_subj.txt
 
 [[ -r "$F" ]]
+[[ -r "$FF" ]]
 
 [[ -d "../logs/" ]]
 [[ -d "../grub/" ]]
@@ -16,7 +18,12 @@ F=failed.txt
 G=../logs/fail.log
 touch "$G"
 
+B="$(git -C ../grub/ branch | grep -E '^\s*202' | tr -s '\t' ' ' | cut -d' ' -f2)"
+
 for c in $(cat "$F"); do
+
+    grep -qE "^${c}: " "$FF" || { echo "FAIL: invalid branch '${c}'" | tee -a "$G" >&2; exit 4; }
+    grep -qE "^${c}$" <<< "$B" && continue
 
     { echo -e "\n>>> $c <<<"; } 2>/dev/null
 
