@@ -1,0 +1,70 @@
+PR !165 - net_add_addr PREFIX - 2 commits - 1 issue found
+
+Source files read during review and verification:
+  grub-core/net/net.c (pr165 branch, grub_cmd_addaddr + grub_net_add_ipv4_local)
+  docs/grub.texi (pr165 branch, diff only)
+
+== Issue 1: /0 prefix triggers undefined behavior (net.c) ==
+
+Discovery:
+Reading the new cidr validation in grub_cmd_addaddr at lines
+~1177-1186. The check `cidr < 0` rejects negative values but
+allows cidr=0. Traced what happens when mask=0 reaches
+grub_net_add_ipv4_local.
+
+Source trace:
+grub_cmd_addaddr parses "/PREFIX" from args[2]:
+
+  p = grub_strchr(args[2], '/');
+  cidr = -1;
+  if (p) {
+    cidr = (int)grub_strtol(&p[1], &q, 10);
+    if ((! q) || (q[0] != '\0') || (cidr > 31) || (cidr < 0))
+      return grub_error(..., "invalid network prefix");
+    p[0] = '\0';
+  }
+
+For input "10.0.0.1/0":
+1. p points to "/"
+2. grub_strtol("0", &q, 10) returns 0, q points to '\0'
+3. Validation: (!q) false, (q[0]!='\0') false, (0>31) false,
+   (0<0) false → passes
+4. p[0] = '\0' strips the "/0"
+5. grub_net_add_ipv4_local(inf, 0) is called
+
+In grub_net_add_ipv4_local (line ~1144):
+
+  route->target.ipv4.base =
+    grub_cpu_to_be32(ip_cpu & (0xffffffff << (32 - mask)));
+
+With mask=0: 0xffffffff << (32 - 0) = 0xffffffff << 32.
+
+C99 section 6.5.7p3: "If the value of the right operand is
+negative or is greater than or equal to the width of the
+promoted left operand, the behavior is undefined."
+
+0xffffffff is unsigned int (32-bit on all GRUB platforms).
+Shifting by 32 is >= the width, so the behavior is undefined.
+
+Before this patch, grub_net_add_ipv4_local was called with
+mask=-1 (which triggers auto-detection producing 8, 16, or 24,
+or early return for class D/E). mask=0 was never reachable.
+
+Cross-reference: on x86, the SHL instruction masks the shift
+count to 5 bits (Intel SDM Vol. 2B), so << 32 becomes << 0,
+giving 0xffffffff. On ARM, the barrel shifter returns 0 for
+shift amounts >= 32. The route base address would be
+architecture-dependent.
+
+Consequence:
+Typing "net_add_addr iface card 10.0.0.1/0" at the GRUB shell
+triggers undefined behavior. On x86, the route base becomes
+10.0.0.1/0 (matching all IPs — default route behavior). On ARM,
+the route base becomes 0.0.0.0/0. In neither case is the result
+likely what the user intended.
+
+Fix assessment:
+Changing `cidr < 0` to `cidr < 1` rejects /0 and eliminates the
+UB path. /0 is not meaningful for local routing (it means "all
+addresses are local"), so rejecting it is reasonable. The fix
+does not affect any valid prefix value (1-31).
