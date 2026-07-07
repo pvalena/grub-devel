@@ -8,8 +8,8 @@ zsh -n "$0"
 
 [[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
-rm ../logs/*.log ||:
+rm ../logs/202*.log ||:
 
 gitc master
 
-gitb | grep -E '^\s*202'|xargs -i zsh -c "echo '>{}<'; gitb -D '{}'"
+gitb | grep -E '^\s*202' | xargs -i zsh -c "echo '>{}<'; gitb -D '{}'"
