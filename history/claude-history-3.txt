@@ -18,7 +18,7 @@ description of the change. Create the file in ai-analysis/ directory.
      … +27 lines (ctrl+o to expand)
 
 ● Bash(ls -lh ai-analysis/BRANCHES_BY_AUTHOR_BRIEF.md)
-  ⎿  -rw-r--r-- 1 lpcs lpcs 12K Mar 18 16:46 ai-analysis/BRANCHES_BY_AUTHOR_BRIEF.md
+  ⎿  -rw-r--r-- 1 pvalena pvalena 12K Mar 18 16:46 ai-analysis/BRANCHES_BY_AUTHOR_BRIEF.md
 
 ● ✅ Created: BRANCHES_BY_AUTHOR_BRIEF.md
 
@@ -213,7 +213,7 @@ created a file branches.txt with a list of relevant branches.
        File "<stdin>", line 78, in <module>
      FileNotFoundError: [Errno 2] No such file or directory: 'ai-analysis/BRANCHES_BY_AUTHOR_BRIEF.md'
 
-● Bash(cd /home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel && python3 << 'SCRIPT'
+● Bash(cd /home/test/rhel/packages/grub2/grub-devel && python3 << 'SCRIPT'
       import sys…)
   ⎿  Generated file with 63 branches from 39 authors
 
