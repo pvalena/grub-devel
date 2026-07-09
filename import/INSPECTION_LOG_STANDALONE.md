@@ -117,3 +117,98 @@ Branches confirmed as already upstream are added to `drop_new.txt`.
 **Evidence**: master sb.c has `GRUB_EFI_SHIM_IMAGE_LOADER_GUID` (line 34),
 `shim_loader` (line 36), `last_verified_image_handle` (line 39).
 Also confirmed upstream during series inspection (2025-07-0066).
+
+## 2025-03-0073 — DROP
+
+**Subject**: fs/zfs: Fix a number of memory leaks
+**Author**: Stuart Hayes | **Change**: Add grub_free for nvlist/zapbuf/features/dnbuf.
+**Evidence**: master zfs.c has 28 free calls for these variables.
+
+## 2025-03-0093 — DROP
+
+**Subject**: powerpc: increase MIN RMA size for CAS negotiation (v4)
+**Author**: Avnish Chouhan | **Change**: 512→768 MB, CAS reboot property check.
+**Evidence**: master init.c lines 70-71 `RMO_ADDR_MAX 768 MB`.
+
+## 2025-03-0124 — DROP
+
+**Subject**: ieee1275/ofnet: Fix grub_malloc() removed after added safe
+**Author**: Nicolas Frayer | **Change**: Re-add `ofdata->path = grub_malloc(sz)`.
+**Evidence**: master ofnet.c line 467.
+
+## 2025-03-0130 — DROP
+
+**Subject**: fs/ntfs: Check at->attr_cur after calling next_attribute() (v2)
+**Author**: Andrew Hamilton | **Evidence**: master ntfs.c line 417 (superseded by v3).
+
+## 2025-03-0134 — DROP
+
+**Subject**: fs/ntfs: Correct NULL Deref / Possible Infinite Loop (v3)
+**Author**: Andrew Hamilton | **Evidence**: master ntfs.c line 417 `attr_cur >= at->mft->buf`.
+
+## 2025-03-0186 — KEEP
+
+**Subject**: pgp: factor out rsa_pad (appended-sig v2 part 5)
+**Author**: Daniel Axtens
+**Change**: New `pkcs1_v15` module factored out of pgp.c.
+**Evidence**: `grub-core/lib/pkcs1_v15.c` and `include/grub/pkcs1_v15.h` MISSING on master.
+
+## 2025-03-0204 — DROP
+
+**Subject**: appendedsig: trusted and distrusted support with hash (v2 part 20)
+**Author**: Sudhakar Kuppusamy
+**Evidence**: master appendedsig.c line 57 `OPTION_BINARY_HASH`, line 138 `binary-hash`.
+
+## 2025-03-0210 — DROP
+
+**Subject**: loader/i386/linux: Fix resource leak
+**Author**: Lidong Chen | **Change**: `return err` → `goto fail` after relocator alloc.
+**Evidence**: master linux.c line 1145-1146 has `if (err) goto fail`.
+
+## 2025-03-0226 — KEEP
+
+**Subject**: Remove qemu_mips port
+**Author**: Vladimir Serbinenko
+**Change**: Remove all qemu_mips references from build system.
+**Evidence**: master configure.ac still has `qemu_mips` at lines 214-219, 282.
+
+## 2025-04-0009 — DROP
+
+**Subject**: Re: fs/xfs: fix large extent counters incompat feature
+**Author**: Vladimir Serbinenko | **Change**: Use `grub_xfs_get_inode_nextents()`.
+**Evidence**: master xfs.c line 578 defines it, line 974 uses it.
+
+## 2025-03-0073 — DROP
+
+**Subject**: fs/zfs: Fix a number of memory leaks in ZFS code
+**Author**: Stuart Hayes | **fp=1 code=1**
+**Change**: Add `grub_free()` for nvlist, zapbuf, features, dnbuf, fsname, snapname.
+**Evidence**: master zfs.c has 28 free calls for these variables.
+
+## 2025-03-0093 — DROP
+
+**Subject**: powerpc: increase MIN RMA size for CAS negotiation (v4)
+**Author**: Avnish Chouhan | **fp=1 code=1**
+**Change**: 512MB → 768MB RMA, add CAS reboot property check.
+**Evidence**: master init.c lines 70-71 have `RMO_ADDR_MAX 768 MB`.
+
+## 2025-03-0124 — DROP
+
+**Subject**: ieee1275/ofnet: Fix grub_malloc() removed after added safe
+**Author**: Nicolas Frayer | **fp=1 code=1**
+**Change**: Re-add `ofdata->path = grub_malloc(sz)`.
+**Evidence**: master ofnet.c line 467.
+
+## 2025-03-0130 — DROP
+
+**Subject**: fs/ntfs: Check at->attr_cur after calling next_attribute() (v2)
+**Author**: Andrew Hamilton | **fp=1 code=1**
+**Change**: Add `attr_cur != NULL` check in while loop.
+**Evidence**: master ntfs.c line 417 has the bounds check (superseded by v3/0134).
+
+## 2025-03-0134 — DROP
+
+**Subject**: fs/ntfs: Correct NULL Deref / Possible Infinite Loop (v3)
+**Author**: Andrew Hamilton | **fp=1 code=1**
+**Change**: Add `attr_cur >= at->mft->buf` bounds check.
+**Evidence**: master ntfs.c line 417 has `at->attr_cur >= at->mft->buf`.
