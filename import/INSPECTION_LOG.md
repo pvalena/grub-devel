@@ -119,3 +119,41 @@ with trust/distrust commands, ibm,secure-boot lockdown. Some v2-specific feature
 FAILED.patches — likely refactored/folded into different patches in v18 (which has 11
 remaining parts covering the same scope: PKS, DB/DBX, key management, lockdown).
 **Decision**: DROP — v2 superseded by v18 series (2025-10-0142), which is kept.
+
+## Series: 2025-04-0016 (3 of 7, Vladimir Serbinenko) — libgcrypt v1 import
+
+**Topic**: Import libgcrypt 1.10.3, adjust import script, disable keccak SSE
+
+All FAILED.patch only. Superseded by v14 "Import libgcrypt 1.11" series (2025-07-0029,
+11 patches remaining). v14 imports a newer version (1.11 vs 1.10.3).
+**Decision**: DROP — superseded by v14.
+
+## Series: 2025-04-0057 (9 of 13, Gary Lin) — tpm2_key_protector v5
+
+**Topic**: dump PCRs, tpm2_dump_pcr command, NV index support, tests, docs
+
+All have FAILED.patch + code changes. master has: `tpm2_dump_pcr` command in
+`commands/tpm2_key_protector/module.c`, NV index in module + `grub-protect.c`
+(line 66: `PROTECT_OPT_TPM2_NVINDEX`), NV tests in `tpm2_key_protector_test.in`
+(line 240: `tpm2_seal_unseal_nv`), docs referencing tpm2_dump_pcr.
+**Decision**: DROP — all features already upstream.
+
+## Series: 2025-04-0266 + 2025-04-0270 (6 of 7, Brown/Philipson) — KEEP
+
+**Topic**: AMD SKINIT Secure Launch: PSP discovery, x86 definitions, core SKINIT,
+EFI support, TMR setup
+
+RFC PATCH v2, all FAILED.patch only. No slaunch/PSP/SKINIT code on master.
+**Decision**: KEEP — new feature, not upstream.
+
+## Series: 2025-05-0032 (2 patches, Glenn Washburn) — KEEP
+
+**Topic**: Disable gfxterm_menu/cmdline_cat tests + ZFS memory leak fix
+
+Mixed: ZFS `free_sahdrp` fix (2025-05-0033) IS on master (lines 3052-3068).
+Test disable (2025-05-0032) is NOT on master — tests still enabled, patch was
+not accepted (workaround for unifont issue). Independent patches grouped by
+proximity; keeping as a unit for review.
+**Decision**: KEEP — test disable not upstream.
+
+## Series: 2025-01-0098 (2 patches, Egor Ignatov) — KEEP (noted earlier)
