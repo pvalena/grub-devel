@@ -287,3 +287,91 @@ All upstream. `OBJ_TYPE_GPG_PUBKEY` (pgp.c:981), `appended-signature-size`
 (mkimage.c:88), `pks.h` exists, `append_add_db_cert` commands (appendedsig.c:968),
 ibm,secure-boot lockdown (init.c:1031), platform_keystore.c (315L).
 **Decision**: DROP — all features already upstream.
+
+## Series: 2025-10-0160 (3 of 20, Kuppusamy) — appended-sig v18 tests/docs
+
+Same v18 series. Tests (`appended_signature_test.c`, 348L) and docs on master.
+**Decision**: DROP — already upstream.
+
+## Series: 2025-10-0235 (9 of 13, Gary Lin) — argon2/kdf v5
+
+All upstream. `argon2.c` (52L), kdf patches (09-12), `argon2_test.c` (139L),
+word copy optimization in `kern/misc.c` (line 83). `grub_crypto_argon` in 6 files.
+**Decision**: DROP — already upstream.
+
+## Series: 2025-10-0266 (3 of 12, Michael Chang) — btrfs envblk v5
+
+All upstream. `GRUB_ENV_BTRFS_OFFSET` in fs.h:135 and btrfs.c:2358-2360.
+`fs_envblk_open/write` in grub-editenv.c:133-134.
+**Decision**: DROP — already upstream.
+
+## Series: 2025-10-0294 (6 of 12, Michael Chang) — grub-editenv v6 — KEEP
+
+Code helpers (fs_envblk_open/write, set/unset/list wiring) on master. URL update
+(btrfs.readthedocs.io) on master. BUT btrfs environment block documentation in
+grub.texi (patch 11/12) is NOT on master.
+**Decision**: KEEP — docs not upstream.
+
+## Series: 2025-10-0329 (7 of 10, Gary Lin) — x86_64 sha256 hw accel v3
+
+All upstream. `hwfeatures-gcry.c` (52L), `cpuid.h`, `x86_64/efi/hwfeatures-gcry.c`
+(256L), libgcrypt patches 13-15 present.
+**Decision**: DROP — already upstream.
+
+## Series: 2025-11-0014 (2 of 3, Andrew Hamilton) — KEEP
+
+`GRUB_FORCE_EFI_ALLVIDEO` env var not on master. New feature.
+
+## Series: 2025-11-0097 (2 of 4, Glenn Washburn) — erofs test v3
+
+All upstream. Root check removed from erofs_test.in. dump.erofs FSTIME fix at
+grub-fs-tester.in:1512.
+**Decision**: DROP.
+
+## Series: 2025-11-0104 (2 of 3, Andrew Hamilton) — ZFS ZSTD test split v6
+
+All upstream. `zfs_zstd_test.in` (30L) exists. ext2 `-r` flag detection at
+grub-fs-tester.in:890.
+**Decision**: DROP.
+
+## Series: 2025-11-0120 (2 patches, Glenn Washburn) — cryptomount test
+
+All upstream. `testcase_fail` changed to `testcase` for argon2 at
+grub_cmd_cryptomount.in:182. `$builddir` variable used.
+**Decision**: DROP.
+
+## Series: 2025-11-0142 (3 of 5, Glenn Washburn) — docs spelling/test section
+
+All upstream. Spelling fix "across" (grub-dev.texi:931). Privileged user note
+(grub-dev.texi:485). Tests chapter (grub-dev.texi:466-467).
+**Decision**: DROP.
+
+## Series: 2025-11-0204 (2 of 4, Glenn Washburn) — bootstrap linguas v4
+
+All upstream. INSTALL step renumbered (no linguas.sh step). bootstrap.conf
+linguas logic at lines 112-127.
+**Decision**: DROP.
+
+## Series: 2025-12-0028 (2, Glenn Washburn) — KEEP
+
+CSMACINTOSH encoding fix (patch 2) is upstream (grub-fs-tester.in:746-748).
+Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
+**Decision**: KEEP — autoconf-archive note not upstream.
+
+## Series: 2026-02-0066 (3 of 6, Avnish Chouhan) — NVMeoFC v7
+
+All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
+(ofdisk.c:433), `add_multiple_nvme_bootdevices` (platform.c:191).
+**Decision**: DROP.
+
+## Series: 2026-03-0010 (4 of 9, Nicholas Vinson) — KEEP
+
+ld.lld compatibility: `--image-base` revert and `-Ttext` removal NOT on master.
+configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
+(line 1504). `i386-cygwin-img.lds` exists but old `.sc` file removed.
+**Decision**: KEEP — linker compatibility changes not upstream.
+
+## Series: 2025-09-0115 (2, Hector Cao)
+
+QEMU patches (`target/i386/kvm/kvm.c`) sent to GRUB ML by mistake.
+**Decision**: DROP — not a GRUB patch.
