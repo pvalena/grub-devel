@@ -256,3 +256,34 @@ All upstream. INSTALL has `libtasn1` reference. BUGS has savannah URL.
 All upstream. grub.texi has blake2/aria module docs (7 hits), "2.x" text,
 HTTPS URLs (3 hits for gnu.org/software/grub).
 **Decision**: DROP.
+
+## Series: 2025-08-0194 (7 of 21, Sudhakar Kuppusamy) — appended-sig v9
+
+Superseded by v18 (2025-10-0142). All features on master or in v18 remaining.
+**Decision**: DROP — superseded.
+
+## Series: 2025-09-0005 (2 of 7, Gary Lin) — tss2 cap_pcr v3
+
+Superseded by v4 (2025-10-0092). `grub_tcg2_cap_pcr` on master (efi/tcg2.c:206,
+tpm2_cmd.c:572). `TPM_CC_PCR_Event` at tss2_types.h:346.
+**Decision**: DROP — already upstream.
+
+## Series: 2025-09-0115 (2, Hector Cao) — WRONG MAILING LIST
+
+QEMU patches (`hw/core/machine.c`, `target/i386/kvm/kvm.c`) sent to GRUB ML.
+Not applicable to GRUB.
+**Decision**: DROP — not a GRUB patch.
+
+## Series: 2025-10-0092 (3 of 7, Gary Lin) — tss2 PCR_Event v4
+
+All upstream. `TPM2_PCR_Event` at tpm2_cmd.c:572, `grub_tcg2_cap_pcr` for
+ieee1275 at tcg2.c:206, PCR capping in tpm2_key_protector module.c:1178,
+`feature_tpm2_cap_pcrs` in normal/main.c:521.
+**Decision**: DROP — already upstream.
+
+## Series: 2025-10-0142 (11 of 20, Sudhakar Kuppusamy) — appended-sig v18
+
+All upstream. `OBJ_TYPE_GPG_PUBKEY` (pgp.c:981), `appended-signature-size`
+(mkimage.c:88), `pks.h` exists, `append_add_db_cert` commands (appendedsig.c:968),
+ibm,secure-boot lockdown (init.c:1031), platform_keystore.c (315L).
+**Decision**: DROP — all features already upstream.
