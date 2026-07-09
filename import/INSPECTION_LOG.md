@@ -157,3 +157,102 @@ proximity; keeping as a unit for review.
 **Decision**: KEEP — test disable not upstream.
 
 ## Series: 2025-01-0098 (2 patches, Egor Ignatov) — KEEP (noted earlier)
+
+## Series: 2025-05-0076 (2 patches, khaalid) — KEEP
+
+**Topic**: Enhance error messages in chainloader/linux with hex status codes
+Not upstream — master still has plain `"cannot load image"` without status code in
+chainloader.c. linux.c has different wording (`"start_image() returned"` vs `"cannot start image"`).
+
+## Series: 2025-05-0113 (3 patches, Hamilton/Serbinenko)
+
+**Topic**: NTFS regressions, fshelp NULL deref, NTFS access violations
+All upstream. NTFS error strings on master: `"pu offset size incorrect"` (268),
+`"edat offset is out of bounds"` (469/481), `"run offset out of range"` (722),
+`"bitmap attribute loop"` (1161). fshelp `read_symlink != NULL` check at line 229.
+**Decision**: DROP.
+
+## Series: 2025-05-0151 (2 patches, khaalid cali)
+
+**Topic**: EFI memory leak fixes in lsefi.c, tpm.c, linux.c
+All upstream. `grub_free(handles)` in lsefi.c:128, tpm.c:116/129.
+`grub_free(mempath)` in linux.c:226/231.
+**Decision**: DROP.
+
+## Series: 2025-05-0166 (2 patches, Andrew Hamilton)
+
+**Topic**: NTFS attribute validation + access violation fixes (v3)
+Same NTFS fixes as 2025-05-0113, all on master.
+**Decision**: DROP.
+
+## Series: 2025-05-0201 (2 patches, Jiří Wolker) — KEEP
+
+**Topic**: Export/unexport env variables with `-u`/`-g` flags
+Not upstream — no `unexport` command, no `grub_env_set_export_mode`, no `-g` flag on master.
+
+## Series: 2025-06-0040 (2 patches, Alec Brown)
+
+**Topic**: gnulib regcomp/regexec resource leak fixes
+All upstream. Patch files exist on master: `fix-regcomp-resource-leak.patch` (110L),
+`fix-regexec-resource-leak.patch` (11L). bootstrap.conf references them at lines 87-88.
+**Decision**: DROP.
+
+## Series: 2025-06-0177 (4 of 6 patches, Frediano Ziglio)
+
+**Topic**: loader/efi/linux LoadOptions: remove useless assignment, fix excessive size,
+use sizeof, correct NUL termination
+All upstream. master linux.c has `args_len` (201/242), separated `load_options_size` (253),
+NUL terminator (252), `grub_utf8_to_utf16` with `args_len` (250).
+**Decision**: DROP.
+
+## Series: 2025-07-0029 (11 of 15 patches, Vladimir Serbinenko) — KEEP
+
+**Topic**: Import libgcrypt 1.11, b64dec, blake2, import script, coverity fixes, memory leak
+Master has libgcrypt 1.11.0 — the import itself is upstream. However, patch 14
+(2025-07-0039, memory leak fix in `sexp.c`) is NOT upstream: `free(buffer)` before
+`return NULL` at "Invalid hex digits" path is missing on master line ~2719.
+**Decision**: KEEP — memory leak fix not upstream.
+
+## Series: 2025-07-0047 (3 of 5, Frediano Ziglio) — KEEP
+
+**Topic**: kern/list: `grub_list_append` + arm64/xen LoadFile2 + xen kernel cmdline
+RFC patches. No `grub_list_append` on master. Xen LoadFile2 not in xen loader.
+
+## Series: 2025-07-0066 (3 of 5, Mate Kukri)
+
+**Topic**: efi/sb: shim loader protocol support
+All upstream. `GRUB_EFI_SHIM_IMAGE_LOADER_GUID` at sb.c:34, `shim_loader`
+variable at sb.c:36, `last_verified_image_handle` at sb.c:39.
+**Decision**: DROP.
+
+## Series: 2025-07-0287 (2 of 7, Gary Lin)
+
+**Topic**: Argon2: extract from libgcrypt + LUKS2 Argon2 support
+Superseded by v5 series (2025-10-0235). master has `argon2.c` and
+`LUKS2_KDF_TYPE_ARGON2I/ID` in luks2.c.
+**Decision**: DROP — superseded by v5.
+
+## Series: 2025-08-0012 (2 patches, Vladimir Serbinenko) — KEEP
+
+**Topic**: ZFS: rewrite endianness handling + datto encryption support
+Not upstream — no `datto`, no `DSL_CRYPTO`, no `grub_cpu_to_zfs` on master.
+
+## Series: 2025-08-0076 (3 of 3, Aaron Rainbolt)
+
+**Topic**: Xen: rename MAX_GUEST_CMDLINE, add warning comment, add cmdline parsing (v5)
+All upstream. `GRUB_XEN_MAX_GUEST_CMDLINE` at xen.h:831, `grub_parse_xen_cmdline`
+at cmdline.c:118, called from init.c:585.
+**Decision**: DROP.
+
+## Series: 2025-08-0173 (2 patches, Andrew Hamilton)
+
+**Topic**: INSTALL: document libtasn1 + BUGS: update bug tracker URL
+All upstream. INSTALL has `libtasn1` reference. BUGS has savannah URL.
+**Decision**: DROP.
+
+## Series: 2025-08-0182 (3 of 4, Andrew Hamilton)
+
+**Topic**: docs: new libgcrypt modules, future section update, URL corrections
+All upstream. grub.texi has blake2/aria module docs (7 hits), "2.x" text,
+HTTPS URLs (3 hits for gnu.org/software/grub).
+**Decision**: DROP.
