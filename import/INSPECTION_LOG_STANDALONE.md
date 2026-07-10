@@ -178,6 +178,178 @@ Also confirmed upstream during series inspection (2025-07-0066).
 **Author**: Vladimir Serbinenko | **Change**: Use `grub_xfs_get_inode_nextents()`.
 **Evidence**: master xfs.c line 578 defines it, line 974 uses it.
 
+## 2025-04-0031 — DROP
+
+**Subject**: include/grub/i386/linux: Update linux_kernel_params
+**Author**: Patrick Colp | **Change**: Rename `grub_e820_mmap` → `grub_boot_e820_entry`.
+**Evidence**: master linux.h line 213 has `struct grub_boot_e820_entry`.
+
+## 2025-04-0048 — KEEP
+
+**Subject**: kern/x86_64/efi/startup: `call` → `jmp` for grub_main
+**Author**: khaliid caliy
+**Evidence**: master startup.S line 34 still has `call`. Not upstream.
+
+## 2025-04-0054 — KEEP
+
+**Subject**: Re: loader/efi/chainloader: Enhance error messages
+**Author**: khaliid caliy
+**Change**: Add `GRUB_EFI_INVALID_PARAMETER`, `NOT_FOUND`, `UNSUPPORTED` error cases.
+**Evidence**: none of these error strings on master chainloader.c.
+
+## 2025-04-0075 — DROP
+
+**Subject**: Re: arm64: Limit memory allocations to 4GB boundary
+**Author**: Vladimir Serbinenko
+**Change**: `GRUB_EFI_MAX_USABLE_ADDRESS` 0xffffffffffff → 0xffffffff.
+**Evidence**: master memory.h already has `0xffffffff`.
+
+## 2025-04-0094 — KEEP
+
+**Subject**: Use ET_DYN images and PHDRs for creating relocatable images
+**Author**: Vladimir Serbinenko
+**Change**: Switch EFI ldflags from `-Wl,-r` to `-shared`, remove `-R .rel.dyn`.
+**Evidence**: master Makefile.common line 46 still has `-R .rel.dyn`. Not upstream.
+
+## 2025-04-0140 — DROP
+
+**Subject**: Re: kern/efi/mm: try allocating in the lower 4GB first
+**Author**: Vladimir Serbinenko
+**Change**: Try `0xffffffff` first, fall back to `MAX_USABLE_ADDRESS`.
+**Evidence**: master mm.c line 173 has `0xffffffff` allocation.
+
+## 2025-04-0196 — KEEP
+
+**Subject**: Re: efi/mm: relax memory type request from allocate_pages
+**Author**: Vladimir Serbinenko
+**Change**: `GRUB_EFI_ALLOCATE_MAX_ADDRESS` → `GRUB_EFI_ALLOCATE_ANY_PAGES`.
+**Evidence**: `ALLOCATE_ANY_PAGES` not found on master mm.c.
+
+## 2025-04-0215 — DROP
+
+**Subject**: Re: kern/efi/mm: try allocating in the lower 4GB first
+**Author**: Vladimir Serbinenko | Same patch as 2025-04-0140.
+**Evidence**: master mm.c line 173.
+
+## 2025-04-0249 — DROP
+
+**Subject**: Add Xen command line parsing (v1)
+**Author**: Aaron Rainbolt | Superseded by v5 (2025-08-0076), confirmed upstream.
+
+## 2025-04-0254 — KEEP
+
+**Subject**: loader/efi/chainloader: Enhance error message (v1)
+**Author**: khaliid caliy
+**Change**: Add `UNSUPPORTED`, `INVALID_PARAMETER`, hex status in error messages.
+**Evidence**: none of these error strings on master chainloader.c.
+
+## 2025-04-0273 — KEEP
+
+**Subject**: RFC: multiboot2: Support SKINIT Secure Launch
+**Author**: Michał Żygowski | Part of SKINIT RFC series.
+**Evidence**: `grub-core/loader/slaunch/skl.c` MISSING on master.
+
+## 2025-05-0008 — KEEP
+
+**Subject**: ntfs: Fix attribute validation check
+**Author**: Vladimir Serbinenko | **Change**: `curr += min_size` → `curr = min_size`.
+**Evidence**: neither pattern found on master (code restructured, but fix not applied).
+
+## 2025-05-0025 — KEEP
+
+**Subject**: ia64: Disable optimizations using floating-point (v2)
+**Author**: Vladimir Serbinenko | **Change**: Add `-mno-inline-int-divide`.
+**Evidence**: not found on master configure.ac.
+
+## 2025-05-0037 — KEEP
+
+**Subject**: loader/efi/linux: Enhance linux command error messages (v2)
+**Author**: khaliid caliy
+**Evidence**: Enhanced error strings not on master linux.c.
+
+## 2025-05-0046 — DROP
+
+**Subject**: docs: Document available crypto disks checks (SECURITY PATCH 5/8)
+**Author**: Maxim Suhanov
+**Evidence**: master grub.texi lines 4756-4757, 6816, 7353-7354 have cryptocheck docs.
+
+## 2025-05-0055 through 2025-05-0059 — DROP (5 branches)
+
+**Subject**: SECURITY PATCH series parts 3,4,6,7,8: cryptocheck command, search
+diskfilter, erase secrets, wipe passphrase, --quiet option
+**Authors**: Vladimir Serbinenko (Re: to Maxim Suhanov originals)
+**Evidence** (all on master):
+- cryptocheck `--quiet`: diskfilter.c:1417-1423
+- passphrase wipe: cryptodisk.c:1315, 1878
+- erase secrets: cryptodisk.c:1889
+- search diskfilter: search.c:58-68
+- cryptocheck command: diskfilter.c:1382-1450
+
+## 2025-05-0060 — DROP
+
+**Subject**: Re: search: Introduce the --cryptodisk-only argument
+**Evidence**: master search.c line 125 `SEARCH_FLAGS_CRYPTODISK_ONLY`.
+
+## 2025-05-0062, 2025-05-0072 — DROP (2 branches)
+
+**Subject**: commands/efi: dump all uefi runtime variables (lsefivar)
+**Evidence**: master `grub-core/commands/efi/lsefivar.c` exists.
+
+## 2025-05-0075 — KEEP
+
+**Subject**: Re: testpci: initial module (v2)
+**Author**: Vladimir Serbinenko
+**Evidence**: `grub-core/commands/testpci.c` MISSING on master. New module.
+
+## 2025-05-0079 — DROP
+
+**Subject**: loader/efi/linux: Fix memory leak
+**Evidence**: `grub_free(mempath)` on master linux.c:226/231 (confirmed earlier).
+
+## 2025-05-0083 — DROP
+
+**Subject**: Re: grub-probe: detect DDF container similar to IMSM (v2)
+**Evidence**: master getroot.c lines 122, 645 `grub_util_is_imsm_or_ddf`.
+
+## 2025-05-0084, 2025-05-0132 — DROP (2 branches)
+
+**Subject**: envblk: ignore empty new lines while parsing env files
+**Evidence**: master envblk.c line 238 `*p != '#' && *p != '\n' && *p != '\r'` (superset).
+
+## 2025-05-0110 — DROP
+
+**Subject**: loader/efi/linux: Fix memory leak (v2)
+**Evidence**: same fix as 2025-05-0079/0153, already upstream.
+
+## 2025-05-0117 — DROP
+
+**Subject**: Re: fs/fshelp: Avoid possible NULL pointer deference
+**Evidence**: fshelp `read_symlink != NULL` at master line 229 (confirmed earlier).
+
+## 2025-05-0139 — DROP
+
+**Subject**: fs/ntfs: Correct regression with run list calculation (v2)
+**Evidence**: master ntfs.c lines 86, 182-184 have `run_size` fix (different expression, same fix).
+
+## 2025-05-0153 — DROP (already in drop_new.txt)
+
+## 2025-05-0180 — DROP
+
+**Subject**: UEFI: Fix several memory leaks of UEFI handles
+**Evidence**: Clean apply, `grub_memcpy` inline at master misc.h:107.
+
+## 2025-05-0209 — KEEP
+
+**Subject**: Re: Exporting variables to upper levels
+**Author**: Vladimir Serbinenko | Same feature as series 2025-05-0201.
+**Evidence**: `grub_env_set_export_mode` not on master.
+
+## 2025-05-0222 — KEEP
+
+**Subject**: Re: Option to set title of submenus
+**Author**: Vladimir Serbinenko | **Change**: Add `--menutitle` option.
+**Evidence**: `menutitle` not found on master menuentry.c.
+
 ## 2025-03-0073 — DROP
 
 **Subject**: fs/zfs: Fix a number of memory leaks in ZFS code
