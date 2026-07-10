@@ -60,7 +60,17 @@ while [[ ${mr} -ge 0 ]]; do
 
     case $s in
         open)
-            # Do not write New -- obsoleted by mr-new.sh (watching for labels)
+            # Do not write New -- obsoleted by watch-label.sh
+
+            ## TODO: override with user with devel+permissions
+
+            ### user list
+            #glab --repo gnu-grub/grub api "projects/:id/members/all?per_page=10000" \
+            #    | jq -r '.[] | select(.access_level >= 30 and .state == "active" and .locked == false) | .username'
+
+
+            ### Author
+            #glab --repo gnu-grub/grub api "projects/:id/merge_requests/172" | jq -r '.author.username'
 #            echo "$mr" >> "$N"
             ;;
 

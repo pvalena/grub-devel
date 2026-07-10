@@ -61,6 +61,18 @@ for mr in `echo ${M}` ; do
 
     case $s in
         open)
+            ## we need to check who set the flag
+
+            ### Devel+ users:
+
+            #  glab --repo gnu-grub/grub api "projects/:id/members/all?per_page=100" \
+            #    | jq -r '.[] | select(.access_level >= 30 and .state == "active" and .locked == false) | .username'
+
+            ## user:
+
+            #  glab --repo gnu-grub/grub api "projects/:id/merge_requests/172/resource_label_events" \
+            #    | jq '.[] | select(.label.name == "Pending-AI-Review") | {action, username: .user.username, created_at}'
+
             grep -q "^${mr}$" "$N" 2>/dev/null || echo "$mr" >> "$N"
 
             grep -q "^${mr}$" "$D" && {

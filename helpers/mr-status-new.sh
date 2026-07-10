@@ -24,6 +24,8 @@ for m in `echo $M`; do
     case ${s} in
         open)
             # noop
+
+            ## TODO: Verify it still has the Pending-AI-Review label
             ;;
 
         merged|closed)
