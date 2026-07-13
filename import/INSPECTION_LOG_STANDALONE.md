@@ -350,6 +350,234 @@ diskfilter, erase secrets, wipe passphrase, --quiet option
 **Author**: Vladimir Serbinenko | **Change**: Add `--menutitle` option.
 **Evidence**: `menutitle` not found on master menuentry.c.
 
+## 2025-05-0256 — KEEP
+
+**Subject**: Regarding bug in affs filesystem parser (double-free fix)
+**Author**: cyber | **Change**: Use `temp_node` to prevent double-free in iterate_dir.
+**Evidence**: master affs.c lines 417-423 still have old code (no temp_node).
+
+## 2025-06-0029 — DROP
+
+**Subject**: tpm2_key_protector: Dump the PCR bank for key unsealing
+**Evidence**: master module.c line 180 `tpm2_dump_bank`, lines 675/1061/1121.
+
+## 2025-06-0045 — DROP
+
+**Subject**: appendedsig: trusted and distrusted support
+**Evidence**: Already confirmed upstream (same as 2025-03-0204).
+
+## 2025-06-0081, 2025-06-0096 — DROP (2 branches)
+
+**Subject**: lib/LzmaEnc: Validate 'len' before subtracting (v1 and v2)
+**Evidence**: master LzmaEnc.c lines 1883-1885 have the validation.
+
+## 2025-06-0099, 2025-06-0100 — DROP (2 branches)
+
+**Subject**: grub-protect PCR digest fix + tpm2 SHA384 tests
+Clean applies but branch tip = master tip (kern/misc memcpy). ALREADY_APPLIED.
+
+## 2025-06-0121 — KEEP
+
+**Subject**: Re: Create a Containerfile for development
+**Evidence**: `container/Containerfile`, `container/README` MISSING on master.
+
+## 2025-06-0133 — DROP
+
+**Subject**: gnulib: Bring back the fix for resolving unused variable
+**Evidence**: master bootstrap.conf line 90, patch file exists.
+
+## 2025-06-0142 — DROP
+
+**Subject**: tests: Correct netboot and file_filter test failure
+**Evidence**: master grub-shell.in lines 718-719 have netdir cleanup.
+
+## 2025-06-0121, 2025-06-0143 — KEEP (2 branches)
+
+**Subject**: Containerfile(s) for development
+**Evidence**: `container/Containerfile*`, `container/README` MISSING on master.
+
+## 2025-06-0149 — DROP
+
+**Subject**: Re: tests: Correct netboot test failure
+**Evidence**: Same fix as 2025-06-0142, already upstream.
+
+## 2025-06-0163, 2025-06-0182 — DROP (2 branches)
+
+**Subject**: loader/efi/linux v3 1/6 + v4 6/6
+**Evidence**: Part of series 2025-06-0177, confirmed upstream.
+
+## 2025-06-0188 — KEEP
+
+**Subject**: efi/tpcm: Add UEFI interface for TPCM module (v2)
+**Author**: chench246
+**Evidence**: `grub-core/commands/efi/tpcm.c`, `include/grub/efi/tpcm.h` MISSING on master.
+
+## 2025-07-0004 — KEEP
+
+**Subject**: efi/tpcm: Add UEFI interface for TPCM module (v3)
+**Evidence**: TPCM files MISSING on master. Same feature as 2025-06-0188.
+
+## 2025-07-0027 — DROP
+
+**Subject**: arm64/xen: Consider alignment calling (v2)
+**Evidence**: `xen_boot_address_align` on master xen_boot.c line 93.
+
+## 2025-07-0065 — DROP
+
+**Subject**: efi: Provide wrappers for load_image, start_image (v5 1/5)
+**Evidence**: `grub_efi_load_image` on master. Confirmed in shim loader series.
+
+## 2025-07-0130 — DROP
+
+**Subject**: Support environment block in btrfs reserved area
+**Evidence**: Superseded by v5/v6 btrfs envblk series (upstream).
+
+## 2025-07-0189 — DROP
+
+**Subject**: RFC: Copy the x86_64 optimization files
+**Evidence**: SHA-256 asm files already on master (upstream in series 2025-10-0329).
+
+## 2025-07-0212 — DROP
+
+**Subject**: conf: Add new libgcrypt and libtasn1 files to Makefile.extra-dist
+**Evidence**: master Makefile.extra-dist has 17 libgcrypt-patches refs.
+
+## 2025-07-0218 — DROP
+
+**Subject**: bli: set LoaderTpm2ActivePcrBanks runtime variable (v2)
+**Evidence**: master bli.c line 145 `LoaderTpm2ActivePcrBanks`.
+
+## 2025-07-0292 — DROP
+
+**Subject**: tests/util/grub-fs-tester: Use Argon2id for LUKS2 test
+**Evidence**: master grub-fs-tester.in line 880 `argon2id`.
+
+## 2025-08-0009 — DROP
+
+**Subject**: Re: kern/misc: Implement grub_strtok() (v5)
+**Evidence**: master misc.c lines 490-548, misc.h lines 128-129.
+
+## 2025-08-0048 — DROP
+
+**Subject**: relocator: Switch to own page table while moving chunks (v2)
+**Evidence**: master relocator_common_c.c: `PAGE_PRESENT` (62),
+`grub_cpu_relocator_preamble` (101), `preamble_size` (48).
+
+## 2025-08-0051, 0052, 0054 — DROP (3 branches)
+
+**Subject**: blsuki v6 (parts 2,4,5 of 5)
+**Evidence**: master `blsuki.c` (1534 L).
+
+## 2025-08-0093 — DROP
+
+**Subject**: util/bash-completion.d: s/mkrescure/mkrescue/g
+Clean apply = master tip commit. ALREADY_APPLIED.
+
+## 2025-08-0115 — DROP
+
+**Subject**: efi/console: treat scan_code 0x0102 (suspend) as enter
+**Evidence**: master console.c lines 214-215.
+
+## 2025-08-0146, 0147, 0153 — DROP (3 branches)
+
+**Subject**: Re: crypto.h KDF, import_gcry.py Argon2, docs argon2
+**Evidence**: all upstream — KDF at crypto.h:544-547, import_gcry.py:315, grub.texi:1714.
+
+## 2025-08-0164 — DROP
+
+**Subject**: Re: po: Update Translations to Build with Gettext 0.26
+**Evidence**: po/*.sed files exist on master.
+
+## 2025-08-0167 — KEEP
+
+**Subject**: bootstrap: Ensure shallow GNULIB clone works on newer GIT
+**Author**: Andrew Hamilton
+**Change**: Add `grep -E -- '--(\[no-\])?depth'` check before using `--depth`.
+**Evidence**: master bootstrap hardcodes `--depth 2` without checking (line 583).
+
+## 2025-08-0267 — DROP
+
+**Subject**: datetime: Support dates outside of 1901..2038 range (v6)
+**Evidence**: master datetime.c line 73 `grub_int64_t nix`.
+
+## 2025-08-0277 — DROP
+
+**Subject**: libgcrypt: Allow GRUB to Build With Clang
+**Evidence**: master crypto.h lines 253-258 `#pragma GCC diagnostic ignored`.
+
+## 2025-08-0280 — DROP
+
+Clean apply = master tip. ALREADY_APPLIED.
+
+## 2025-09-0012 — DROP
+
+**Subject**: util/grub-editenv: add basic structures (v1)
+**Evidence**: Superseded by v5/v6 btrfs envblk series (upstream).
+
+## 2025-09-0020 — DROP
+
+**Subject**: tcp: Fix TCP port number reused on reboot (v2)
+**Evidence**: master tcp.c lines 557-578, time-based port derivation at 21550.
+
+## 2025-09-0022 — DROP
+
+**Subject**: libgcrypt/kdf: blake2b_512.hash_buffers() (v4)
+**Evidence**: master patch file (63L). Superseded by v5.
+
+## 2025-09-0036 — DROP
+
+**Subject**: util/grub-image: fix riscv32 relocation offset
+**Evidence**: master mkimagexx.c line 1396 `(grub_int64_t) sym_addr`.
+
+## 2025-09-0065 — DROP
+
+**Subject**: docs: Add Security Hardening Suggestions
+**Evidence**: master grub.texi line 10757 "Security hardening".
+
+## 2025-09-0073 — DROP
+
+**Subject**: kern: perform NULL check in unregister paths
+**Evidence**: master extcmd.c:142 `ext == NULL`, command.c:107 `cmd == NULL`.
+
+## 2025-09-0082 — DROP
+
+**Subject**: lib/hwfeatures-gcry: Enable SSE and AVX (v1)
+**Evidence**: Superseded by v3 (2025-10-0329), confirmed upstream.
+
+## 2025-09-0086, 0119, 0162 — DROP (3 branches)
+
+Clean applies = master tip. ALREADY_APPLIED.
+
+## 2025-09-0135 — DROP
+
+**Subject**: docs: add Btrfs env block and special env vars (v2)
+Superseded by v5/v6 btrfs envblk (upstream).
+
+## 2025-09-0168 — DROP
+
+**Subject**: loader/i386/linux: Transfer EDID information to kernel
+**Evidence**: master linux.c lines 237-260 `grub_video_edid_info`.
+
+## 2025-09-0175, 0225 — DROP (2 branches)
+
+Clean applies = master tip. ALREADY_APPLIED.
+
+## 2025-09-0189 — DROP
+
+**Subject**: tests: include verbosity on tests.in checks
+**Evidence**: master tests have `set -ex` (e.g. btrfs_test.in:3).
+
+## 2025-09-0195 — KEEP
+
+**Subject**: efi/tpm: call get_active_pcr_banks only with TCG2 1.1+
+**Author**: Luca Boccassi
+**Evidence**: `tpm2_pcr_banks_reporting_present` not found on master.
+
+## 2025-09-0237 — DROP
+
+**Subject**: Re: Make grub_error() more verbose
+**Evidence**: master err.h:92-97 has `grub_error` with `__FILE__`, `__FUNCTION__`, `__LINE__`.
+
 ## 2025-03-0073 — DROP
 
 **Subject**: fs/zfs: Fix a number of memory leaks in ZFS code
