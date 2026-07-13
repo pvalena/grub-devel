@@ -273,7 +273,7 @@ Also confirmed upstream during series inspection (2025-07-0066).
 **Author**: Maxim Suhanov
 **Evidence**: master grub.texi lines 4756-4757, 6816, 7353-7354 have cryptocheck docs.
 
-## 2025-05-0055 through 2025-05-0059 — DROP (5 branches)
+## 2025-05-0055, 2025-05-0056, 2025-05-0057, 2025-05-0058, 2025-05-0059 — DROP (5 branches)
 
 **Subject**: SECURITY PATCH series parts 3,4,6,7,8: cryptocheck command, search
 diskfilter, erase secrets, wipe passphrase, --quiet option
@@ -463,7 +463,7 @@ Clean applies but branch tip = master tip (kern/misc memcpy). ALREADY_APPLIED.
 **Evidence**: master relocator_common_c.c: `PAGE_PRESENT` (62),
 `grub_cpu_relocator_preamble` (101), `preamble_size` (48).
 
-## 2025-08-0051, 0052, 0054 — DROP (3 branches)
+## 2025-08-0051, 2025-08-0052, 2025-08-0054 — DROP (3 branches)
 
 **Subject**: blsuki v6 (parts 2,4,5 of 5)
 **Evidence**: master `blsuki.c` (1534 L).
@@ -478,7 +478,7 @@ Clean apply = master tip commit. ALREADY_APPLIED.
 **Subject**: efi/console: treat scan_code 0x0102 (suspend) as enter
 **Evidence**: master console.c lines 214-215.
 
-## 2025-08-0146, 0147, 0153 — DROP (3 branches)
+## 2025-08-0146, 2025-08-0147, 2025-08-0153 — DROP (3 branches)
 
 **Subject**: Re: crypto.h KDF, import_gcry.py Argon2, docs argon2
 **Evidence**: all upstream — KDF at crypto.h:544-547, import_gcry.py:315, grub.texi:1714.
@@ -544,7 +544,7 @@ Clean apply = master tip. ALREADY_APPLIED.
 **Subject**: lib/hwfeatures-gcry: Enable SSE and AVX (v1)
 **Evidence**: Superseded by v3 (2025-10-0329), confirmed upstream.
 
-## 2025-09-0086, 0119, 0162 — DROP (3 branches)
+## 2025-09-0086, 2025-09-0119, 2025-09-0162 — DROP (3 branches)
 
 Clean applies = master tip. ALREADY_APPLIED.
 
@@ -558,7 +558,7 @@ Superseded by v5/v6 btrfs envblk (upstream).
 **Subject**: loader/i386/linux: Transfer EDID information to kernel
 **Evidence**: master linux.c lines 237-260 `grub_video_edid_info`.
 
-## 2025-09-0175, 0225 — DROP (2 branches)
+## 2025-09-0175, 2025-09-0225 — DROP (2 branches)
 
 Clean applies = master tip. ALREADY_APPLIED.
 

@@ -119,6 +119,7 @@ with trust/distrust commands, ibm,secure-boot lockdown. Some v2-specific feature
 FAILED.patches — likely refactored/folded into different patches in v18 (which has 11
 remaining parts covering the same scope: PKS, DB/DBX, key management, lockdown).
 **Decision**: DROP — v2 superseded by v18 series (2025-10-0142), which is kept.
+**Dropped branches**: 2025-03-0198, 2025-03-0199, 2025-03-0200, 2025-03-0201, 2025-03-0203, 2025-03-0202, 2025-03-0205
 
 ## Series: 2025-04-0016 (3 of 7, Vladimir Serbinenko) — libgcrypt v1 import
 
@@ -127,6 +128,7 @@ remaining parts covering the same scope: PKS, DB/DBX, key management, lockdown).
 All FAILED.patch only. Superseded by v14 "Import libgcrypt 1.11" series (2025-07-0029,
 11 patches remaining). v14 imports a newer version (1.11 vs 1.10.3).
 **Decision**: DROP — superseded by v14.
+**Dropped branches**: 2025-04-0016, 2025-04-0014, 2025-04-0015
 
 ## Series: 2025-04-0057 (9 of 13, Gary Lin) — tpm2_key_protector v5
 
@@ -137,6 +139,7 @@ All have FAILED.patch + code changes. master has: `tpm2_dump_pcr` command in
 (line 66: `PROTECT_OPT_TPM2_NVINDEX`), NV tests in `tpm2_key_protector_test.in`
 (line 240: `tpm2_seal_unseal_nv`), docs referencing tpm2_dump_pcr.
 **Decision**: DROP — all features already upstream.
+**Dropped branches**: 2025-04-0059, 2025-04-0057, 2025-04-0061, 2025-04-0063, 2025-04-0064, 2025-04-0065, 2025-04-0066, 2025-04-0070, 2025-04-0069
 
 ## Series: 2025-04-0266 + 2025-04-0270 (6 of 7, Brown/Philipson) — KEEP
 
@@ -171,6 +174,7 @@ All upstream. NTFS error strings on master: `"pu offset size incorrect"` (268),
 `"edat offset is out of bounds"` (469/481), `"run offset out of range"` (722),
 `"bitmap attribute loop"` (1161). fshelp `read_symlink != NULL` check at line 229.
 **Decision**: DROP.
+**Dropped branches**: 2025-05-0113, 2025-05-0118, 2025-05-0115
 
 ## Series: 2025-05-0151 (2 patches, khaalid cali)
 
@@ -178,12 +182,14 @@ All upstream. NTFS error strings on master: `"pu offset size incorrect"` (268),
 All upstream. `grub_free(handles)` in lsefi.c:128, tpm.c:116/129.
 `grub_free(mempath)` in linux.c:226/231.
 **Decision**: DROP.
+**Dropped branches**: 2025-05-0151, 2025-05-0153
 
 ## Series: 2025-05-0166 (2 patches, Andrew Hamilton)
 
 **Topic**: NTFS attribute validation + access violation fixes (v3)
 Same NTFS fixes as 2025-05-0113, all on master.
 **Decision**: DROP.
+**Dropped branches**: 2025-05-0166, 2025-05-0167
 
 ## Series: 2025-05-0201 (2 patches, Jiří Wolker) — KEEP
 
@@ -196,6 +202,7 @@ Not upstream — no `unexport` command, no `grub_env_set_export_mode`, no `-g` f
 All upstream. Patch files exist on master: `fix-regcomp-resource-leak.patch` (110L),
 `fix-regexec-resource-leak.patch` (11L). bootstrap.conf references them at lines 87-88.
 **Decision**: DROP.
+**Dropped branches**: 2025-06-0041, 2025-06-0040
 
 ## Series: 2025-06-0177 (4 of 6 patches, Frediano Ziglio)
 
@@ -204,6 +211,7 @@ use sizeof, correct NUL termination
 All upstream. master linux.c has `args_len` (201/242), separated `load_options_size` (253),
 NUL terminator (252), `grub_utf8_to_utf16` with `args_len` (250).
 **Decision**: DROP.
+**Dropped branches**: 2025-06-0177, 2025-06-0178, 2025-06-0179, 2025-06-0182
 
 ## Series: 2025-07-0029 (11 of 15 patches, Vladimir Serbinenko) — KEEP
 
@@ -224,6 +232,7 @@ RFC patches. No `grub_list_append` on master. Xen LoadFile2 not in xen loader.
 All upstream. `GRUB_EFI_SHIM_IMAGE_LOADER_GUID` at sb.c:34, `shim_loader`
 variable at sb.c:36, `last_verified_image_handle` at sb.c:39.
 **Decision**: DROP.
+**Dropped branches**: 2025-07-0068, 2025-07-0066, 2025-07-0069
 
 ## Series: 2025-07-0287 (2 of 7, Gary Lin)
 
@@ -231,6 +240,7 @@ variable at sb.c:36, `last_verified_image_handle` at sb.c:39.
 Superseded by v5 series (2025-10-0235). master has `argon2.c` and
 `LUKS2_KDF_TYPE_ARGON2I/ID` in luks2.c.
 **Decision**: DROP — superseded by v5.
+**Dropped branches**: 2025-07-0287, 2025-07-0291
 
 ## Series: 2025-08-0012 (2 patches, Vladimir Serbinenko) — KEEP
 
@@ -243,12 +253,14 @@ Not upstream — no `datto`, no `DSL_CRYPTO`, no `grub_cpu_to_zfs` on master.
 All upstream. `GRUB_XEN_MAX_GUEST_CMDLINE` at xen.h:831, `grub_parse_xen_cmdline`
 at cmdline.c:118, called from init.c:585.
 **Decision**: DROP.
+**Dropped branches**: 2025-08-0076, 2025-08-0077, 2025-08-0079
 
 ## Series: 2025-08-0173 (2 patches, Andrew Hamilton)
 
 **Topic**: INSTALL: document libtasn1 + BUGS: update bug tracker URL
 All upstream. INSTALL has `libtasn1` reference. BUGS has savannah URL.
 **Decision**: DROP.
+**Dropped branches**: 2025-08-0173, 2025-08-0174
 
 ## Series: 2025-08-0182 (3 of 4, Andrew Hamilton)
 
@@ -256,17 +268,20 @@ All upstream. INSTALL has `libtasn1` reference. BUGS has savannah URL.
 All upstream. grub.texi has blake2/aria module docs (7 hits), "2.x" text,
 HTTPS URLs (3 hits for gnu.org/software/grub).
 **Decision**: DROP.
+**Dropped branches**: 2025-08-0184, 2025-08-0182, 2025-08-0185
 
 ## Series: 2025-08-0194 (7 of 21, Sudhakar Kuppusamy) — appended-sig v9
 
 Superseded by v18 (2025-10-0142). All features on master or in v18 remaining.
 **Decision**: DROP — superseded.
+**Dropped branches**: 2025-08-0194, 2025-08-0196, 2025-08-0200, 2025-08-0198, 2025-08-0199, 2025-08-0203, 2025-08-0204
 
 ## Series: 2025-09-0005 (2 of 7, Gary Lin) — tss2 cap_pcr v3
 
 Superseded by v4 (2025-10-0092). `grub_tcg2_cap_pcr` on master (efi/tcg2.c:206,
 tpm2_cmd.c:572). `TPM_CC_PCR_Event` at tss2_types.h:346.
 **Decision**: DROP — already upstream.
+**Dropped branches**: 2025-09-0005, 2025-09-0006
 
 ## Series: 2025-09-0115 (2, Hector Cao) — WRONG MAILING LIST
 
@@ -280,6 +295,7 @@ All upstream. `TPM2_PCR_Event` at tpm2_cmd.c:572, `grub_tcg2_cap_pcr` for
 ieee1275 at tcg2.c:206, PCR capping in tpm2_key_protector module.c:1178,
 `feature_tpm2_cap_pcrs` in normal/main.c:521.
 **Decision**: DROP — already upstream.
+**Dropped branches**: 2025-10-0092, 2025-10-0094, 2025-10-0097
 
 ## Series: 2025-10-0142 (11 of 20, Sudhakar Kuppusamy) — appended-sig v18
 
@@ -287,23 +303,27 @@ All upstream. `OBJ_TYPE_GPG_PUBKEY` (pgp.c:981), `appended-signature-size`
 (mkimage.c:88), `pks.h` exists, `append_add_db_cert` commands (appendedsig.c:968),
 ibm,secure-boot lockdown (init.c:1031), platform_keystore.c (315L).
 **Decision**: DROP — all features already upstream.
+**Dropped branches**: 2025-10-0142, 2025-10-0145, 2025-10-0148, 2025-10-0149, 2025-10-0150, 2025-10-0151, 2025-10-0152, 2025-10-0153, 2025-10-0156, 2025-10-0157, 2025-10-0158
 
 ## Series: 2025-10-0160 (3 of 20, Kuppusamy) — appended-sig v18 tests/docs
 
 Same v18 series. Tests (`appended_signature_test.c`, 348L) and docs on master.
 **Decision**: DROP — already upstream.
+**Dropped branches**: 2025-10-0160, 2025-10-0162, 2025-10-0161
 
 ## Series: 2025-10-0235 (9 of 13, Gary Lin) — argon2/kdf v5
 
 All upstream. `argon2.c` (52L), kdf patches (09-12), `argon2_test.c` (139L),
 word copy optimization in `kern/misc.c` (line 83). `grub_crypto_argon` in 6 files.
 **Decision**: DROP — already upstream.
+**Dropped branches**: 2025-10-0238, 2025-10-0237, 2025-10-0242, 2025-10-0239, 2025-10-0235, 2025-10-0240, 2025-10-0245, 2025-10-0243, 2025-10-0247
 
 ## Series: 2025-10-0266 (3 of 12, Michael Chang) — btrfs envblk v5
 
 All upstream. `GRUB_ENV_BTRFS_OFFSET` in fs.h:135 and btrfs.c:2358-2360.
 `fs_envblk_open/write` in grub-editenv.c:133-134.
 **Decision**: DROP — already upstream.
+**Dropped branches**: 2025-10-0266, 2025-10-0271, 2025-10-0270
 
 ## Series: 2025-10-0294 (6 of 12, Michael Chang) — grub-editenv v6 — KEEP
 
@@ -317,6 +337,7 @@ grub.texi (patch 11/12) is NOT on master.
 All upstream. `hwfeatures-gcry.c` (52L), `cpuid.h`, `x86_64/efi/hwfeatures-gcry.c`
 (256L), libgcrypt patches 13-15 present.
 **Decision**: DROP — already upstream.
+**Dropped branches**: 2025-10-0329, 2025-10-0331, 2025-10-0332, 2025-10-0333, 2025-10-0335, 2025-10-0336, 2025-10-0337
 
 ## Series: 2025-11-0014 (2 of 3, Andrew Hamilton) — KEEP
 
@@ -327,30 +348,35 @@ All upstream. `hwfeatures-gcry.c` (52L), `cpuid.h`, `x86_64/efi/hwfeatures-gcry.
 All upstream. Root check removed from erofs_test.in. dump.erofs FSTIME fix at
 grub-fs-tester.in:1512.
 **Decision**: DROP.
+**Dropped branches**: 2025-11-0099, 2025-11-0097
 
 ## Series: 2025-11-0104 (2 of 3, Andrew Hamilton) — ZFS ZSTD test split v6
 
 All upstream. `zfs_zstd_test.in` (30L) exists. ext2 `-r` flag detection at
 grub-fs-tester.in:890.
 **Decision**: DROP.
+**Dropped branches**: 2025-11-0104, 2025-11-0105
 
 ## Series: 2025-11-0120 (2 patches, Glenn Washburn) — cryptomount test
 
 All upstream. `testcase_fail` changed to `testcase` for argon2 at
 grub_cmd_cryptomount.in:182. `$builddir` variable used.
 **Decision**: DROP.
+**Dropped branches**: 2025-11-0121, 2025-11-0120
 
 ## Series: 2025-11-0142 (3 of 5, Glenn Washburn) — docs spelling/test section
 
 All upstream. Spelling fix "across" (grub-dev.texi:931). Privileged user note
 (grub-dev.texi:485). Tests chapter (grub-dev.texi:466-467).
 **Decision**: DROP.
+**Dropped branches**: 2025-11-0142, 2025-11-0143, 2025-11-0144
 
 ## Series: 2025-11-0204 (2 of 4, Glenn Washburn) — bootstrap linguas v4
 
 All upstream. INSTALL step renumbered (no linguas.sh step). bootstrap.conf
 linguas logic at lines 112-127.
 **Decision**: DROP.
+**Dropped branches**: 2025-11-0204, 2025-11-0205
 
 ## Series: 2025-12-0028 (2, Glenn Washburn) — KEEP
 
@@ -363,6 +389,7 @@ Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
 All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 (ofdisk.c:433), `add_multiple_nvme_bootdevices` (platform.c:191).
 **Decision**: DROP.
+**Dropped branches**: 2026-02-0066, 2026-02-0067, 2026-02-0068
 
 ## Series: 2026-03-0010 (4 of 9, Nicholas Vinson) — KEEP
 
@@ -375,3 +402,4 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 
 QEMU patches (`target/i386/kvm/kvm.c`) sent to GRUB ML by mistake.
 **Decision**: DROP — not a GRUB patch.
+**Dropped branches**: 2025-09-0115, 2025-09-0116
