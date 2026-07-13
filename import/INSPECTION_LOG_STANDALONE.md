@@ -578,6 +578,62 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Subject**: Re: Make grub_error() more verbose
 **Evidence**: master err.h:92-97 has `grub_error` with `__FILE__`, `__FUNCTION__`, `__LINE__`.
 
+## Bulk DROPs (2025-09 through 2026-03)
+
+| Branch | Subject | Evidence |
+|--------|---------|----------|
+| 2025-09-0244 | grub_error verbose (Re:) | Same as 0237, upstream |
+| 2025-09-0250 | memtools: lsmemregions | master memtools.c:57 |
+| 2025-09-0258 | pbkdf2 HMAC-SHA tests | Master tip (ALREADY_APPLIED) |
+| 2025-10-0006 | hfsplus: Mac OS 9 files | master hfsplus.c:739 `mode == 0` |
+| 2025-10-0009 | grub-editenv v3 | Superseded by v5/v6 |
+| 2025-10-0011 | editenv list_variables v3 | Superseded by v5/v6 |
+| 2025-10-0044 | EDID info to kernel v2 | master linux.c:237-260 |
+| 2025-10-0090 | tss2 cap_pcr v4 | Master tip (ALREADY_APPLIED) |
+| 2025-10-0177 | editenv basic structures v4 | Superseded by v5/v6 |
+| 2025-10-0194 | ieee1275 net config for boot | master init.c:165-190 |
+| 2025-10-0228 | zstdio decompression v1 | Superseded by v3 |
+| 2025-10-0324 | zstdio decompression v3 | master zstdio.c (251L) |
+| 2025-10-0354 | Re: btrfs env docs | Dup of 2025-10-0304 (in series) |
+| 2025-10-0357 | appended sig EXTRA_DIST | master Makefile.extra-dist:82 |
+| 2025-10-0365 | MAINTAINERS/SECURITY dist | Master tip |
+| 2025-10-0380 | serial.c memory leak | Master tip |
+| 2025-11-0032 | security hardening docs v2 | Master tip |
+| 2025-11-0046 | linguas.sh directory fix | Master tip |
+| 2025-11-0058 | blsuki errno leakage v1 | master blsuki.c:1396 |
+| 2025-11-0062 | openfw strdup checks | Master tip |
+| 2025-11-0112 | mkfs.ext2 -r flag v7 | Master tip |
+| 2025-11-0125 | zfs pointer downcasting | Master tip |
+| 2025-11-0155 | test: recursion depth fix | Master tip |
+| 2025-11-0173 | ofpath strdup checks v1 | master ofpath.c:1162 |
+| 2025-11-0178 | Revert test changes (cover) | Empty FAILED.patch |
+| 2025-11-0194 | blsuki errno v4 | master blsuki.c:1396 |
+| 2025-11-0195 | normal/cmdline hist_lines | master cmdline.c:44-55 |
+| 2025-11-0208 | tests nonnative label fix | master Makefile.util.def:829+ |
+| 2025-11-0226 | blsuki unexpected args v2 | master blsuki.c:1496/1508 |
+| 2025-11-0245 | efiemu/loadcore calloc | master loadcore.c:204-206 |
+| 2025-12-0002 | ofdisk memory leak | master ofdisk.c:117/125 |
+| 2025-12-0024 | bli UINT32_MAX PCR banks | master tpm.c:42 |
+| 2025-12-0037 | lsefisystab MEMORY_ATTRIBUTES | master lsefisystab.c:50 |
+| 2025-12-0051 | grub-mkimage SBAT check | master mkimage.c:931+ |
+| 2025-12-0083 | grub-mkimage SBAT fix v2 | master mkimage.c:59-60 |
+| 2026-01-0005 | ECB/CBC tests v4 | master crypto_cipher_mode_test.c (197L) |
+| 2026-01-0018 | ieee1275 partition check v4 | master openfw.c:531-541 |
+| 2026-01-0031 | mmap integer overflow | master mmap.c:412 |
+| 2026-01-0076 | PowerPC install device check v4 | master grub-install.c:1293 |
+| 2026-02-0012 | C23 strchr/strrchr fix v2 | master ofpath.c:939 |
+| 2026-02-0031 | glibc 2.43 C23 fix | Same C23 fix, upstream |
+| 2026-02-0082 | ofpath strstr const v2 | master ofpath.c:939 |
+| 2026-02-0093 | FDT blob 8-byte alignment | master fdt.c:41/149 |
+| 2026-03-0020 | SECURITY team update | master SECURITY:52-53 |
+| 2026-03-0026 | MAINTAINERS update | master MAINTAINERS:5-6 |
+| 2026-03-0031 | MAINTAINERS git repo update | master MAINTAINERS:17/34-35 |
+
+## Standalone KEEPs (58 branches)
+
+These branches carry changes NOT found on current master. They should
+remain as candidates for review and potential upstream submission.
+
 ## 2025-03-0073 — DROP
 
 **Subject**: fs/zfs: Fix a number of memory leaks in ZFS code
