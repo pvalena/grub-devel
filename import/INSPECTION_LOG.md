@@ -146,7 +146,18 @@ All have FAILED.patch + code changes. master has: `tpm2_dump_pcr` command in
 **Topic**: AMD SKINIT Secure Launch: PSP discovery, x86 definitions, core SKINIT,
 EFI support, TMR setup
 
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-04-0266 | FAILED.patch only: PSP discovery code, `psp.c`, `psp.h` | Not upstream |
+| 2025-04-0267 | FAILED.patch only: core PSP commands and capability | Not upstream |
+| 2025-04-0268 | FAILED.patch only: TMR setup to protect RAM from DMA | Not upstream |
+| 2025-04-0270 | FAILED.patch only: x86 definitions for AMD SKINIT | Not upstream |
+| 2025-04-0271 | FAILED.patch only: AMD SKINIT Secure Launch core (`skinit.c`, `skl.c`, `slaunch.c`) | Not upstream |
+| 2025-04-0272 | FAILED.patch only: EFI AMD SKINIT support | Not upstream |
+
 RFC PATCH v2, all FAILED.patch only. No slaunch/PSP/SKINIT code on master.
+All target files MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`,
+`include/grub/i386/skinit.h`, `include/grub/slaunch.h`, `include/grub/slr_table.h`.
 **Decision**: KEEP — new feature, not upstream.
 
 ## Series: 2025-05-0032 (2 patches, Glenn Washburn) — KEEP
@@ -164,8 +175,15 @@ proximity; keeping as a unit for review.
 ## Series: 2025-05-0076 (2 patches, khaalid) — KEEP
 
 **Topic**: Enhance error messages in chainloader/linux with hex status codes
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-05-0076 | FAILED.patch + chainloader.c: add hex status to error messages | Not upstream |
+| 2025-05-0077 | FAILED.patch + linux.c: add hex status to error messages | Not upstream |
+
 Not upstream — master still has plain `"cannot load image"` without status code in
 chainloader.c. linux.c has different wording (`"start_image() returned"` vs `"cannot start image"`).
+**Decision**: KEEP.
 
 ## Series: 2025-05-0113 (3 patches, Hamilton/Serbinenko)
 
@@ -194,7 +212,14 @@ Same NTFS fixes as 2025-05-0113, all on master.
 ## Series: 2025-05-0201 (2 patches, Jiří Wolker) — KEEP
 
 **Topic**: Export/unexport env variables with `-u`/`-g` flags
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-05-0201 | FAILED.patch only: add `grub_env_set_export_mode`, `-u`/`-g` flags | Not upstream |
+| 2025-05-0202 | FAILED.patch only: docs for new export/unexport options | Not upstream |
+
 Not upstream — no `unexport` command, no `grub_env_set_export_mode`, no `-g` flag on master.
+**Decision**: KEEP.
 
 ## Series: 2025-06-0040 (2 patches, Alec Brown)
 
@@ -216,6 +241,21 @@ NUL terminator (252), `grub_utf8_to_utf16` with `args_len` (250).
 ## Series: 2025-07-0029 (11 of 15 patches, Vladimir Serbinenko) — KEEP
 
 **Topic**: Import libgcrypt 1.11, b64dec, blake2, import script, coverity fixes, memory leak
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-07-0033 | FAILED.patch + code: Import libgcrypt 1.11 (hundreds of files) | Already upstream |
+| 2025-07-0029 | FAILED.patch + code: Import b64dec from gpg-error | Already upstream |
+| 2025-07-0031 | FAILED.patch + code: Adjust import script | Already upstream |
+| 2025-07-0032 | FAILED.patch + code: Add DSA and RSA SEXP tests | Already upstream |
+| 2025-07-0034 | FAILED.patch + code: Fix coverity warnings | Already upstream |
+| 2025-07-0035 | FAILED.patch + code: Remove unneeded gcrypt compilation flag | Already upstream |
+| 2025-07-0037 | FAILED.patch + code: Ignore sign-compare warnings | Already upstream |
+| 2025-07-0040 | FAILED.patch + code: Import blake family of hashes | Already upstream |
+| 2025-07-0038 | FAILED.patch + code: import_gcry python 3.4 compat | Already upstream |
+| 2025-07-0042 | FAILED.patch + code: Fix pylint warnings | Already upstream |
+| 2025-07-0039 | FAILED.patch + code: Fix memory leak in sexp.c | **NOT upstream** |
+
 Master has libgcrypt 1.11.0 — the import itself is upstream. However, patch 14
 (2025-07-0039, memory leak fix in `sexp.c`) is NOT upstream: `free(buffer)` before
 `return NULL` at "Invalid hex digits" path is missing on master line ~2719.
@@ -224,7 +264,15 @@ Master has libgcrypt 1.11.0 — the import itself is upstream. However, patch 14
 ## Series: 2025-07-0047 (3 of 5, Frediano Ziglio) — KEEP
 
 **Topic**: kern/list: `grub_list_append` + arm64/xen LoadFile2 + xen kernel cmdline
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-07-0057 | CLEAN_APPLY: kern/list: Add `grub_list_append` function | Not upstream |
+| 2025-07-0050 | FAILED.patch only: arm64/xen: Use LoadFile2 protocol for Xen boot | Not upstream |
+| 2025-07-0047 | FAILED.patch only: arm64/xen: Use kernel command line from cmdline | Not upstream |
+
 RFC patches. No `grub_list_append` on master. Xen LoadFile2 not in xen loader.
+**Decision**: KEEP.
 
 ## Series: 2025-07-0066 (3 of 5, Mate Kukri)
 
@@ -245,7 +293,14 @@ Superseded by v5 series (2025-10-0235). master has `argon2.c` and
 ## Series: 2025-08-0012 (2 patches, Vladimir Serbinenko) — KEEP
 
 **Topic**: ZFS: rewrite endianness handling + datto encryption support
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-08-0012 | FAILED.patch + 7 code files: rewrite ZFS endianness handling | Not upstream |
+| 2025-08-0013 | FAILED.patch + 3 code files: add datto encryption support | Not upstream |
+
 Not upstream — no `datto`, no `DSL_CRYPTO`, no `grub_cpu_to_zfs` on master.
+**Decision**: KEEP.
 
 ## Series: 2025-08-0076 (3 of 3, Aaron Rainbolt)
 
@@ -327,6 +382,15 @@ All upstream. `GRUB_ENV_BTRFS_OFFSET` in fs.h:135 and btrfs.c:2358-2360.
 
 ## Series: 2025-10-0294 (6 of 12, Michael Chang) — grub-editenv v6 — KEEP
 
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-10-0294 | FAILED.patch + code: fs_envblk open helper | Already upstream |
+| 2025-10-0296 | FAILED.patch + code: fs_envblk write helper | Already upstream |
+| 2025-10-0297 | FAILED.patch + code: wire set_variables to optional | Already upstream |
+| 2025-10-0299 | FAILED.patch + code: wire unset_variables to optional | Already upstream |
+| 2025-10-0304 | FAILED.patch + code: docs: Btrfs env block and special env vars | **NOT upstream** |
+| 2025-10-0305 | FAILED.patch + code: btrfs: update doc link for bootloader support | Already upstream |
+
 Code helpers (fs_envblk_open/write, set/unset/list wiring) on master. URL update
 (btrfs.readthedocs.io) on master. BUT btrfs environment block documentation in
 grub.texi (patch 11/12) is NOT on master.
@@ -341,7 +405,13 @@ All upstream. `hwfeatures-gcry.c` (52L), `cpuid.h`, `x86_64/efi/hwfeatures-gcry.
 
 ## Series: 2025-11-0014 (2 of 3, Andrew Hamilton) — KEEP
 
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-11-0014 | FAILED.patch + code: add `GRUB_FORCE_EFI_ALLVIDEO` to grub-mkconfig | Not upstream |
+| 2025-11-0015 | FAILED.patch + code: docs for new `GRUB_FORCE_EFI_ALLVIDEO` variable | Not upstream |
+
 `GRUB_FORCE_EFI_ALLVIDEO` env var not on master. New feature.
+**Decision**: KEEP.
 
 ## Series: 2025-11-0097 (2 of 4, Glenn Washburn) — erofs test v3
 
@@ -380,6 +450,11 @@ linguas logic at lines 112-127.
 
 ## Series: 2025-12-0028 (2, Glenn Washburn) — KEEP
 
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-12-0028 | CLEAN_APPLY: INSTALL: Add Autoconf Archive note | **NOT upstream** |
+| 2025-12-0029 | FAILED.patch + code: grub-fs-tester: Use CSMACINTOSH encoding | Already upstream |
+
 CSMACINTOSH encoding fix (patch 2) is upstream (grub-fs-tester.in:746-748).
 Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
 **Decision**: KEEP — autoconf-archive note not upstream.
@@ -392,6 +467,13 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 **Dropped branches**: 2026-02-0066, 2026-02-0067, 2026-02-0068
 
 ## Series: 2026-03-0010 (4 of 9, Nicholas Vinson) — KEEP
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2026-03-0010 | FAILED.patch + code: Revert `--image-base` check | Not upstream |
+| 2026-03-0012 | FAILED.patch + code: Drop `-Ttext` checks for i386-pc | Not upstream |
+| 2026-03-0014 | FAILED.patch only: Rename `i386-cygwin-img-ld.sc` to `.lds` | Not upstream |
+| 2026-03-0015 | FAILED.patch only: Update `.lds` to use `--defsym` | Not upstream |
 
 ld.lld compatibility: `--image-base` revert and `-Ttext` removal NOT on master.
 configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
