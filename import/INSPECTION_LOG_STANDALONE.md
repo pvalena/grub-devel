@@ -951,6 +951,123 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Change**: Update git repository URL to freedesktop.
 **Evidence**: master MAINTAINERS lines 17, 34-35 freedesktop URLs.
 
+## 2025-03-0191 — DROP
+
+**Subject**: grub-install: support embedding x509 certificates (appended-sig v2 part 7)
+**Author**: Alastair D'Silva | **fp=1 code=3**
+**Target**: `grub-core/commands/pgp.c`, `util/grub-mkimage.c`, headers
+**Change**: Add `OBJ_TYPE_X509_PUBKEY`, `x509key` option.
+**Evidence**: master mkimage.c:79 `x509key`, line 129 `x509keys`. Already upstream.
+
+## 2025-03-0207 — DROP
+
+**Subject**: configure: Add -mno-relax on riscv*
+**Author**: Vladimir Serbinenko | **fp=1 code=0**
+**Target**: `configure.ac`
+**Change**: Add `-mno-relax` / `-Wa,-mno-relax` check for riscv targets.
+**Evidence**: master configure.ac lines 919, 946, 1064 have `-mno-relax`.
+
+## 2025-03-0214 — DROP
+
+**Subject**: Re: fs/btrfs: Fix memory leaks
+**Author**: Vladimir Serbinenko | **fp=1 code=0**
+**Target**: `grub-core/fs/btrfs.c`
+**Change**: Add `grub_free(desc.data)` on error path.
+**Evidence**: master btrfs.c lines 1542, 2121 `grub_free (desc.data)`.
+
+## 2025-03-0215 — DROP
+
+**Subject**: Re: lib/reloacator: Fix memory leaks
+**Author**: Vladimir Serbinenko | **fp=1 code=0**
+**Target**: `grub-core/lib/relocator.c`
+**Change**: Add `grub_free(ctx.chunk)` on error paths.
+**Evidence**: master relocator.c lines 1443, 1461 `grub_free (ctx.chunk)`.
+
+## 2025-04-0029 — KEEP
+
+**Subject**: loader/efi: Enhance error messages in chainloader
+**Author**: khaliid caliy | **fp=1 code=0**
+**Target**: `grub-core/loader/efi/chainloader.c`
+**Change**: Add `GRUB_EFI_INVALID_PARAMETER`, `NOT_FOUND`, `UNSUPPORTED` error cases.
+**Evidence**: none of these status-specific error strings on master chainloader.c.
+
+## 2025-04-0108 — KEEP
+
+**Subject**: Disable gfxterm_menu and cmdline_cat tests
+**Author**: Vladimir Serbinenko | **fp=1 code=3**
+**Target**: `grub-core/Makefile.core.def`, test source files
+**Change**: Comment out gfxterm_menu/cmdline_cat test modules (unifont workaround).
+**Evidence**: master Makefile.core.def:2388 still has tests enabled.
+
+## 2025-04-0125 — DROP
+
+**Subject**: b64dec: Adjust for compilation in GRUB environment (v11 part 3)
+**Author**: Vladimir Serbinenko | **fp=1 code=1**
+**Target**: `grub-core/lib/b64dec.c`
+**Change**: Replace gpgrt headers with grub/crypto, add `_gpgrt_b64state` struct.
+**Evidence**: master b64dec.c line 79 `_gpgrt_b64state`. Already upstream.
+
+## 2025-04-0142 — KEEP
+
+**Subject**: Prepend debug traces with absolute and relative timestamps
+**Author**: Renaud Métrich | **fp=1 code=0**
+**Target**: `configure.ac`, `grub-core/kern/misc.c`
+**Change**: Add `--with-debug-timestamps` configure option.
+**Evidence**: `DEBUG_WITH_TIMESTAMPS` not found on master.
+
+## 2025-04-0143 — DROP
+
+**Subject**: Include function name on debug traces
+**Author**: Leo Sandoval | **fp=1 code=1**
+**Target**: `grub-core/kern/misc.c`, `include/grub/misc.h`
+**Change**: Add `__FUNCTION__` to `grub_dprintf` macro.
+**Evidence**: master misc.h:38 already has `__FUNCTION__`.
+
+## 2025-04-0211 — DROP
+
+**Subject**: date_unit_test: test dates outside of 32-bit unix range (v3)
+**Author**: Andrew Hamilton | **fp=1 code=1**
+**Target**: `tests/date_unit_test.c`
+**Change**: Add test vectors for 1901 and 2038 edge cases.
+**Evidence**: master date_unit_test.c lines 74-80 have 32-bit edge case tests.
+
+## 2025-04-0242 — DROP
+
+**Subject**: Testing for specific PCI devices
+**Author**: Yair Yarom | **fp=1 code=0**
+**Change**: Mailing list discussion/proposal, no actual code (empty FAILED.patch).
+**Evidence**: 0 lines in FAILED.patch. Just an email with testpci concept.
+
+## 2025-05-0064 — DROP
+
+**Subject**: commands/efi: add command to dump all uefi runtime variables (v3)
+**Author**: khaalid | **fp=1 code=0**
+**Target**: `grub-core/commands/efi/lsefivar.c`
+**Evidence**: master `lsefivar.c` (152L). Already upstream.
+
+## 2025-05-0082 — KEEP
+
+**Subject**: Fwd: efi/tpcm: Add TPCM module support
+**Author**: hao chen | **fp=1 code=0**
+**Target**: `grub-core/commands/efi/tpcm.c`, `grub-core/commands/tpcm.c`, `include/grub/efi/tpcm.h`
+**Evidence**: all 3 files MISSING on master. Same feature as 2025-06-0188/2025-07-0004.
+
+## 2025-05-0108 — DROP
+
+**Subject**: commands/efi/lsefi: Fix memory leak (v2)
+**Author**: khaalid | **fp=1 code=0**
+**Target**: `grub-core/commands/efi/lsefi.c`
+**Change**: Add `grub_free(handles)`.
+**Evidence**: master lsefi.c:128 `grub_free (handles)`.
+
+## 2025-06-0002 — DROP
+
+**Subject**: fs/ntfs.c: Correct next_attribute validation
+**Author**: Andrew Hamilton | **fp=1 code=1**
+**Target**: `grub-core/fs/ntfs.c`
+**Change**: Restructure `validate_attribute` call in `next_attribute`.
+**Evidence**: master ntfs.c:238 already has `validate_attribute` check.
+
 ## 2025-03-0073 — DROP
 
 **Subject**: fs/zfs: Fix a number of memory leaks in ZFS code
