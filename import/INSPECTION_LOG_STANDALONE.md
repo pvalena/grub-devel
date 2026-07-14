@@ -1068,6 +1068,183 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Change**: Restructure `validate_attribute` call in `next_attribute`.
 **Evidence**: master ntfs.c:238 already has `validate_attribute` check.
 
+## 2025-06-0011 — KEEP
+
+**Subject**: unix/hostdisk: Fix signed integer overflow
+**Author**: Lidong Chen | **fp=1 code=1**
+**Target**: `grub-core/osdep/unix/hostdisk.c`
+**Change**: Add `if (len > GRUB_SSIZE_MAX) return -1` checks.
+**Evidence**: `GRUB_SSIZE_MAX` not found in master hostdisk.c.
+
+## 2025-06-0031 — DROP
+
+**Subject**: tests/tpm2_key_protector_test: Add tests for SHA384 PCR
+**Author**: Gary Lin | **fp=1 code=1**
+**Evidence**: master tpm2_key_protector_test.in:139-141 has sha384 tests.
+
+## 2025-06-0092 — DROP
+
+**Subject**: build: Add new header files to dist
+**Author**: Andrew Hamilton | **fp=1 code=1**
+**Target**: `conf/Makefile.extra-dist`
+**Change**: Add asn1_test.h, tpm2_key_protector headers to EXTRA_DIST.
+**Evidence**: master Makefile.extra-dist:77-80 has all entries.
+
+## 2025-06-0101 — DROP
+
+**Subject**: tpm2_key_protector: Dump the PCR bank for key unsealing (v2)
+**Author**: Gary Lin | **fp=1 code=1**
+**Evidence**: master module.c:180 `tpm2_dump_bank`. Confirmed earlier.
+
+## 2025-06-0117 — KEEP
+
+**Subject**: gnulib: Add patch to allow GRUB w/GCC-15 compile (v2)
+**Author**: Andrew Hamilton | **fp=1 code=2**
+**Target**: `bootstrap.conf`, `grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch`
+**Evidence**: `gcc-15-compile-fix.patch` MISSING on master.
+
+## 2025-09-0037 — KEEP
+
+**Subject**: lsefi: fixed memory leaks (v2)
+**Author**: Renaud Métrich | **fp=1 code=2**
+**Target**: `grub-core/commands/efi/lsefi.c`, `include/grub/efi/efi.h`
+**Change**: Add `grub_efi_free_pool(protocols)`, add `grub_efi_allocate_pool` wrapper.
+**Evidence**: no `grub_efi_free_pool` calls in master lsefi.c.
+
+## 2025-06-0031 — DROP
+
+**Subject**: tests/tpm2_key_protector_test: Add tests for SHA384 PCR
+**Evidence**: master tpm2_key_protector_test.in:139-141 has sha384.
+
+## 2025-06-0092 — DROP
+
+**Subject**: build: Add new header files to dist
+**Evidence**: master Makefile.extra-dist:77-80 has all entries.
+
+## 2025-06-0101 — DROP
+
+**Subject**: tpm2_key_protector: Dump PCR bank for key unsealing (v2)
+**Evidence**: master module.c:180 `tpm2_dump_bank`.
+
+## 2025-09-0087 — DROP
+
+**Subject**: disk/cryptodisk: Add '--hw-accel' to enable hardware acceleration
+**Evidence**: master cryptodisk.c:69 `hw-accel`.
+
+## 2025-09-0230 — DROP
+
+**Subject**: Include function name on debug and error print (v2 2/2)
+**Evidence**: master err.h:97 `__FUNCTION__`. Already upstream.
+
+## 2025-09-0238 — KEEP
+
+**Subject**: Hint missing zstd support for PvGrub2 "not xen image"
+**Author**: Nagy Elemér Károly | **fp=1 code=0**
+**Target**: `grub-core/loader/i386/xen_file.c`
+**Change**: Enhance error to mention possible zstd compression.
+**Evidence**: master xen_file.c:92 still has plain `"not xen image"`.
+
+## 2025-10-0159 — DROP
+
+**Subject**: docs/grub: Document signing GRUB under UEFI (v18 18/20)
+**Evidence**: master grub.texi:10651 "Signing GRUB for UEFI secure boot".
+
+## 2025-10-0187 — DROP
+
+**Subject**: menuentry: Fix for out of bound issue
+**Author**: Sudhakar Kuppusamy | **fp=1 code=1**
+**Evidence**: master menuentry.c:269-270 `grub_strlen(args[argc - 1])` check.
+
+## 2025-10-0189 — KEEP
+
+**Subject**: commands/hashsum: Allow to store hash in variable
+**Author**: D.-E. Divernois | **fp=1 code=0**
+**Target**: `grub-core/commands/hashsum.c`, `docs/grub.texi`
+**Change**: Add `--set` option to store hash in env variable.
+**Evidence**: no `grub_env_set` in master hashsum.c.
+
+## 2025-10-0312 — DROP
+
+**Subject**: docs: Document lsmemregions and memtools commands
+**Author**: Andrew Hamilton | **fp=1 code=1**
+**Evidence**: master grub.texi:4307/5465-5466 has memtools docs.
+
+## 2025-10-0384 — DROP
+
+**Subject**: Adding a grub_malloc failure check in mmap.c
+**Author**: Avnish Chouhan | **fp=1 code=1**
+**Evidence**: master mmap.c:245 `if (n == NULL)`.
+
+## 2025-11-0027 — KEEP
+
+**Subject**: util/grub.d/00_header.in: Disable loading all_video on EFI (v2)
+**Author**: Andrew Hamilton | **fp=1 code=3**
+**Change**: Same `GRUB_FORCE_EFI_ALL_VIDEO` feature as series 2025-11-0014.
+**Evidence**: not on master (confirmed in series inspection).
+
+## 2025-11-0055 — DROP
+
+**Subject**: tests/erofs_test: Fix mkfs.erofs version test (v2)
+**Author**: Glenn Washburn | **fp=1 code=1**
+**Evidence**: master grub-fs-tester.in:606 uses `head -n 1 | (read _ V; echo $V)`.
+
+## 2025-11-0123 — DROP
+
+**Subject**: util/grub-mkrescue: Fix copy/paste issue referencing mdadm
+**Author**: Glenn Washburn | **fp=1 code=1**
+**Evidence**: master grub-mkrescue.c:342 uses `fout` (renamed from `mdadm`).
+
+## 2025-11-0166 — KEEP
+
+**Subject**: Check linker for --image-base support (v2)
+**Author**: Nicholas Vinson | **fp=1 code=2**
+**Target**: `acinclude.m4`, `configure.ac`
+**Evidence**: part of ld.lld compatibility series. Not upstream.
+
+## 2025-11-0238 — KEEP
+
+**Subject**: tests: add functional tests for ECB mode using various ciphers
+**Author**: Srish Srinivasan | **fp=1 code=4**
+**Target**: `grub-core/tests/ecb_test.c` + build/doc files
+**Evidence**: `ecb_test.c` MISSING on master.
+
+## 2025-12-0072 — KEEP
+
+**Subject**: INSTALL: Add new requirement for configure
+**Author**: Andrew Hamilton | **fp=0 code=1** (clean apply)
+**Change**: Add `Autoconf Archive macros (autoconf-archive)` to INSTALL.
+**Evidence**: not found on master INSTALL.
+
+## 2026-01-0019 — KEEP
+
+**Subject**: [RFC] Feature proposal: EFI variable check to enter grub menu
+**Author**: Mitchell Augustin | **fp=1 code=0**
+**Target**: `grub-core/normal/menu.c`
+**Change**: Check EFI variable to decide whether to show GRUB menu.
+**Evidence**: no EFI variable menu check on master menu.c.
+
+## 2026-01-0021 — KEEP
+
+**Subject**: configure: print a more helpful error if autoconf-archive is not installed
+**Author**: Radoslav Kolev | **fp=0 code=1** (clean apply)
+**Change**: Better error message when autoconf-archive is missing.
+**Evidence**: not on master (same feature as series 2025-12-0028).
+
+## 2026-01-0053 — KEEP
+
+**Subject**: Problems compiling 2.xx for AROS
+**Author**: Kalamatee | **fp=1 code=0**
+**Change**: Compilation fixes for AROS platform.
+**Evidence**: AROS-specific code not on master.
+
+## 2026-01-0079 — KEEP
+
+**Subject**: commands/linux: verify kernel file size
+**Author**: jinkangkang | **fp=1 code=0**
+**Target**: multiple linux loaders including `grub-core/loader/i386/efi/linux.c`
+**Change**: Add kernel file size verification.
+**Evidence**: `grub-core/loader/i386/efi/linux.c` MISSING on master.
+
 ## 2025-03-0073 — DROP
 
 **Subject**: fs/zfs: Fix a number of memory leaks in ZFS code
