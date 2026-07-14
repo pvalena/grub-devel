@@ -164,6 +164,11 @@ All target files MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`
 
 **Topic**: Disable gfxterm_menu/cmdline_cat tests + ZFS memory leak fix
 
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-05-0032 | FAILED.patch only: comment out gfxterm_menu/cmdline_cat tests | **Not upstream** |
+| 2025-05-0033 | FAILED.patch + code: ZFS `free_sahdrp` memory leak fix | Already upstream |
+
 Mixed: ZFS `free_sahdrp` fix (2025-05-0033) IS on master (lines 3052-3068).
 Test disable (2025-05-0032) is NOT on master — tests still enabled, patch was
 not accepted (workaround for unifont issue). Independent patches grouped by
@@ -194,12 +199,13 @@ All upstream. NTFS error strings on master: `"pu offset size incorrect"` (268),
 **Decision**: DROP.
 **Dropped branches**: 2025-05-0113, 2025-05-0118, 2025-05-0115
 
-## Series: 2025-05-0151 (2 patches, khaalid cali)
+## Series: 2025-05-0151 (dissolved — both members upstream)
 
 **Topic**: EFI memory leak fixes in lsefi.c, tpm.c, linux.c
 All upstream. `grub_free(handles)` in lsefi.c:128, tpm.c:116/129.
 `grub_free(mempath)` in linux.c:226/231.
-**Decision**: DROP.
+**Decision**: DROP. Series dissolved — 2025-05-0151 moved to standalone (DROP),
+2025-05-0153 moved to standalone (DROP).
 **Dropped branches**: 2025-05-0151, 2025-05-0153
 
 ## Series: 2025-05-0166 (2 patches, Andrew Hamilton)

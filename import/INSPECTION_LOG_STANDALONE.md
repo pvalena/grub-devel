@@ -331,7 +331,23 @@ diskfilter, erase secrets, wipe passphrase, --quiet option
 **Subject**: fs/ntfs: Correct regression with run list calculation (v2)
 **Evidence**: master ntfs.c lines 86, 182-184 have `run_size` fix (different expression, same fix).
 
-## 2025-05-0153 — DROP (already in drop_new.txt)
+## 2025-05-0151 — DROP
+
+**Subject**: commands/efi: Fix several memory leaks (cover letter)
+**Author**: khaalid cali | **fp=1 code=1**
+**Target**: `grub-core/commands/efi/lsefi.c`, `grub-core/commands/efi/tpm.c`
+**Change**: Add `grub_free(handles)` on error/exit paths in lsefi.c and tpm.c.
+**Evidence**: master lsefi.c:128 `grub_free (handles)`, tpm.c:116/129 `grub_free (handles)`.
+Originally in series 2025-05-0151; series dissolved, both members upstream.
+
+## 2025-05-0153 — DROP
+
+**Subject**: loader/efi/linux: Fix memory leak (resubmission)
+**Author**: khaalid cali | **fp=1 code=1**
+**Target**: `grub-core/loader/efi/linux.c`
+**Change**: Add `grub_free(mempath)` on error path and normal exit.
+**Evidence**: master linux.c:226 `grub_free (mempath)` on error, line 231 on normal exit.
+Originally in series 2025-05-0151; series dissolved, both members upstream.
 
 ## 2025-05-0180 — DROP
 
