@@ -16,7 +16,10 @@ for mr in `echo $N`; do
 
     echo ">> $mr"
 
-    git log -p "origin/master..pr${mr}" ||:
+    w="origin/master..pr${mr}"
+
+    git log --stat "$w" ||:
+    git log -p "$w" ||:
 
     echo
 done
