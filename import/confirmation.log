@@ -504,3 +504,30 @@ Patch target: grub-core/commands/efi/lsefi.c grub-core/commands/efi/tpm.c
 Patch adds grub_free(handles): +    grub_free (handles);
 Master lsefi.c grub_free(handles):   grub_free (handles);
 Master tpm.c grub_free(handles):       grub_free (handles);
+
+=== SERIES CONFIRMATION ===
+
+--- Series 2025-01-0018 (2 patches): docs fixes ---
+Patch 1 (0018) @lbracechar -> @{. Master: 1
+Patch 2 (0019) --dumb -> terminfo. Master: 2
+
+--- Series 2025-01-0033 (6 patches): lvm cache_lv -> ignored_feature_lv ---
+Master ignored_feature_lv: 27
+Master CACHE_USES_CACHEVOL: 1
+Master integrity: 0
+
+--- Series 2025-03-0012 (4 patches): ls enhancements v6 ---
+Master print_file (merged): 1
+Master ctx->filename: 4
+Master grub_datetime mtime: 1
+
+--- Series 2025-03-0189 (2 patches): dl + crypto appended-sig v2 ---
+Master grub_dl_set_persistent (emu): 2
+Master grub_crypto_pk in crypto.c: 3
+
+--- Series 2025-03-0192 (4 patches): appended-sig v2 ---
+Master gnutls_asn1_tab.c: 148
+Master pkcs7.c: 452
+Master ibm,secure-boot: 2
+Master integrity in lvm.c (strncmp): 		   * Cache and integrity LVs have extra parts that
+			   grub_strncmp (p, "integrity\"", sizeof ("integrity\"") - 1) == 0)
