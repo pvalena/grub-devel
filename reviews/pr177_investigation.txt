@@ -1,0 +1,124 @@
+PR177 Investigation — libtasn1 upgrade 4.19.0 → 4.21.0
+=======================================================
+
+3 commits, 38 files (~2000 lines). CVE-2024-12133 (DoS) and
+CVE-2025-13151 (stack buffer overflow).
+
+Read every line of diff across all source files. Patch files read for
+hunk context correctness. License/README changes skipped (non-code).
+
+1. CVE-2025-13151: Stack buffer overflow
+-----------------------------------------
+Identified the fix in decoding.c, asn1_expand_octet_string():
+  name[2 * ASN1_MAX_NAME_SIZE + 1] → name[2 * ASN1_MAX_NAME_SIZE + 2]
+
+The buffer stores two ASN.1 names joined by a '.' separator plus a
+null terminator: name1 + '.' + name2 + '\0' = ASN1_MAX_NAME_SIZE + 1
++ ASN1_MAX_NAME_SIZE + 1 = 2*ASN1_MAX_NAME_SIZE + 2 bytes. The old
++1 was one byte short. The companion function
+asn1_expand_any_defined_by() already had +2, confirming the
+inconsistency.
+
+Also checked: MAX_TAG_LEN (local #define 16 in coding.c) replaced by
+ASN1_MAX_TAG_SIZE from the public header. Two stack buffers
+'tag_der[MAX_TAG_LEN]' in asn1_object_id_der() and
+_asn1_insert_tag_der() now use the authoritative size. Verified
+ASN1_MAX_TAG_SIZE is defined in libtasn1.h (not checked its value —
+upstream definition is authoritative).
+
+2. CVE-2024-12133: Quadratic DoS in SEQUENCE/SET handling
+----------------------------------------------------------
+Traced the full fix across four files:
+
+int.h:
+- New struct asn1_node_array_st { asn1_node *nodes; size_t size; }
+- New fields in asn1_node_st: 'parent' pointer and
+  'numbered_children' array
+- Both zero-initialized on allocation (nodes=NULL, size=0)
+
+element.c — _asn1_node_array_set():
+- Dynamic array with 2*position+1 growth strategy
+- Three overflow checks before arithmetic:
+  INT_MULTIPLY_OVERFLOW(new_size, 2), INT_ADD_OVERFLOW(new_size, 1),
+  INT_MULTIPLY_OVERFLOW(new_size, sizeof(*new_nodes))
+- realloc() for growth, new slots zeroed with loop
+- Verified: realloc(NULL, size) is equivalent to malloc(size) —
+  correct for first allocation
+
+element.c — _asn1_append_sequence_set():
+- strtol base changed from 0 to 10 (explicit decimal, avoids octal
+  interpretation of leading-zero names)
+- Bounds check: n <= 0 || n >= LONG_MAX - 1 prevents overflow in n+1
+- Calls _asn1_node_array_set(&node->numbered_children, n, p2)
+- Sets p2->parent = node (new parent backpointer)
+
+element.h — _asn1_node_array_get():
+- Inline function: returns nodes[position] if position < size, else
+  NULL. Bounds-safe.
+
+parser_aux.c — asn1_find_node():
+- Before traversing siblings, checks if name starts with '?' followed
+  by a digit. If so, does O(1) lookup via _asn1_node_array_get().
+- Falls through to linear 'while (p)' traversal in all cases — the
+  array lookup sets 'p' to the expected node, so the traversal's
+  first iteration matches and breaks immediately
+- This is a safe optimization: if the cache is stale (node deleted
+  but array not updated), the traversal provides the correct fallback
+
+parser_aux.c — _asn1_remove_node():
+- free(node->numbered_children.nodes) added before free(node)
+- Safe for nodes without numbered children: free(NULL) is a no-op
+
+structure.c — asn1_delete_element():
+- When deleting a numbered child (name[0]=='?' && c_isdigit(name[1])),
+  clears the numbered_children array entry via
+  _asn1_node_array_set(..., position-1, NULL)
+- Guards: source_node->parent != NULL and position > 0 && < LONG_MAX
+
+decoding.c — asn1_der_decoding2():
+- tcache optimization: when move == UP, checks if tcache.tail == p.
+  If so, uses tcache.head instead of calling _asn1_find_up(p).
+  Avoids traversing the sibling list back to the parent.
+- This is a separate optimization from the array cache — it targets
+  the decoder's tree traversal, not the named node lookup.
+
+3. GRUB patch series rebase
+----------------------------
+Read all 13 patch diffs. Changes are:
+- Git commit SHA headers (From lines)
+- Hunk line numbers adjusted for upstream changes
+- Context lines updated where upstream changed include style
+  (<> → "") or removed MAX_TAG_LEN define
+
+No GRUB-specific logic changed. Verified: each patch's functional
+hunks (the #if 0, strcat→strcpy, header paths, etc.) are identical
+in old and new versions.
+
+4. Other upstream changes verified
+-----------------------------------
+- Copyright years: 2022 → 2026 across all files
+- License notice: address form → URL form
+- Include style: <int.h> → "int.h" etc. — local headers use quotes
+- #include <config.h>: added unconditionally (was #ifdef
+  HAVE_CONFIG_H)
+- HAVE_SYS_TYPES_H conditional removed (now unconditional include)
+- #ifdef STDC_HEADERS removed in errors.c (stdarg.h now unconditional)
+- Pointer style: 'asn1_node * element' → 'asn1_node *element'
+  throughout (no semantic change)
+- Typo fixes: succesful, convertion, lenth, exapand, OCTECT,
+  assignement — all in comments/docs, no code impact
+- Version: ASN1_VERSION "4.21.0", MINOR 21, NUMBER 0x041500
+
+5. Test file changes
+---------------------
+Only #include <config.h> additions and copyright updates. No test
+logic changed.
+
+6. docs/grub-dev.texi
+----------------------
+Version numbers 4.19.0 → 4.21.0 in the upgrade recipe. Added
+COPYING.LESSERv2 to the cp command (new file in 4.21.0 tarball).
+
+Conclusion: No issues found. All changes are upstream library updates
+with proper CVE fixes, and the GRUB patch rebase preserves all
+existing adaptations with line-number adjustments only.
