@@ -1,0 +1,506 @@
+=== REDO: 2025-05-0072 (Re: lsefivar v5) ===
+Patch targets: grub-core/Makefile.core.def grub-core/commands/efi/lsefivar.c 
+Master lsefivar.c exists: 152
+
+=== REDO: 2025-05-0110 (linux mempath v2) ===
+Patch adds: +    grub_free (mempath);
+Master has: 	  grub_free (mempath);
+
+=== REDO: 2025-05-0132 (envblk newline Re:) ===
+Patch adds: +      if (*p != &#39;#&#39; &amp;&amp; *p != &#39;\n&#39;)<br>
+Master has:       if (*p != '#' && *p != '\n' && *p != '\r')
+
+=== BATCH 6: 2025-05-0153 through 2025-06-0099 ===
+--- 2025-05-0153: linux free(mempath) ---
+Patch: +    grub_free (mempath);
+Master: 	  grub_free (mempath);
+
+--- 2025-05-0180: ALREADY_APPLIED check ---
+Commit subject: kern/misc: Restore grub_memcpy() as an inline function
+Has FAILED.patch: 0
+
+--- 2025-06-0002: ntfs validate_attribute ---
+Patch changes: +  if (validate)
+Master:     if (validate_attribute (next, end) == false)
+
+--- 2025-06-0029: tpm2_dump_bank ---
+Patch adds: +static TPM_ALG_ID_t tpm2_dump_bank;
+Master: static TPM_ALG_ID_t tpm2_dump_bank;
+
+--- 2025-06-0031: sha384 tests ---
+Patch adds: +# Check if the sha384 bank is available
+Master: # Check if the sha384 bank is available
+
+--- 2025-06-0045: appendedsig trusted/distrusted ---
+Patch adds: +  OPTION_BINARY_HASH = 0,
+Master: #define OPTION_BINARY_HASH 0
+
+--- 2025-06-0081: LzmaEnc len check ---
+Patch adds: +	if (len < LZMA_MATCH_LEN_MIN)
+Master:         if (len < LZMA_MATCH_LEN_MIN)
+
+--- 2025-06-0092: Makefile.extra-dist tpm2 headers ---
+Patch adds: +EXTRA_DIST += $(shell find $(top_srcdir)/grub-core/commands/tpm2_key_protector -name '*.h')
+Master: EXTRA_DIST += $(shell find $(top_srcdir)/grub-core/commands/tpm2_key_protector -name '*.h')
+
+--- 2025-06-0096: LzmaEnc v2 (same fix as 0081) ---
+Patch adds: +        if (len < LZMA_MATCH_LEN_MIN)
+Master:         if (len < LZMA_MATCH_LEN_MIN)
+
+--- 2025-06-0099: ALREADY_APPLIED check ---
+Commit subject: kern/misc: Restore grub_memcpy() as an inline function
+Has FAILED.patch: 0
+=== BATCH 7: 2025-06-0101 2025-06-0133 2025-06-0142 2025-06-0149 2025-06-0163 2025-07-0027 2025-07-0065 2025-07-0130 2025-07-0189 2025-07-0212  ===
+
+--- 2025-06-0101 2025-06-0133 2025-06-0142 2025-06-0149 2025-06-0163 2025-07-0027 2025-07-0065 2025-07-0130 2025-07-0189 2025-07-0212 :  ---
+  No FAILED.patch target found
+
+=== BATCH 7 ===
+--- 2025-06-0101 ---
+  grub-core/commands/tpm2_key_protector/module.c | exists=1493L
+--- 2025-06-0133 ---
+  bootstrap.conf | exists=129L
+--- 2025-06-0142 ---
+--- 2025-06-0149 ---
+  tests/util/<a href="http://grub-shell.in" rel="noreferrer" target="_blank">grub-shell.in</a> | exists=0L
+--- 2025-06-0163 ---
+  grub-core/loader/efi/linux.c | grub_strlen | master=1
+--- 2025-07-0027 ---
+  grub-core/loader/arm64/xen_boot.c | grub_addr_t | master=5
+--- 2025-07-0065 ---
+  grub-core/kern/efi/efi.c | grub_efi_loader_t | master=3
+--- 2025-07-0130 ---
+  grub-core/fs/btrfs.c | GRUB_DISK_K | master=5
+--- 2025-07-0189 ---
+  autogen.sh | exists=165L
+--- 2025-07-0212 ---
+  conf/Makefile.extra-dist | grub_divmod | master=2
+--- RECHECK 2025-06-0142 ---
+Commit subject: tests: Correct netboot and file_filter test failure
+Files:  tests/util/grub-shell.in | 3 +++
+ 1 file changed, 3 insertions(+)
+Patch adds netdir cleanup: +    test -n "$debug" || rm -rf "$work_directory/netdir"
+Master has:     test -n "$debug" || rm -rf "$work_directory/netdir"
+
+--- RECHECK 2025-06-0149 ---
+Same as 0142 (netdir cleanup Re:). Patch adds: > +    test -n "$debug" || rm -rf "$work_directory/netdir"
+Master:     test -n "$debug" || rm -rf "$work_directory/netdir"
+
+--- RECHECK 2025-07-0212 ---
+Patch adds libgcrypt entries: +EXTRA_DIST += grub-core/lib/libgcrypt-patches/01_md.patch
+Master libgcrypt in extra-dist: 19
+
+=== BATCH 8 ===
+--- 2025-07-0218 ---
+  grub-core/commands/bli.c | added='static grub_err_t' | master=3
+--- 2025-07-0292 ---
+  tests/util/grub-fs-tester.in | added='		xluks1)' | master=1
+--- 2025-08-0009 ---
+  grub-core/kern/misc.c | exists=1571L
+--- 2025-08-0048 ---
+  grub-core/lib/i386/relocator_common_c.c | added='grub_size_t grub_relocator_preamble_size' | master=1
+--- 2025-08-0051 ---
+  docs/grub.texi | added='(@pxref{blscfg}) or UKI files (@pxref{uk' | master=1
+--- 2025-08-0052 ---
+  grub-core/Makefile.core.def | added='  emu = osdep/relpath.c;' | master=1
+--- 2025-08-0054 ---
+  bootstrap.conf | added='  filevercmp' | master=1
+--- 2025-08-0093 ---
+--- 2025-08-0115 ---
+  grub-core/term/efi/console.c | added='  /* Some devices use power key (scan_co' | master=1
+--- 2025-08-0146 ---
+  include/grub/crypto.h | exists=674L
+--- RECHECK 2025-08-0009 ---
+Patch adds grub_strtok: +grub_strtok_r (char *s, const char *delim, char **save_ptr)<br>
+Master: grub_strtok_r (char *s, const char *delim, char **save_ptr)
+
+--- RECHECK 2025-08-0093 ---
+Commit subject: kern/misc: Restore grub_memcpy() as an inline function
+Has FAILED.patch: 0
+
+--- RECHECK 2025-08-0146 ---
+Patch adds KDF: +    GPG_ERR_CANCELED,<br>
+Master:     GRUB_GCRY_KDF_NONE = 0,
+
+=== BATCH 9 ===
+--- 2025-08-0147 ---
+  util/import_gcry.py | exists=754L
+--- 2025-08-0153 ---
+  docs/grub.texi | exists=12059L
+--- 2025-08-0164 ---
+  po/arabic.sed | exists=85L
+--- 2025-08-0267 ---
+  grub-core/lib/datetime.c | '/* 24 leap years in 100 years */' | master=1
+--- 2025-08-0277 ---
+  include/grub/crypto.h | '/*' | master=45
+--- 2025-08-0280 ---
+--- 2025-09-0012 ---
+  include/grub/fs.h | '#define ENV_BTRFS_OFFSET (256)' | master=0
+0
+--- 2025-09-0020 ---
+  grub-core/net/tcp.c | '/*' | master=6
+--- 2025-09-0022 ---
+  conf/Makefile.extra-dist | 'EXTRA_DIST += grub-core/lib/libgcry' | master=33
+--- 2025-09-0036 ---
+  util/grub-mkimagexx.c | '		 off = (grub_int64_t)sym_addr - t' | master=0
+0
+--- RECHECK 2025-08-0147 (import_gcry kdf.c for Argon2) ---
+Patch adds kdf filter: Master:                         elif re.match ("_gcry_kdf_selftest|check_one|_gcry_kdf_pkdf2|_gcry_kdf_derive|openpgp_s2k|ballon_context_size|balloon_*|prng_aes_*|onestep_kdf_*|hkdf_*|x963_kdf_*", line) is not None and cipher_file == "kdf.c":
+
+--- RECHECK 2025-08-0153 (docs argon2) ---
+Master argon2 in docs: 35
+
+--- RECHECK 2025-08-0277 (Clang typedef-redefinition) ---
+Patch adds: +#ifdef __clang__
+Master: #pragma GCC diagnostic ignored "-Wtypedef-redefinition"
+
+--- RECHECK 2025-08-0280 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+
+--- RECHECK 2025-09-0012 (editenv ENV_BTRFS_OFFSET superseded) ---
+Patch target files: include/grub/fs.h util/grub-editenv.c 
+Master GRUB_ENV_BTRFS_OFFSET: #define GRUB_ENV_BTRFS_OFFSET (256 * 1024)
+
+--- RECHECK 2025-09-0020 (tcp port reuse) ---
+Patch adds: + * Derive a time-based source port to avoid reusing the same port across
+Master:  * The base port starts at 21550 and increments every second by 8 across
+
+--- RECHECK 2025-09-0036 (riscv32 relocation) ---
+Patch: +		 off = (grub_int64_t)sym_addr - target_section_addr - offset - image_target->vaddr_offset;
+Master: 		 off = (grub_int64_t) sym_addr - target_section_addr - offset - image_target->vaddr_offset;
+
+=== BATCH 10 ===
+--- 2025-09-0065 ---
+  docs/grub.texi | accomplished | master=1
+--- 2025-09-0073 ---
+  grub-core/commands/extcmd.c | exists=147L
+--- 2025-09-0082 ---
+  grub-core/Makefile.core.def | behavior | master=0
+0
+--- 2025-09-0086 ---
+--- 2025-09-0087 ---
+  docs/grub.texi | acceleration | master=1
+--- 2025-09-0119 ---
+--- 2025-09-0135 ---
+  docs/grub.texi | abstracted | master=1
+--- 2025-09-0162 ---
+--- 2025-09-0168 ---
+  grub-core/loader/i386/linux.c | activated | master=0
+0
+--- 2025-09-0175 ---
+--- RECHECK 2025-09-0073 (NULL check unregister) ---
+Patch: +  if (!ext)
+Master:   if (ext == NULL)
+
+--- RECHECK 2025-09-0082 (hwfeatures superseded by v3) ---
+Patch files: grub-core/Makefile.core.def grub-core/lib/hwfeatures-gcry.c grub-core/lib/x86_64/efi/hwfeatures-gcry.c include/grub/x86_64/cpuid.h include/grub/x86_64/efi/hwfeatures-gcry.h 
+Master hwfeatures-gcry.c: 52
+
+--- RECHECK 2025-09-0086 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+
+--- RECHECK 2025-09-0119 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+
+--- RECHECK 2025-09-0162 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+
+--- RECHECK 2025-09-0175 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+
+--- RECHECK 2025-09-0168 (EDID transfer) ---
+Patch adds: +  struct grub_video_edid_info edid_info;
+Master:   struct grub_video_edid_info edid_info;
+
+=== BATCH 11 ===
+--- 2025-09-0189 ---
+  tests/ahci_test.in | exists=58L
+--- 2025-09-0225 ---
+--- 2025-09-0230 ---
+  grub-core/kern/err.c | exists=145L
+--- 2025-09-0237 ---
+  grub-core/kern/err.c | exists=145L
+--- 2025-09-0244 ---
+  grub-core/kern/err.c | exists=145L
+--- 2025-09-0250 ---
+  grub-core/commands/memtools.c | exists=167L
+--- 2025-09-0258 ---
+--- 2025-10-0006 ---
+  grub-core/fs/hfsplus.c | exists=1189L
+--- 2025-10-0009 ---
+  util/grub-editenv.c | exists=708L
+--- 2025-10-0011 ---
+  util/grub-editenv.c | exists=708L
+--- 2025-09-0189 (test verbosity set -ex) ---
+Patch: +set -ex
+Master: set -ex
+
+--- 2025-09-0225 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+
+--- 2025-09-0230 (grub_error function name) ---
+Patch: +#define grub_error(n, fmt, ...) grub_error (n, __FILE__, __FUNCTION__, __LINE__, fmt, ##__VA_ARGS__)
+Master: #define grub_error(n, fmt, ...) grub_error (n, __FILE__, __FUNCTION__, __LINE__, fmt, ##__VA_ARGS__)
+
+--- 2025-09-0237/0244 (same grub_error verbose) ---
+Master err.h __FUNCTION__: 1
+
+--- 2025-09-0250 (lsmemregions) ---
+Patch: +grub_cmd_lsmemregions (grub_command_t cmd __attribute__ ((unused)),
+Master: grub_cmd_lsmemregions (grub_command_t cmd __attribute__ ((unused)),
+
+--- 2025-09-0258 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+
+--- 2025-10-0006 (hfsplus mode==0) ---
+Patch: +	if (mode == 0) /* created by pre-Mac OS X */
+Master: 	if (mode == 0) /* Created by pre-Mac OS X. */
+
+--- 2025-10-0009/0011 (editenv superseded) ---
+Master fs_envblk_open: 3
+
+=== BATCH 12 ===
+--- 2025-10-0044 ---
+  grub-core/loader/i386/linux.c | grub_video_edid_info | master=1
+--- 2025-10-0090 ---
+--- 2025-10-0159 ---
+  docs/grub.texi | exists=12059L
+--- 2025-10-0177 ---
+  util/grub-editenv.c | GRUB_ENV_BTRFS_OFFSET | master=2
+--- 2025-10-0187 ---
+  grub-core/commands/menuentry.c | grub_strlen | master=2
+--- 2025-10-0194 ---
+  grub-core/kern/ieee1275/init.c | exists=1114L
+--- 2025-10-0228 ---
+  Makefile.util.def | GRUB_MOD_LICENSE | master=0
+0
+--- 2025-10-0312 ---
+  docs/grub.texi | exists=12059L
+--- 2025-10-0324 ---
+  Makefile.util.def | GRUB_MOD_LICENSE | master=0
+0
+--- 2025-10-0354 ---
+  docs/grub.texi | GRUB_SAVEDEFAULT | master=4
+--- RECHECK 2025-10-0090 (ALREADY_APPLIED) ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+
+--- RECHECK 2025-10-0159 (UEFI signing docs) ---
+Patch target: docs. Master 'Signing GRUB for UEFI': 1
+
+--- RECHECK 2025-10-0194 (ieee1275 net config) ---
+Patch: +  char *ret_device = NULL;
+Master:   char *ret_device = NULL;
+
+--- RECHECK 2025-10-0228 (zstdio v1, superseded by v3=0324) ---
+Patch files: Makefile.util.def grub-core/Makefile.core.def grub-core/io/zstdio.c include/grub/file.h 
+v3 files: Makefile.util.def grub-core/Makefile.core.def grub-core/io/zstdio.c include/grub/file.h 
+Master zstdio.c: 251
+
+--- RECHECK 2025-10-0312 (memtools docs) ---
+Master 'memtools': 3
+
+--- RECHECK 2025-10-0324 (zstdio v3 upstream) ---
+Master zstdio.c: /* zstdio.c - decompression support for zstd */
+/*
+ *  GRUB  --  GRand Unified Bootloader
+
+=== BATCH 13 ===
+--- 2025-10-0357 ---
+--- 2025-10-0365 ---
+--- 2025-10-0380 ---
+--- 2025-10-0384 ---
+  grub-core/mmap/mmap.c | exists=561L
+--- 2025-11-0032 ---
+--- 2025-11-0046 ---
+--- 2025-11-0055 ---
+  tests/util/grub-fs-tester.in | exists=1745L
+--- 2025-11-0058 ---
+  grub-core/commands/blsuki.c | GRUB_ERR_BAD_NUMBER | master=2
+--- 2025-11-0062 ---
+--- 2025-11-0112 ---
+--- RECHECK 2025-10-0357 ---
+Patch: appendedsig.h EXTRA_DIST. Master: 1
+--- RECHECK 2025-10-0365/0380/2025-11-0032/0046/0062/0112 (ALREADY_APPLIED) ---
+2025-10-0365: kern/misc: Restore grub_memcpy() as an inline function
+2025-10-0380: kern/misc: Restore grub_memcpy() as an inline function
+2025-11-0032: kern/misc: Restore grub_memcpy() as an inline function
+2025-11-0046: kern/misc: Restore grub_memcpy() as an inline function
+2025-11-0062: kern/misc: Restore grub_memcpy() as an inline function
+2025-11-0112: kern/misc: Restore grub_memcpy() as an inline function
+
+--- RECHECK 2025-10-0384 (mmap malloc check) ---
+Master mmap.c 'n == NULL': 1
+
+--- RECHECK 2025-11-0055 (erofs version test) ---
+Master erofs version check: 		    MKFS_EROFS_VERSION=$(mkfs.erofs 2>/dev/null | head -n 1 | (read _ V; echo $V))
+
+=== BATCH 14 ===
+--- 2025-11-0123 ---
+  util/grub-mkrescue.c | '  FILE *fout;' | master=1
+--- 2025-11-0125 ---
+--- 2025-11-0155 ---
+--- 2025-11-0173 ---
+  grub-core/osdep/linux/ofpath.c | '  if (new == NULL)' | master=1
+--- 2025-11-0178 ---
+--- 2025-11-0194 ---
+  grub-core/commands/blsuki.c | GRUB_ERR_NONE | master=19
+--- 2025-11-0195 ---
+  grub-core/normal/cmdline.c | '  if (hist_lines == NULL)' | master=1
+--- 2025-11-0208 ---
+  Makefile.util.def | '  testcase = nonnative;' | master=66
+--- 2025-11-0226 ---
+  grub-core/commands/blsuki.c | grub_cmd_blscfg | master=2
+--- 2025-11-0245 ---
+  grub-core/efiemu/loadcore.c | grub_efiemu_elfsyms | master=20
+--- RECHECK 2025-11-0125 ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+
+--- RECHECK 2025-11-0155 ---
+Commit: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+
+--- RECHECK 2025-11-0178 ---
+Commit: Revert imprudent test changes
+FAILED.patch: 1
+
+--- RECHECK 2025-11-0178 (cover letter) ---
+FAILED.patch diffs: 0
+Subject: 2025-11-0178: [PATCH 0/2] Revert imprudent test changes
+
+=== BATCH 15 ===
+--- 2025-12-0002 ---
+  grub-core/disk/ieee1275/ofdisk.c | GRUB_ERR_OUT_OF_RANGE | master=6
+--- 2025-12-0024 ---
+  grub-core/commands/efi/tpm.c | grub_efi_int | master=1
+--- 2025-12-0037 ---
+  grub-core/commands/efi/lsefisystab.c | GRUB_EFI_MEMORY_ATTRIBUTES_TABLE_GUID | master=1
+--- 2025-12-0051 ---
+  util/mkimage.c | grub_util_get_image_size | master=18
+--- 2025-12-0083 ---
+  util/mkimage.c | grub_util_get_image_size | master=18
+--- 2026-01-0005 ---
+  docs/grub.texi | GRUB_MOD_LICENSE | master=0
+0
+--- 2026-01-0018 ---
+  grub-core/kern/ieee1275/openfw.c | grub_strtoul | master=1
+--- 2026-01-0031 ---
+  grub-core/mmap/mmap.c | exists=561L
+--- 2026-01-0076 ---
+  util/grub-install.c | grub_util_error | master=41
+--- 2026-02-0012 ---
+  grub-core/osdep/linux/ofpath.c | '  const char *ed = strstr (sysfs_path, "' | master=1
+--- 2026-02-0031 ---
+  grub-core/osdep/linux/ofpath.c | '  char *ed;' | master=0
+0
+--- 2026-02-0082 ---
+  grub-core/osdep/linux/ofpath.c | '  const char *ed = strstr (sysfs_path, "' | master=1
+--- 2026-02-0093 ---
+  grub-core/loader/efi/fdt.c | grub_memalign | master=1
+--- 2026-03-0020 ---
+  SECURITY | exists=62L
+--- 2026-03-0026 ---
+  MAINTAINERS | exists=35L
+--- 2026-03-0031 ---
+  MAINTAINERS | exists=35L
+--- RECHECK 2026-01-0005 (ECB tests) ---
+Master crypto_cipher_mode_test.c: 197
+
+--- RECHECK 2026-01-0031 (mmap overflow) ---
+Patch: +         cur = low + (high - low) / 2;
+Master: 	  cur = low + (high - low) / 2;
+
+--- RECHECK 2026-02-0031 (C23 glibc fix) ---
+Master const ed:   const char *ed = strstr (sysfs_path, "end_device");
+
+--- RECHECK 2026-03-0020 (SECURITY update) ---
+Patch adds Marta: +* Contact: Marta Lewandowska &lt;<a href="mailto:mlewando@redhat.com" target="_blank">mlewando@redhat.com</a>&gt;<br>
+Master: * Contact: Marta Lewandowska <mlewando@redhat.com>
+
+--- RECHECK 2026-03-0026/0031 (MAINTAINERS) ---
+Master Leo Sandoval:   - Leo Sandoval <lsandova@redhat.com>,
+Master freedesktop: GRUB source code is available at freedesktop git repository [2].
+--- 2025-06-0100 ---
+2025-06-0100: [PATCH v2 3/3] tests/tpm2_key_protector_test: Add tests for SHA384
+Commit subject: kern/misc: Restore grub_memcpy() as an inline function
+FAILED.patch: 0
+=== 2025-03-0207: configure: Add -mno-relax on riscv* ===
+
+Patch content:
++if test "x$target_cpu" = xriscv64 || test "x$target_cpu" = xriscv32; then
++  AC_CACHE_CHECK([for no-relax options], grub_cv_target_cc_mno_relax, [
++    grub_cv_target_cc_mno_relax=no
++    for cand in "-mno-relax" "-Wa,-mno-relax"; do
++      if test x"$grub_cv_target_cc_mno_relax" != xno ; then
++        break
++      fi
++      CFLAGS="$TARGET_CFLAGS $cand -Werror"
++      AC_LINK_IFELSE([AC_LANG_PROGRAM([[
++	    asm (".globl start; start:");
++	    void __main (void);
++	    void __main (void) {}
++	    int main (void);
++	    ]], [[]])], [grub_cv_target_cc_mno_relax="$cand"], [])
++    done
++  ])
++
++  CFLAGS="$TARGET_CFLAGS"
++
++  if test x"$grub_cv_target_cc_mno_relax" != xno ; then
++    TARGET_CFLAGS="$TARGET_CFLAGS $grub_cv_target_cc_mno_relax"
++    TARGET_CCASFLAGS="$TARGET_CCASFLAGS $grub_cv_target_cc_mno_relax"
++  fi
++fi
++
+
+Master configure.ac -mno-relax lines:
+919:    for cand in "-mno-relax" "-Wa,-mno-relax"; do
+946:    for cand in "-mno-relax" "-Wa,-mno-relax"; do
+1064:    for cand in "-mno-relax" "-Wl,--no-relax"; do
+
+Master riscv check:
+943:if test "x$target_cpu" = xriscv64 || test "x$target_cpu" = xriscv32; then
+980:    if test "x$target_cpu" = xriscv32; then
+989:    if test "x$target_cpu" = xriscv64; then
+2507:AM_CONDITIONAL([COND_riscv32], [test x$target_cpu = xriscv32 ])
+2508:AM_CONDITIONAL([COND_riscv64], [test x$target_cpu = xriscv64 ])
+2509:AM_CONDITIONAL([COND_riscv32_efi], [test x$target_cpu = xriscv32 -a x$platform = xefi])
+2510:AM_CONDITIONAL([COND_riscv64_efi], [test x$target_cpu = xriscv64 -a x$platform = xefi])
+
+=== 2025-05-0153: loader/efi/linux: Fix memory leak ===
+
+Patch content:
++  {
++    grub_free (mempath);
++  }
+-
++  grub_free (mempath);
+
+Master linux.c grub_free(mempath):
+226:	  grub_free (mempath);
+231:  grub_free (mempath);
+
+Full context around the fix on master:
+				    (grub_efi_device_path_t *) mempath,
+				    (void *) addr, size, &image_handle);
+      if (status != GRUB_EFI_SUCCESS)
+	{
+	  grub_free (mempath);
+	  return grub_error (GRUB_ERR_BAD_OS, "cannot load image");
+	}
+    }
+
+  grub_free (mempath);
+
+  grub_dprintf ("linux", "linux command line: '%s'\n", args);
+
+--- 2025-05-0151 verification ---
+Patch target: grub-core/commands/efi/lsefi.c grub-core/commands/efi/tpm.c 
+Patch adds grub_free(handles): +    grub_free (handles);
+Master lsefi.c grub_free(handles):   grub_free (handles);
+Master tpm.c grub_free(handles):       grub_free (handles);
