@@ -99,6 +99,8 @@ while :; do
 
         run "${H}checkout-new.sh"
 
+        run "${H}rebase-new.sh"
+
         run "${H}view-new.sh"
 
         echo -e "\n>>> TODO: Run some Magic AI review here (e.g.: 'claude ...')\n" >&2
