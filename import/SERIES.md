@@ -1,15 +1,13 @@
 # Patch Series Overview
 
-11 series, 44 patches total.
+9 series, 39 patches total.
 
 | Series | Patches | Author | Topic |
 |--------|--------:|--------|-------|
-| [2025-01-0098](series/2025-01-0098) | 2 | Egor Ignatov | fs/xfs: Fix grub_xfs_iterate_dir return value in case of failure |
 | [2025-04-0266](series/2025-04-0266) | 7 | Ross Philipson | i386: Extra x86 definitions needed by AMD SKINIT Secure Launch |
-| [2025-05-0032](series/2025-05-0032) | 2 | Glenn Washburn | tests: Disable gfxterm_menu and cmdline_cat tests |
 | [2025-05-0076](series/2025-05-0076) | 2 | khaalid | loader/efi/chainloader: Enhance error message of chainloader c... |
 | [2025-05-0201](series/2025-05-0201) | 2 | Jiří 'bindiff' Wolker | Exporting variables to upper levels |
-| [2025-07-0029](series/2025-07-0029) | 11 | Vladimir Serbinenko | Import libgcrypt 1.11 |
+| [2025-07-0029](series/2025-07-0029) | 10 | Vladimir Serbinenko | Import libgcrypt 1.11 |
 | [2025-07-0047](series/2025-07-0047) | 3 | Frediano Ziglio | kern/list: Add a grub_list_append function |
 | [2025-08-0012](series/2025-08-0012) | 2 | Vladimir Serbinenko | zfs: Rewrite endianness handling |
 | [2025-10-0294](series/2025-10-0294) | 6 | Michael Chang | util/grub-editenv: add fs_envblk open helper |
