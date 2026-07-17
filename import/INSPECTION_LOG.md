@@ -141,32 +141,24 @@ All have FAILED.patch + code changes. master has: `tpm2_dump_pcr` command in
 **Decision**: DROP — all features already upstream.
 **Dropped branches**: 2025-04-0059, 2025-04-0057, 2025-04-0061, 2025-04-0063, 2025-04-0064, 2025-04-0065, 2025-04-0066, 2025-04-0070, 2025-04-0069
 
-## Series: 2025-04-0266 (3 of 7, Alec Brown) — KEEP
+## Series: 2025-04-0266 (6 of 7, Brown/Philipson) — KEEP
 
-**Topic**: AMD SKINIT Secure Launch: PSP discovery and TMR setup
+**Topic**: AMD SKINIT Secure Launch: x86 definitions, PSP discovery, core SKINIT,
+EFI support, TMR setup
 
-| Branch | Commit content | Verdict |
-|--------|---------------|---------|
-| 2025-04-0266 | FAILED.patch only: PSP discovery code, `psp.c`, `psp.h` | Not upstream |
-| 2025-04-0267 | FAILED.patch only: core PSP commands and capability | Not upstream |
-| 2025-04-0268 | FAILED.patch only: TMR setup to protect RAM from DMA | Not upstream |
+| Branch | Commit content | Author | Verdict |
+|--------|---------------|--------|---------|
+| 2025-04-0270 | FAILED.patch only: x86 definitions for AMD SKINIT | Philipson | Not upstream |
+| 2025-04-0266 | FAILED.patch only: PSP discovery code, `psp.c`, `psp.h` | Brown | Not upstream |
+| 2025-04-0267 | FAILED.patch only: core PSP commands and capability | Brown | Not upstream |
+| 2025-04-0268 | FAILED.patch only: TMR setup to protect RAM from DMA | Brown | Not upstream |
+| 2025-04-0271 | FAILED.patch only: AMD SKINIT Secure Launch core | Philipson | Not upstream |
+| 2025-04-0272 | FAILED.patch only: EFI AMD SKINIT support | Philipson | Not upstream |
 
-RFC PATCH v2 parts 2-4/7. All FAILED.patch only. `grub-core/loader/slaunch/psp.c`
-and `include/grub/i386/psp.h` MISSING on master.
-**Decision**: KEEP — new feature, not upstream.
-
-## Series: 2025-04-0270 (3 of 7, Ross Philipson) — KEEP
-
-**Topic**: AMD SKINIT Secure Launch: x86 definitions, core SKINIT, EFI support
-
-| Branch | Commit content | Verdict |
-|--------|---------------|---------|
-| 2025-04-0270 | FAILED.patch only: x86 definitions for AMD SKINIT | Not upstream |
-| 2025-04-0271 | FAILED.patch only: AMD SKINIT Secure Launch core (`skinit.c`, `skl.c`, `slaunch.c`) | Not upstream |
-| 2025-04-0272 | FAILED.patch only: EFI AMD SKINIT support | Not upstream |
-
-RFC PATCH v2 parts 1,5-6/7. All FAILED.patch only. `include/grub/i386/skinit.h`,
-`include/grub/slaunch.h`, `include/grub/slr_table.h` MISSING on master.
+RFC PATCH v2 parts 1-6/7 (part 7 not in failed.txt). Two co-authors.
+All FAILED.patch only. No slaunch/PSP/SKINIT code on master. All target files
+MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`,
+`include/grub/i386/skinit.h`, `include/grub/slaunch.h`, `include/grub/slr_table.h`.
 **Decision**: KEEP — new feature, not upstream.
 
 ## Series: 2025-05-0032 (2 patches, Glenn Washburn) — KEEP
