@@ -392,11 +392,6 @@ Originally in series 2025-05-0151; series dissolved, both members upstream.
 **Subject**: grub-protect PCR digest fix + tpm2 SHA384 tests
 Clean applies but branch tip = master tip (kern/misc memcpy). ALREADY_APPLIED.
 
-## 2025-06-0121 — KEEP
-
-**Subject**: Re: Create a Containerfile for development
-**Evidence**: `container/Containerfile`, `container/README` MISSING on master.
-
 ## 2025-06-0133 — DROP
 
 **Subject**: gnulib: Bring back the fix for resolving unused variable

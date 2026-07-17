@@ -338,12 +338,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Evidence**: master affs.c lines 417-423 still have old code (no temp_node).
 
 
-## 2025-06-0121 — KEEP
-
-**Subject**: Re: Create a Containerfile for development
-**Evidence**: `container/Containerfile`, `container/README` MISSING on master.
-
-
 ## 2025-06-0121, 2025-06-0143 — KEEP (2 branches)
 
 **Subject**: Containerfile(s) for development
