@@ -1,0 +1,91 @@
+================================================================================
+EVALUATION: 2025-01-0098
+================================================================================
+
+Mailing list subject: [PATCH 2/3] fs/xfs: Fix grub_xfs_iterate_dir return value in case of
+Commit subject:       fs/xfs: Fix grub_xfs_iterate_dir return value in case of failure
+Author:               Egor Ignatov <egori@altlinux.org>
+Date:                 2025-01-23
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2025-01-0098 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Commit ef7850c757 introduced multiple boundary checks in grub_xfs_iterate_dir()
+but handled the error incorrectly returning error code instead of 0.
+
+Also change the error message so that it doesn't match the message
+in grub_xfs_read_inode().
+
+Fixes: ef7850c757 (fs/xfs: Fix issues found while fuzzing the XFS filesystem)
+
+Signed-off-by: Egor Ignatov <egori@altlinux.org>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 38 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/fs/xfs.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/grub-core/fs/xfs.c b/grub-core/fs/xfs.c
+index 7c903f01a3..ba31559c5c 100644
+--- a/grub-core/fs/xfs.c
++++ b/grub-core/fs/xfs.c
+@@ -844,7 +844,11 @@ grub_xfs_iterate_dir (grub_fshelp_node_t dir,
+ 	    grub_uint8_t c;
+ 
+ 	    if ((inopos + (smallino ? 4 : 8)) > (grub_uint8_t *) dir + grub_xfs_fshelp_size (dir->data))
+-	      return grub_error (GRUB_ERR_BAD_FS, "not a correct XFS inode");
++	      {
++		grub_error (GRUB_ERR_BAD_FS, "invalid XFS inode");
++		return 0;
++	      }
++
+ 
+ 	    /* inopos might be unaligned.  */
+ 	    if (smallino)
+@@ -963,7 +967,10 @@ grub_xfs_iterate_dir (grub_fshelp_node_t dir,
+ 
+ 		filename = (char *)(direntry + 1);
+ 		if (filename + direntry->len + 1 > (char *) end)
+-		  return grub_error (GRUB_ERR_BAD_FS, "invalid XFS directory entry");
++		  {
++		    grub_error (GRUB_ERR_BAD_FS, "invalid XFS directory entry");
++		    return 0;
++		  }
+ 
+ 		/* The byte after the filename is for the filetype, padding, or
+ 		   tag, which is not used by GRUB.  So it can be overwritten. */
+-- 
+2.42.4
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/fs/xfs.c: EXISTS (1352 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +10 -5 lines
+
+================================================================================

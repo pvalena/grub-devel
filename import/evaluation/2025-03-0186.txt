@@ -1,0 +1,433 @@
+================================================================================
+EVALUATION: 2025-03-0186
+================================================================================
+
+Mailing list subject: [PATCH v2 05/21] pgp: factor out rsa_pad
+Commit subject:       pgp: factor out rsa_pad
+Author:               Daniel Axtens <dja@axtens.net>
+Date:                 2025-03-27
+Has FAILED.patch:     1
+Code files changed:   4
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+rsa_pad does the PKCS#1 v1.5 padding for the RSA signature scheme.
+We want to use it in other RSA signature verification applications.
+
+I considered and rejected putting it in lib/crypto.c. That file doesn't
+currently require any MPI functions, but rsa_pad does. That's not so
+much of a problem for the grub kernel and modules, but crypto.c also
+gets built into all the grub utilities. So - despite the utils not
+using any asymmetric ciphers -  we would need to built the entire MPI
+infrastructure in to them.
+
+A better and simpler solution is just to spin rsa_pad out into its own
+PKCS#1 v1.5 module.
+
+Signed-off-by: Daniel Axtens <dja@axtens.net>
+Signed-off-by: Sudhakar Kuppusamy <sudhakar@linux.ibm.com>
+Reviewed-by: Stefan Berger <stefanb@linux.ibm.com>
+Reviewed-by: Avnish Chouhan <avnish@linux.ibm.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                | 177 ++++++++++++++++++++++++++++++++++++++++++++
+ grub-core/Makefile.core.def |   8 ++
+ grub-core/commands/pgp.c    |  24 ++++++
+ grub-core/lib/pkcs1_v15.c   |  59 +++++++++++++++
+ include/grub/pkcs1_v15.h    |  27 +++++++
+ 5 files changed, 295 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/Makefile.core.def |  8 +++++
+ grub-core/commands/pgp.c    | 28 ++----------------
+ grub-core/lib/pkcs1_v15.c   | 59 +++++++++++++++++++++++++++++++++++++
+ include/grub/pkcs1_v15.h    | 27 +++++++++++++++++
+ 4 files changed, 96 insertions(+), 26 deletions(-)
+ create mode 100644 grub-core/lib/pkcs1_v15.c
+ create mode 100644 include/grub/pkcs1_v15.h
+
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index f70e02e69..60db2adc5 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -2540,6 +2540,14 @@ module = {
+   cppflags = '$(CPPFLAGS_GCRY)';
+ };
+ 
++module = {
++  name = pkcs1_v15;
++  common = lib/pkcs1_v15.c;
++
++  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';
++  cppflags = '$(CPPFLAGS_GCRY)';
++};
++
+ module = {
+   name = all_video;
+   common = lib/fake_module.c;
+diff --git a/grub-core/commands/pgp.c b/grub-core/commands/pgp.c
+index 5fadc33c4..5503d291a 100644
+--- a/grub-core/commands/pgp.c
++++ b/grub-core/commands/pgp.c
+@@ -24,6 +24,7 @@
+ #include <grub/file.h>
+ #include <grub/command.h>
+ #include <grub/crypto.h>
++#include <grub/pkcs1_v15.h>
+ #include <grub/i18n.h>
+ #include <grub/gcrypt/gcrypt.h>
+ #include <grub/pubkey.h>
+@@ -411,32 +412,7 @@ static int
+ rsa_pad (gcry_mpi_t *hmpi, grub_uint8_t *hval,
+ 	 const gcry_md_spec_t *hash, struct grub_public_subkey *sk)
+ {
+-  grub_size_t tlen, emlen, fflen;
+-  grub_uint8_t *em, *emptr;
+-  unsigned nbits = gcry_mpi_get_nbits (sk->mpis[0]);
+-  int ret;
+-  tlen = hash->mdlen + hash->asnlen;
+-  emlen = (nbits + 7) / 8;
+-  if (emlen < tlen + 11)
+-    return 1;
+-
+-  em = grub_malloc (emlen);
+-  if (!em)
+-    return 1;
+-
+-  em[0] = 0x00;
+-  em[1] = 0x01;
+-  fflen = emlen - tlen - 3;
+-  for (emptr = em + 2; emptr < em + 2 + fflen; emptr++)
+-    *emptr = 0xff;
+-  *emptr++ = 0x00;
+-  grub_memcpy (emptr, hash->asnoid, hash->asnlen);
+-  emptr += hash->asnlen;
+-  grub_memcpy (emptr, hval, hash->mdlen);
+-
+-  ret = gcry_mpi_scan (hmpi, GCRYMPI_FMT_USG, em, emlen, 0);
+-  grub_free (em);
+-  return ret;
++  return grub_crypto_rsa_pad(hmpi, hval, hash, sk->mpis[0]);
+ }
+ 
+ struct grub_pubkey_context
+diff --git a/grub-core/lib/pkcs1_v15.c b/grub-core/lib/pkcs1_v15.c
+new file mode 100644
+index 000000000..535ba5c18
+--- /dev/null
++++ b/grub-core/lib/pkcs1_v15.c
+@@ -0,0 +1,59 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2013  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/dl.h>
++#include <grub/gcrypt/gcrypt.h>
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++/*
++ * Given a hash value 'hval', of hash specification 'hash', perform
++ * the EMSA-PKCS1-v1_5 padding suitable for a key with modulus 'mod'
++ * (see RFC 8017 s 9.2) and place the result in 'hmpi'.
++ */
++gcry_err_code_t
++grub_crypto_rsa_pad (gcry_mpi_t * hmpi, grub_uint8_t * hval,
++                     const gcry_md_spec_t * hash, gcry_mpi_t mod)
++{
++  grub_size_t tlen, emlen, fflen;
++  grub_uint8_t *em, *emptr;
++  unsigned nbits = gcry_mpi_get_nbits (mod);
++  int ret;
++  tlen = hash->mdlen + hash->asnlen;
++  emlen = (nbits + 7) / 8;
++  if (emlen < tlen + 11)
++    return GPG_ERR_TOO_SHORT;
++
++  em = grub_malloc (emlen);
++  if (!em)
++    return 1;
++
++  em[0] = 0x00;
++  em[1] = 0x01;
++  fflen = emlen - tlen - 3;
++  for (emptr = em + 2; emptr < em + 2 + fflen; emptr++)
++    *emptr = 0xff;
++  *emptr++ = 0x00;
++  grub_memcpy (emptr, hash->asnoid, hash->asnlen);
++  emptr += hash->asnlen;
++  grub_memcpy (emptr, hval, hash->mdlen);
++
++  ret = gcry_mpi_scan (hmpi, GCRYMPI_FMT_USG, em, emlen, 0);
++  grub_free (em);
++  return ret;
++}
+diff --git a/include/grub/pkcs1_v15.h b/include/grub/pkcs1_v15.h
+new file mode 100644
+index 000000000..7644ac9e0
+--- /dev/null
++++ b/include/grub/pkcs1_v15.h
+@@ -0,0 +1,27 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2013  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++/*
++ * Given a hash value 'hval', of hash specification 'hash', perform
++ * the EMSA-PKCS1-v1_5 padding suitable for a key with modulus 'mod'
++ * (See RFC 8017 s 9.2)
++ */
++gcry_err_code_t
++grub_crypto_rsa_pad (gcry_mpi_t * hmpi, grub_uint8_t * hval,
++                     const gcry_md_spec_t * hash, gcry_mpi_t mod);
++
+-- 
+2.43.5
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 71af5db7d075aae90a1581c0e9d5897299acb53a
+Author: Daniel Axtens <dja@axtens.net>
+Date:   Thu Mar 27 01:02:26 2025 +0530
+
+    pgp: factor out rsa_pad
+    
+    rsa_pad does the PKCS#1 v1.5 padding for the RSA signature scheme.
+    We want to use it in other RSA signature verification applications.
+    
+    I considered and rejected putting it in lib/crypto.c. That file doesn't
+    currently require any MPI functions, but rsa_pad does. That's not so
+    much of a problem for the grub kernel and modules, but crypto.c also
+    gets built into all the grub utilities. So - despite the utils not
+    using any asymmetric ciphers -  we would need to built the entire MPI
+    infrastructure in to them.
+    
+    A better and simpler solution is just to spin rsa_pad out into its own
+    PKCS#1 v1.5 module.
+    
+    Signed-off-by: Daniel Axtens <dja@axtens.net>
+    Signed-off-by: Sudhakar Kuppusamy <sudhakar@linux.ibm.com>
+    Reviewed-by: Stefan Berger <stefanb@linux.ibm.com>
+    Reviewed-by: Avnish Chouhan <avnish@linux.ibm.com>
+
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 535a6a833..c4b60c43b 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -2688,6 +2688,14 @@ module = {
+   cppflags = '$(CPPFLAGS_GCRY)';
+ };
+ 
++module = {
++  name = pkcs1_v15;
++  common = lib/pkcs1_v15.c;
++
++  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';
++  cppflags = '$(CPPFLAGS_GCRY)';
++};
++
+ module = {
+   name = all_video;
+   common = lib/fake_module.c;
+diff --git a/grub-core/commands/pgp.c b/grub-core/commands/pgp.c
+index 69a5daae8..5f3ae738e 100644
+--- a/grub-core/commands/pgp.c
++++ b/grub-core/commands/pgp.c
+@@ -24,6 +24,7 @@
+ #include <grub/file.h>
+ #include <grub/command.h>
+ #include <grub/crypto.h>
++#include <grub/pkcs1_v15.h>
+ #include <grub/i18n.h>
+ #include <grub/gcrypt/gcrypt.h>
+ #include <grub/pubkey.h>
+@@ -406,6 +407,29 @@ grub_crypto_pk_locate_subkey_in_trustdb (grub_uint64_t keyid)
+   return 0;
+ }
+ 
++<<<<<<< HEAD
++=======
++
++static int
++dsa_pad (gcry_mpi_t *hmpi, grub_uint8_t *hval,
++	 const gcry_md_spec_t *hash, struct grub_public_subkey *sk)
++{
++  unsigned nbits = gcry_mpi_get_nbits (sk->mpis[1]);
++  grub_dprintf ("crypt", "must be %u bits got %d bits\n", nbits,
++		(int)(8 * hash->mdlen));
++  return gcry_mpi_scan (hmpi, GCRYMPI_FMT_USG, hval,
++			nbits / 8 < (unsigned) hash->mdlen ? nbits / 8
++			: (unsigned) hash->mdlen, 0);
++}
++
++static int
++rsa_pad (gcry_mpi_t *hmpi, grub_uint8_t *hval,
++	 const gcry_md_spec_t *hash, struct grub_public_subkey *sk)
++{
++  return grub_crypto_rsa_pad(hmpi, hval, hash, sk->mpis[0]);
++}
++
++>>>>>>> pgp: factor out rsa_pad
+ struct grub_pubkey_context
+ {
+   grub_file_t sig;
+diff --git a/grub-core/lib/pkcs1_v15.c b/grub-core/lib/pkcs1_v15.c
+new file mode 100644
+index 000000000..535ba5c18
+--- /dev/null
++++ b/grub-core/lib/pkcs1_v15.c
+@@ -0,0 +1,59 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2013  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/dl.h>
++#include <grub/gcrypt/gcrypt.h>
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++/*
++ * Given a hash value 'hval', of hash specification 'hash', perform
++ * the EMSA-PKCS1-v1_5 padding suitable for a key with modulus 'mod'
++ * (see RFC 8017 s 9.2) and place the result in 'hmpi'.
++ */
++gcry_err_code_t
++grub_crypto_rsa_pad (gcry_mpi_t * hmpi, grub_uint8_t * hval,
++                     const gcry_md_spec_t * hash, gcry_mpi_t mod)
++{
++  grub_size_t tlen, emlen, fflen;
++  grub_uint8_t *em, *emptr;
++  unsigned nbits = gcry_mpi_get_nbits (mod);
++  int ret;
++  tlen = hash->mdlen + hash->asnlen;
++  emlen = (nbits + 7) / 8;
++  if (emlen < tlen + 11)
++    return GPG_ERR_TOO_SHORT;
++
++  em = grub_malloc (emlen);
++  if (!em)
++    return 1;
++
++  em[0] = 0x00;
++  em[1] = 0x01;
++  fflen = emlen - tlen - 3;
++  for (emptr = em + 2; emptr < em + 2 + fflen; emptr++)
++    *emptr = 0xff;
++  *emptr++ = 0x00;
++  grub_memcpy (emptr, hash->asnoid, hash->asnlen);
++  emptr += hash->asnlen;
++  grub_memcpy (emptr, hval, hash->mdlen);
++
++  ret = gcry_mpi_scan (hmpi, GCRYMPI_FMT_USG, em, emlen, 0);
++  grub_free (em);
++  return ret;
++}
+diff --git a/include/grub/pkcs1_v15.h b/include/grub/pkcs1_v15.h
+new file mode 100644
+index 000000000..7644ac9e0
+--- /dev/null
++++ b/include/grub/pkcs1_v15.h
+@@ -0,0 +1,27 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2013  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++/*
++ * Given a hash value 'hval', of hash specification 'hash', perform
++ * the EMSA-PKCS1-v1_5 padding suitable for a key with modulus 'mod'
++ * (See RFC 8017 s 9.2)
++ */
++gcry_err_code_t
++grub_crypto_rsa_pad (gcry_mpi_t * hmpi, grub_uint8_t * hval,
++                     const gcry_md_spec_t * hash, gcry_mpi_t mod);
++
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/Makefile.core.def: EXISTS (2829 lines)
+  grub-core/commands/pgp.c: EXISTS (1026 lines)
+  grub-core/lib/pkcs1_v15.c: MISSING on master
+  include/grub/pkcs1_v15.h: MISSING on master
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       NEW FEATURE (target files missing on master)
+Complexity: 4 code file(s) + FAILED.patch
+Patch size: +100 -32 lines
+
+================================================================================

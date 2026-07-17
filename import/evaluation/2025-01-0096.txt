@@ -1,0 +1,118 @@
+================================================================================
+EVALUATION: 2025-01-0096
+================================================================================
+
+Mailing list subject: Re: [PATCH] term/ns8250: return in case of a null SPCR base addresses
+Commit subject:       term/ns8250: return in case of a null SPCR base addresses
+Author:               Leo Sandoval <lsandova@redhat.com>
+Date:                 2025-01-22
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Please ignore this patch, a better approach is
+https://lists.gnu.org/archive/html/grub-devel/2025-01/msg00093.html
+
+On Thu, Jan 9, 2025 at 10:37 AM Leo Sandoval <lsandova@redhat.com> wrote:
+
+> Serial SPCR MMIO null address are invalid, so return from function,
+> otherwise
+> invalid 'mmio,0' port names are generated halting the system when running
+> terminal_input|output commands.
+>
+> Signed-off-by: Leo Sandoval <lsandova@redhat.com>
+> ---
+>  grub-core/term/ns8250.c | 3 +++
+>  1 file changed, 3 insertions(+)
+>
+> diff --git a/grub-core/term/ns8250.c b/grub-core/term/ns8250.c
+> index 23e8e0904..4ac0bc06a 100644
+> --- a/grub-core/term/ns8250.c
+> +++ b/grub-core/term/ns8250.c
+> @@ -407,6 +407,9 @@ grub_serial_ns8250_add_mmio (grub_addr_t addr,
+> unsigned int acc_size,
+>    struct grub_serial_port *p;
+>    unsigned i;
+>
+> +  if (addr == NULL)
+> +    return NULL;
+> +
+>    for (i = 0; i < GRUB_SERIAL_PORT_NUM; i++)
+>      if (com_ports[i].use_mmio == true && com_ports[i].mmio.base == addr)
+>        {
+> --
+> 2.47.0
+>
+>
+> _______________________________________________
+> Grub-devel mailing list
+> Grub-devel@gnu.org
+> https://lists.gnu.org/mailman/listinfo/grub-devel
+>
+
+<div dir="ltr">Please ignore this patch, a better approach is <a href="https://lists.gnu.org/archive/html/grub-devel/2025-01/msg00093.html">https://lists.gnu.org/archive/html/grub-devel/2025-01/msg00093.html</a></div><br><div class="gmail_quote gmail_quote_container"><div dir="ltr" class="gmail_attr">On Thu, Jan 9, 2025 at 10:37 AM Leo Sandoval &lt;<a href="mailto:lsandova@redhat.com">lsandova@redhat.com</a>&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">Serial SPCR MMIO null address are invalid, so return from function, otherwise<br>
+invalid &#39;mmio,0&#39; port names are generated halting the system when running<br>
+terminal_input|output commands.<br>
+<br>
+Signed-off-by: Leo Sandoval &lt;<a href="mailto:lsandova@redhat.com" target="_blank">lsandova@redhat.com</a>&gt;<br>
+---<br>
+ grub-core/term/ns8250.c | 3 +++<br>
+ 1 file changed, 3 insertions(+)<br>
+<br>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+diff --git a/grub-core/term/ns8250.c b/grub-core/term/ns8250.c<br>
+index 23e8e0904..4ac0bc06a 100644<br>
+--- a/grub-core/term/ns8250.c<br>
++++ b/grub-core/term/ns8250.c<br>
+@@ -407,6 +407,9 @@ grub_serial_ns8250_add_mmio (grub_addr_t addr, unsigned int acc_size,<br>
+   struct grub_serial_port *p;<br>
+   unsigned i;<br>
+<br>
++  if (addr == NULL)<br>
++    return NULL;<br>
++<br>
+   for (i = 0; i &lt; GRUB_SERIAL_PORT_NUM; i++)<br>
+     if (com_ports[i].use_mmio == true &amp;&amp; com_ports[i].mmio.base == addr)<br>
+       {<br>
+-- <br>
+2.47.0<br>
+<br>
+<br>
+_______________________________________________<br>
+Grub-devel mailing list<br>
+<a href="mailto:Grub-devel@gnu.org" target="_blank">Grub-devel@gnu.org</a><br>
+<a href="https://lists.gnu.org/mailman/listinfo/grub-devel" rel="noreferrer" target="_blank">https://lists.gnu.org/mailman/listinfo/grub-devel</a><br>
+</blockquote></div>
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/term/ns8250.c: EXISTS (446 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +4 -2 lines
+
+================================================================================

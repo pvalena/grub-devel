@@ -1,0 +1,160 @@
+================================================================================
+EVALUATION: 2025-04-0142
+================================================================================
+
+Mailing list subject: [PATCH 2/2] Prepend debug traces with absolute and relative timestamps
+Commit subject:       Prepend debug traces with absolute and relative timestamps
+Author:               Renaud Métrich <rmetrich@redhat.com>
+Date:                 2025-04-11
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Debug traces with timestamps are useful to detect performance
+issues. To enable it, include '--with-debug-timestamps' argument on
+the configure step.
+
+Signed-off-by: Renaud Métrich <rmetrich@redhat.com>
+Signed-off-by: Leo Sandoval <lsandova@redhat.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 108 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 108 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ config.h.in           |  1 +
+ configure.ac          | 18 ++++++++++++++++++
+ grub-core/kern/misc.c | 21 +++++++++++++++++++++
+ 3 files changed, 40 insertions(+)
+
+diff --git a/config.h.in b/config.h.in
+index 9b1d399718..e0e27a8a6a 100644
+--- a/config.h.in
++++ b/config.h.in
+@@ -16,6 +16,7 @@
+ /* Define to 1 to enable disk cache statistics.  */
+ #define DISK_CACHE_STATS @DISK_CACHE_STATS@
+ #define BOOT_TIME_STATS @BOOT_TIME_STATS@
++#define DEBUG_WITH_TIMESTAMPS @DEBUG_WITH_TIMESTAMPS@
+ 
+ /* We don't need those.  */
+ #define MINILZO_CFG_SKIP_LZO_PTR 1
+diff --git a/configure.ac b/configure.ac
+index 83e3ddf908..34fb9a01ad 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1657,6 +1657,17 @@ else
+ fi
+ AC_SUBST([BOOT_TIME_STATS])
+ 
++AC_ARG_WITH([debug-timestamps],
++	   AS_HELP_STRING([--with-debug-timestamps],
++                          [prepend debug traces with absolute and relative timestamps]))
++
++if test x$with_debug_timestamps = xyes; then
++  DEBUG_WITH_TIMESTAMPS=1
++else
++  DEBUG_WITH_TIMESTAMPS=0
++fi
++AC_SUBST([DEBUG_WITH_TIMESTAMPS])
++
+ AC_ARG_ENABLE([grub-emu-sdl2],
+ 	      [AS_HELP_STRING([--enable-grub-emu-sdl2],
+                              [build and install the `grub-emu' debugging utility with SDL2 support (default=guessed)])])
+@@ -2245,6 +2256,7 @@ AM_CONDITIONAL([COND_APPLE_LINKER], [test x$TARGET_APPLE_LINKER = x1])
+ AM_CONDITIONAL([COND_ENABLE_EFIEMU], [test x$enable_efiemu = xyes])
+ AM_CONDITIONAL([COND_ENABLE_CACHE_STATS], [test x$DISK_CACHE_STATS = x1])
+ AM_CONDITIONAL([COND_ENABLE_BOOT_TIME_STATS], [test x$BOOT_TIME_STATS = x1])
++AM_CONDITIONAL([COND_DEBUG_WITH_TIMESTAMPS], [test x$DEBUG_WITH_TIMESTAMPS = x1])
+ 
+ AM_CONDITIONAL([COND_HAVE_CXX], [test x$HAVE_CXX = xyes])
+ 
+@@ -2346,6 +2358,12 @@ else
+ echo With boot time statistics: No
+ fi
+ 
++if [ x"$with_debug_timestamps" = xyes ]; then
++echo Debug traces with timestamps: Yes
++else
++echo Debug traces with timestamps: No
++fi
++
+ if [ x"$efiemu_excuse" = x ]; then
+ echo efiemu runtime: Yes
+ else
+diff --git a/grub-core/kern/misc.c b/grub-core/kern/misc.c
+index 90c71d7cea..967c01588d 100644
+--- a/grub-core/kern/misc.c
++++ b/grub-core/kern/misc.c
+@@ -26,6 +26,9 @@
+ #include <grub/i18n.h>
+ #include <grub/types.h>
+ #include <grub/charset.h>
++#if DEBUG_WITH_TIMESTAMPS
++#include <grub/time.h>
++#endif
+ 
+ union printf_arg
+ {
+@@ -235,9 +238,27 @@ grub_real_dprintf (const char *file, const char *function, const int line, const
+ 		   const char *fmt, ...)
+ {
+   va_list args;
++#if DEBUG_WITH_TIMESTAMPS
++  static long unsigned int last_time = 0;
++  static int last_had_cr = 1;
++#endif
+ 
+   if (grub_debug_enabled (condition))
+     {
++#if DEBUG_WITH_TIMESTAMPS
++      /* Don't print timestamp if last printed message isn't terminated yet */
++      if (last_had_cr) {
++        long unsigned int tmabs = (long unsigned int) grub_get_time_ms();
++        long unsigned int tmrel = tmabs - last_time;
++        last_time = tmabs;
++        grub_printf ("%3lu.%03lus:%2lu.%03lus:", tmabs / 1000, tmabs % 1000, tmrel / 1000, tmrel % 1000);
++      }
++      if (fmt[grub_strlen(fmt)-1] == '\n')
++        last_had_cr = 1;
++      else
++        last_had_cr = 0;
++#endif
++
+       grub_printf ("%s:%s:%d:%s: ", file, function, line, condition);
+       va_start (args, fmt);
+       grub_vprintf (fmt, args);
+-- 
+2.48.1
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  config.h.in: EXISTS (149 lines)
+  configure.ac: EXISTS (2703 lines)
+  grub-core/kern/misc.c: EXISTS (1571 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +43 -5 lines
+
+================================================================================

@@ -1,0 +1,1939 @@
+================================================================================
+EVALUATION: 2025-03-0061
+================================================================================
+
+Mailing list subject: [PATCH] key_protector: Add systemd TPM2 Key Protector
+Commit subject:       key_protector: Add systemd TPM2 Key Protector
+Author:               Diorcet Yann <diorcet.yann@gmail.com>
+Date:                 2025-03-06
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+The systemd TPM2 key protector is a module that enables the automatic retrieval
+of a fully-encrypted disk's unlocking key from a systemd token in luks2
+partition header.
+
+Inspired by the tpm2_key_protector module and the cryptsetup systemd implementation.
+
+The systemd TPM2 key protector registers two commands:
+
+- systemd_tpm2_key_protector_init: Initializes the state of the TPM2 key
+                                   protector for later usage, clearing any
+                                   previous state, too, if any.
+
+- systemd_tpm2_key_protector_clear: Clears any state set by
+                                    systemd_tpm2_key_protector_init.
+
+Create the token inside LUKS2 header using TPM2 device:
+  systemd-cryptenroll /dev/sdXY --tpm2-device=auto
+
+Mount the partition in GRUB2:
+  systemd_tpm2_key_protector_init --device=hdX,gptY
+  cryptomount hdX,gptY -P systemd-tpm2
+
+New tpm2srk module is created in order to factorize the code between
+tpm2_key_protector and systemd_tpm2_key_protector.
+
+New base64 module is created in order to factorize the code between
+luks2 and systemd_tpm2_key_protector.
+
+Exposing some structures and functions from luks2 notably the new
+luks2_iterate_keyslot function and adding the token parsing code
+in luks2_get_keyslot.
+
+Signed-off-by: Diorcet Yann <diorcet.yann@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 1849 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 1849 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ Makefile.util.def                             |   1 +
+ grub-core/Makefile.core.def                   |  28 +-
+ .../systemd_tpm2_key_protector/module.c       | 346 ++++++++++++++++++
+ .../systemd_tpm2_key_protector/tpm2_luks2.c   | 238 ++++++++++++
+ .../systemd_tpm2_key_protector/tpm2_luks2.h   |  37 ++
+ .../commands/tpm2_key_protector/module.c      | 171 +--------
+ .../commands/tpm2_key_protector/tpm2_args.h   |  13 +-
+ grub-core/disk/luks2.c                        | 252 +++++++++----
+ grub-core/lib/base64.c                        |  21 ++
+ grub-core/lib/tpm2srk.c                       | 191 ++++++++++
+ include/grub/luks2.h                          | 148 ++++++++
+ .../grub}/tpm2.h                              |  11 +
+ include/grub/tpm2srk.h                        |  44 +++
+ util/grub-protect.c                           |  60 +--
+ 14 files changed, 1259 insertions(+), 302 deletions(-)
+ create mode 100644 grub-core/commands/systemd_tpm2_key_protector/module.c
+ create mode 100644 grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.c
+ create mode 100644 grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.h
+ create mode 100644 grub-core/lib/base64.c
+ create mode 100644 grub-core/lib/tpm2srk.c
+ create mode 100644 include/grub/luks2.h
+ rename {grub-core/commands/tpm2_key_protector => include/grub}/tpm2.h (85%)
+ create mode 100644 include/grub/tpm2srk.h
+
+diff --git a/Makefile.util.def b/Makefile.util.def
+index 3a80e6d28..744ff6337 100644
+--- a/Makefile.util.def
++++ b/Makefile.util.def
+@@ -213,6 +213,7 @@ program = {
+
+   common = grub-core/kern/emu/argp_common.c;
+   common = grub-core/osdep/init.c;
++  common = grub-core/lib/tpm2srk.c;
+   common = grub-core/lib/tss2/buffer.c;
+   common = grub-core/lib/tss2/tss2_mu.c;
+   common = grub-core/lib/tss2/tpm2_cmd.c;
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index f6d312033..792460e54 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -1215,6 +1215,14 @@ module = {
+   common = lib/json/json.c;
+ };
+
++module = {
++  name = base64;
++  common = lib/gnulib/base64.c;
++  common = lib/base64.c;
++  cflags = '$(CFLAGS_POSIX) $(CFLAGS_GNULIB)';
++  cppflags = '$(CPPFLAGS_POSIX) $(CPPFLAGS_GNULIB)';
++};
++
+ module = {
+   name = afsplitter;
+   common = disk/AFSplitter.c;
+@@ -1228,7 +1236,6 @@ module = {
+ module = {
+   name = luks2;
+   common = disk/luks2.c;
+-  common = lib/gnulib/base64.c;
+   cflags = '$(CFLAGS_POSIX) $(CFLAGS_GNULIB)';
+   cppflags = '$(CPPFLAGS_POSIX) $(CPPFLAGS_GNULIB) -I$(srcdir)/lib/json';
+ };
+@@ -2570,6 +2577,14 @@ module = {
+   cppflags = '-I$(srcdir)/lib/tss2';
+ };
+
++module = {
++  name = tpm2srk;
++  common = lib/tpm2srk.c;
++  enable = efi;
++  enable = emu;
++  cppflags = '-I$(srcdir)/lib/tss2';
++};
++
+ module = {
+   name = tpm2_key_protector;
+   common = commands/tpm2_key_protector/args.c;
+@@ -2582,6 +2597,17 @@ module = {
+   cppflags = '-I$(srcdir)/lib/tss2 -I$(srcdir)/lib/libtasn1-grub';
+ };
+
++module = {
++  name = systemd_tpm2_key_protector;
++  common = commands/systemd_tpm2_key_protector/tpm2_luks2.c;
++  common = commands/systemd_tpm2_key_protector/module.c;
++  /* The plaform support of systemd_tpm2_key_protector depends on the tcg2 implementation in tss2. */
++  enable = efi;
++  enable = emu;
++  cflags = '$(CFLAGS_POSIX) $(CFLAGS_GNULIB)';
++  cppflags = '$(CPPFLAGS_POSIX) $(CPPFLAGS_GNULIB) -I$(srcdir)/lib/json -I$(srcdir)/lib/tss2';
++};
++
+ module = {
+   name = tr;
+   common = commands/tr.c;
+diff --git a/grub-core/commands/systemd_tpm2_key_protector/module.c b/grub-core/commands/systemd_tpm2_key_protector/module.c
+new file mode 100644
+index 000000000..827e93c04
+--- /dev/null
++++ b/grub-core/commands/systemd_tpm2_key_protector/module.c
+@@ -0,0 +1,346 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2024 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/dl.h>
++#include <grub/extcmd.h>
++#include <grub/file.h>
++#include <grub/list.h>
++#include <grub/misc.h>
++#include <grub/err.h>
++#include <grub/mm.h>
++#include <grub/key_protector.h>
++
++#include <base64.h>
++
++#include <grub/luks2.h>
++
++#include "tpm2_luks2.h"
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++typedef enum systemd_tpm2_protector_device
++{
++  SYSTEMD_TPM2_PROTECTOR_DEVICE_UNSET,
++  SYSTEMD_TPM2_PROTECTOR_DEVICE_SET,
++} systemd_tpm2_protector_device_t;
++
++typedef enum tpm2_protector_options
++{
++  OPTION_DEVICE,
++} systemd_tpm2_protector_options_t;
++
++typedef struct systemd_tpm2_protector_context
++{
++  systemd_tpm2_protector_device_t mode;
++  grub_luks2_token_t token;
++} systemd_tpm2_protector_context_t;
++
++static const struct grub_arg_option systemd_tpm2_protector_init_cmd_options[] =
++  {
++    {
++      .longarg  = "device",
++      .shortarg = 'd',
++      .flags    = 0,
++      .arg      = NULL,
++      .type     = ARG_TYPE_STRING,
++      .doc      = N_("Set LUKS partition to use"),
++    },
++    /* End of list */
++    {0, 0, 0, 0, 0, 0}
++  };
++
++static grub_extcmd_t systemd_tpm2_protector_init_cmd;
++static grub_extcmd_t systemd_tpm2_protector_clear_cmd;
++static systemd_tpm2_protector_context_t systemd_tpm2_protector_ctx = {0};
++
++static inline int
++hex2val (char hex)
++{
++  if ('0' <= hex && hex <= '9')
++    return hex - '0';
++  if ('a' <= hex && hex <= 'f')
++    return hex - 'a' + 10;
++  if ('A' <= hex && hex <= 'F')
++    return hex - 'A' + 10;
++  return -1;
++}
++
++static grub_err_t
++unhex_hash (const char *p, idx_t l, void **ret, idx_t *ret_len) {
++  char *buf = NULL;
++  idx_t buf_size;
++  char *z;
++  int r = GRUB_ERR_NONE;
++
++  if (p == NULL || l == 0 || ret == NULL || ret_len == NULL)
++    return GRUB_ERR_BAD_ARGUMENT;
++
++  if (l == SIZE_MAX)
++    l = grub_strlen(p);
++
++  /* Note that the calculation of memory size is an upper boundary,
++     as we ignore whitespace while decoding */
++  buf_size = (l + 1) / 2 + 1;
++  buf = z = grub_malloc(buf_size);
++  if (!buf)
++          return GRUB_ERR_OUT_OF_MEMORY;
++
++  while (p[0] != 0)
++  {
++    int high, low;
++
++    /* Remove spaces before first hex character */
++    while (p[0] != 0 && grub_isspace (p[0]))
++      p++;
++
++    /* End of the string */
++    if (p[0] == 0)
++      break;
++
++    /* First hex character */
++    high = hex2val (*p++);
++
++    /* Remove spaces after first hex character */
++    while (p[0] != 0 && grub_isspace (p[0]))
++      p++;
++    if (p[0] == 0 || high < 0)
++    {
++      grub_error (GRUB_ERR_BAD_ARGUMENT, "invalid hex string");
++      goto on_failure;
++    }
++
++    /* Second hex character */
++    low = hex2val (*p++);
++    if (low < 0)
++    {
++      grub_error (GRUB_ERR_BAD_ARGUMENT, "invalid hex string");
++      goto on_failure;
++    }
++
++    *z++ = (high << 4) | low;
++  }
++
++  *z = 0;
++
++  *ret_len = (size_t) (z - buf);
++  *ret = buf;
++
++  return r;
++
++on_failure:
++  grub_free(buf);
++  *ret = NULL;
++  *ret_len = 0;
++
++  return r;
++}
++
++static grub_err_t
++systemd_tpm2_protector_recover_key (grub_uint8_t **key, grub_size_t *key_size)
++{
++  const char *base64_blob;
++  char *blob;
++  idx_t blob_size;
++  void *decrypted_key;
++  grub_size_t decrypted_key_size;
++  char *base64_encode;
++  idx_t base64_encode_size;
++
++  const char *hex_hash;
++  char *policy_hash;
++  idx_t policy_hash_size;
++  grub_err_t ret = GRUB_ERR_NONE;
++
++  /* Expect a call to systemd_tpm2_protector_init before anybody tries to use us */
++  if (systemd_tpm2_protector_ctx.mode == SYSTEMD_TPM2_PROTECTOR_DEVICE_UNSET)
++    return grub_error (GRUB_ERR_INVALID_COMMAND, N_("cannot use systemd TPM2 key protector without initializing it, call systemd_tpm2_protector_init first"));
++
++  if (key == NULL || key_size == NULL)
++    return GRUB_ERR_BAD_ARGUMENT;
++
++  base64_blob = systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob;
++  if(base64_decode_alloc(base64_blob, grub_strlen (base64_blob), &blob, &blob_size) == 0)
++    {
++      return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("Can't decode base64 blob"));
++    }
++
++  hex_hash = systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash;
++  ret = unhex_hash(hex_hash, grub_strlen (hex_hash), (void*)&policy_hash, &policy_hash_size);
++  if(ret != GRUB_ERR_NONE)
++    {
++      ret = grub_error (GRUB_ERR_BAD_ARGUMENT, N_("Can't unhex policy hash"));
++      goto exit1;
++    }
++
++  ret = tpm2_luks2_acquire_luks2_key(
++    systemd_tpm2_protector_ctx.token.u.systemd_tpm2.pcr_mask,
++    systemd_tpm2_protector_ctx.token.u.systemd_tpm2.pcr_bank,
++    systemd_tpm2_protector_ctx.token.u.systemd_tpm2.primary_alg,
++    blob,
++    blob_size,
++    policy_hash,
++    policy_hash_size,
++    &decrypted_key,
++    &decrypted_key_size);
++
++  if (ret != GRUB_ERR_NONE)
++    goto exit2;
++
++  /* Before using this key as passphrase we base64 encode it, for compat with homed */
++  base64_encode_size = base64_encode_alloc(decrypted_key, decrypted_key_size, &base64_encode);
++  if (base64_encode_size <= 0)
++  {
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("Can't encode passphrase"));
++    goto exit3;
++  }
++
++  *key = (grub_uint8_t *) base64_encode;
++  *key_size = grub_strlen(base64_encode);
++
++exit3:
++  grub_free(decrypted_key);
++exit2:
++  grub_free(policy_hash);
++exit1:
++  grub_free(blob);
++
++  return ret;
++}
++
++static grub_err_t
++tpm2_protector_parse_device (const char *value, const char **file)
++{
++  if (grub_strlen (value) == 0)
++    return GRUB_ERR_BAD_ARGUMENT;
++
++  *file = value;
++
++  return GRUB_ERR_NONE;
++}
++
++static void
++luks2_iterate_fct(grub_luks2_keyslot_t *k __attribute__ ((unused)),
++                  grub_luks2_digest_t *d __attribute__ ((unused)),
++                  grub_luks2_segment_t *s __attribute__ ((unused)),
++                  grub_luks2_token_t *t)
++{
++  grub_memcpy(&systemd_tpm2_protector_ctx.token, t, sizeof(grub_luks2_token_t));
++  systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob =
++ grub_strdup(systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob);
++  systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash =
++ grub_strdup(systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash);
++}
++
++static grub_err_t
++systemd_tpm2_protector_init_cmd_handler (grub_extcmd_context_t ctxt, int argc,
++                                         char **args __attribute__ ((unused)))
++{
++  grub_err_t err;
++  struct grub_arg_list *state = ctxt->state;
++  const char *device = NULL;
++
++  if (systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob != NULL)
++    grub_free((void *)systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob);
++  if (systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash != NULL)
++    grub_free((void *)systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash);
++  grub_memset (&systemd_tpm2_protector_ctx, 0, sizeof (systemd_tpm2_protector_ctx));
++
++  if (argc != 0)
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("systemd_tpm2_key_protector_init accepts no arguments"));
++
++  if (state[OPTION_DEVICE].set)  /* device */
++    {
++      err = tpm2_protector_parse_device (state[OPTION_DEVICE].arg, &device);
++      if (err != GRUB_ERR_NONE)
++        return err;
++    }
++
++  if (device == NULL)
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("systemd_tpm2_key_protector_init: no device provided"));
++
++  /* Open disk.  */
++  grub_disk_t disk = grub_disk_open (device);
++  if (! disk)
++    {
++      err =  grub_error (GRUB_ERR_BAD_ARGUMENT, N_("systemd_tpm2_key_protector_init: can't open device %s"), device);
++      goto error;
++    }
++
++  luks2_iterate_keyslot(disk, LUKS2_ITERATE_FLAGS_WITH_TOKEN, luks2_iterate_fct);
++
++  if (systemd_tpm2_protector_ctx.token.type != LUKS2_TOKEN_TYPE_SYSTEMD_TPM2)
++    err =  grub_error (GRUB_ERR_BAD_ARGUMENT, N_("systemd_tpm2_key_protector_init: no systemd-tpm2 token found on %s"), device);
++  else
++    systemd_tpm2_protector_ctx.mode = SYSTEMD_TPM2_PROTECTOR_DEVICE_SET;
++
++  grub_disk_close(disk);
++
++error:
++  return err;
++}
++
++static grub_err_t
++systemd_tpm2_protector_clear_cmd_handler (grub_extcmd_context_t ctxt __attribute__ ((unused)),
++                                 int argc, char **args __attribute__ ((unused)))
++{
++  if (argc != 0)
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("systemd_tpm2_key_protector_clear accepts no arguments"));
++
++  if (systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob != NULL)
++    grub_free((void *)systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob);
++  if (systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash != NULL)
++    grub_free((void *)systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash);
++  grub_memset (&systemd_tpm2_protector_ctx, 0, sizeof (systemd_tpm2_protector_ctx));
++
++  return GRUB_ERR_NONE;
++}
++
++static struct grub_key_protector systemd_tpm2_key_protector =
++  {
++    .name = "systemd-tpm2",
++    .recover_key = systemd_tpm2_protector_recover_key
++  };
++
++GRUB_MOD_INIT (systemd_tpm2_key_protector)
++{
++  grub_memset (&systemd_tpm2_protector_ctx, 0, sizeof (systemd_tpm2_protector_ctx));
++  systemd_tpm2_protector_init_cmd =
++    grub_register_extcmd ("systemd_tpm2_key_protector_init",
++                         systemd_tpm2_protector_init_cmd_handler, 0,
++                         N_("device "),
++                         N_("Initialize the systemd TPM2 key protector."),
++                         systemd_tpm2_protector_init_cmd_options);
++  systemd_tpm2_protector_clear_cmd =
++    grub_register_extcmd ("systemd_tpm2_key_protector_clear",
++                         systemd_tpm2_protector_clear_cmd_handler, 0, NULL,
++                         N_("Clear the systemd TPM2 key protector if previously initialized."),
++                         NULL);
++  grub_key_protector_register (&systemd_tpm2_key_protector);
++
++}
++
++GRUB_MOD_FINI (systemd_tpm2_key_protector)
++{
++  if (systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob != NULL)
++    grub_free((void *)systemd_tpm2_protector_ctx.token.u.systemd_tpm2.base64_blob);
++  if (systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash != NULL)
++    grub_free((void *)systemd_tpm2_protector_ctx.token.u.systemd_tpm2.hex_policy_hash);
++  grub_key_protector_unregister (&systemd_tpm2_key_protector);
++  grub_unregister_extcmd (systemd_tpm2_protector_clear_cmd);
++  grub_unregister_extcmd (systemd_tpm2_protector_init_cmd);
++}
+diff --git a/grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.c b/grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.c
+new file mode 100644
+index 000000000..d07344a38
+--- /dev/null
++++ b/grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.c
+@@ -0,0 +1,238 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2024 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "tpm2_luks2.h"
++
++#include <grub/list.h>
++#include <grub/misc.h>
++#include <grub/mm.h>
++#include <grub/luks2.h>
++#include <grub/tpm2.h>
++#include <grub/tpm2srk.h>
++
++#include <tss2_buffer.h>
++#include <tss2_mu.h>
++
++static grub_err_t
++tpm2_luks2_unmarshal_raw (const void *sealed_key,
++                             grub_size_t sealed_key_size,
++                             tpm2_sealed_key_t *sk)
++{
++  struct grub_tpm2_buffer buf;
++
++  grub_tpm2_buffer_init (&buf);
++  if (sealed_key_size > buf.cap)
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("sealed key larger than %llu bytes"), (unsigned long long)buf.cap);
++
++  grub_memcpy (buf.data, sealed_key, sealed_key_size);
++  buf.size = sealed_key_size;
++
++  grub_Tss2_MU_TPM2B_PRIVATE_Unmarshal (&buf, &sk->private);
++  grub_Tss2_MU_TPM2B_PUBLIC_Unmarshal (&buf, &sk->public);
++
++  if (buf.error != 0)
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("malformed TPM wire key file"));
++
++  return GRUB_ERR_NONE;
++}
++
++static grub_err_t
++tpm2_luks2_make_pcr_session(TPMI_SH_AUTH_SESSION_t session, grub_uint32_t pcr_mask, grub_uint16_t pcr_bank, TPM2B_DIGEST_t *digest)
++{
++  grub_uint16_t i;
++
++  TPM_RC_t rc;
++  TPM2B_DIGEST_t pcr_digest = {0};
++  TPM2B_DIGEST_t policy_digest = {0};
++  TPML_PCR_SELECTION_t pcr_sel = {
++        .count = 1,
++        .pcrSelections = {
++                {
++                .hash = 0,
++                .sizeOfSelect = 3,
++                .pcrSelect = {0}
++                },
++        }
++  };
++
++  /* Specify the bank */
++  if (pcr_bank == LUKS2_TOKEN_SYSTEMD_TPM2_PCR_BANK_TYPE_SHA256)
++    {
++      pcr_sel.pcrSelections[0].hash = TPM_ALG_SHA256;
++    }
++  else if (LUKS2_TOKEN_SYSTEMD_TPM2_PCR_BANK_TYPE_SHA1)
++    {
++      pcr_sel.pcrSelections[0].hash = TPM_ALG_SHA1;
++    }
++  else
++    {
++      return GRUB_ERR_BAD_ARGUMENT;
++    }
++
++  /*  Convert PCR mask to PCR selection */
++  for(i = 0; i < TPM_MAX_PCRS; ++i)
++    if ((pcr_mask & (1 << i)) != 0)
++      TPMS_PCR_SELECTION_SelectPCR (&pcr_sel.pcrSelections[0], i);
++
++  /* PCR Policy */
++  rc = grub_tpm2_policypcr (session, NULL, &pcr_digest, &pcr_sel, NULL);
++  if (rc != TPM_RC_SUCCESS)
++    {
++        return grub_error (GRUB_ERR_BAD_DEVICE, "Failed to submit PCR policy (TPM2_PolicyPCR: 0x%x).", rc);
++    }
++
++  /* Retrieve Policy Digest */
++  rc = grub_tpm2_policygetdigest (session, NULL, &policy_digest, NULL);
++  if (rc != TPM_RC_SUCCESS)
++    {
++      return grub_error (GRUB_ERR_BAD_DEVICE, "failed to get policy digest (TPM2_PolicyGetDigest: 0x%x).", rc);
++    }
++
++  *digest = policy_digest;
++  return GRUB_ERR_NONE;
++}
++
++grub_err_t
++tpm2_luks2_acquire_luks2_key(
++                grub_uint32_t pcr_mask,
++                grub_uint16_t pcr_bank,
++                grub_uint16_t primary_alg,
++                const void *key_data,
++                grub_size_t key_data_size,
++                const void *policy_hash,
++                grub_size_t policy_hash_size,
++                void **ret_decrypted_key,
++                grub_size_t *ret_decrypted_key_size) {
++
++  tpm2_sealed_key_t sk;
++  grub_srk_type_t srk_type;
++
++  grub_err_t err;
++  grub_uint8_t *key_out;
++
++  TPM_HANDLE_t parent_handle = 0;
++  TPM_HANDLE_t sealed_handle = 0;
++  TPM_HANDLE_t srk_handle = 0;
++  TPMS_AUTH_COMMAND_t authCmd = {0};
++  TPM2B_NONCE_t nonceCaller = {0};
++  TPMT_SYM_DEF_t symmetric = {0};
++  TPM2B_DIGEST_t pcr_digest = {0};
++  TPM_RC_t rc;
++  TPMI_SH_AUTH_SESSION_t session;
++  TPM2B_SENSITIVE_DATA_t data;
++
++  if (ret_decrypted_key == NULL || ret_decrypted_key_size == NULL)
++    {
++      return GRUB_ERR_BAD_ARGUMENT;
++    }
++
++  /* Decode blob: PRIVATE + PUBLIC */
++  err = tpm2_luks2_unmarshal_raw(key_data, key_data_size, &sk);
++  if (err != GRUB_ERR_NONE)
++    {
++      return grub_error (GRUB_ERR_BAD_ARGUMENT, "Can't unmarshal blob");
++    }
++
++  /* Use specified algo */
++  if (primary_alg == LUKS2_TOKEN_SYSTEMD_TPM2_ALGO_TYPE_ECC)
++    {
++      srk_type.noDA = false;
++      srk_type.type = TPM_ALG_ECC;
++      srk_type.detail.ecc_curve = TPM_ECC_NIST_P256;
++    }
++  else if (LUKS2_TOKEN_SYSTEMD_TPM2_ALGO_TYPE_RSA)
++    {
++      srk_type.noDA = false;
++      srk_type.type = TPM_ALG_RSA;
++      srk_type.detail.rsa_bits = 2048;
++    }
++  else
++    {
++      return GRUB_ERR_BAD_ARGUMENT;
++    }
++
++  parent_handle = TPM_RH_OWNER;
++  if (TPM_HT_IS_PERSISTENT (parent_handle))
++    srk_handle = parent_handle;
++
++  /* Load SRK and sealed and get handles */
++  err = tpm2_protector_srk_load(srk_type, &sk, parent_handle, &sealed_handle, &srk_handle);
++  if (err != GRUB_ERR_NONE)
++    {
++      grub_print_error ();
++      return grub_error (GRUB_ERR_BAD_ARGUMENT, "Can't load srk");
++    }
++
++  /* Start Auth Session */
++  nonceCaller.size = TPM_SHA256_DIGEST_SIZE;
++  symmetric.algorithm = TPM_ALG_NULL;
++  rc = grub_tpm2_startauthsession (TPM_RH_NULL, TPM_RH_NULL, NULL, &nonceCaller, NULL,
++                                  TPM_SE_POLICY, &symmetric, TPM_ALG_SHA256,
++                                  &session, NULL, NULL);
++  if (rc != TPM_RC_SUCCESS)
++    {
++      err = grub_error (GRUB_ERR_BAD_DEVICE, "failed to start auth session (TPM2_StartAuthSession: 0x%x)", rc);
++      goto exit1;
++    }
++
++  /* Create PCR digest from the given setting */
++  err = tpm2_luks2_make_pcr_session(session, pcr_mask, pcr_bank, &pcr_digest);
++  if(err != GRUB_ERR_NONE)
++    goto exit2;
++
++  /* Compare the computed digest with the joined one */
++  if (policy_hash_size > 0 && ( policy_hash_size != pcr_digest.size || grub_memcmp(pcr_digest.buffer, policy_hash, policy_hash_size)))
++    {
++      err = grub_error (GRUB_ERR_BAD_DEVICE, "Current policy digest does not match stored policy digest, cancelling TPM2 authentication attempt.");
++      goto exit2;
++    }
++
++  /* Unseal Sealed Key */
++  authCmd.sessionHandle = session;
++  rc = grub_tpm2_unseal (sealed_handle, &authCmd, &data, NULL);
++  if (rc != TPM_RC_SUCCESS)
++    {
++      err = grub_error (GRUB_ERR_BAD_DEVICE, "failed to unseal sealed key (TPM2_Unseal: 0x%x)", rc);
++      goto exit2;
++    }
++
++  /* Epilogue */
++  key_out = grub_malloc (data.size);
++  if (key_out == NULL)
++    {
++      err = grub_error (GRUB_ERR_OUT_OF_MEMORY, N_("no memory left to allocate unlock key buffer"));
++      goto exit2;
++    }
++
++  grub_memcpy (key_out, data.buffer, data.size);
++
++  *ret_decrypted_key = key_out;
++  *ret_decrypted_key_size = data.size;
++
++  err = GRUB_ERR_NONE;
++
++ exit2:
++  grub_tpm2_flushcontext (session);
++ exit1:
++  grub_tpm2_flushcontext (sealed_handle);
++
++  if (!TPM_HT_IS_PERSISTENT (srk_handle))
++    grub_tpm2_flushcontext (srk_handle);
++
++  return err;
++}
+\ No newline at end of file
+diff --git a/grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.h b/grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.h
+new file mode 100644
+index 000000000..b00c42868
+--- /dev/null
++++ b/grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.h
+@@ -0,0 +1,37 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2024 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef GRUB_SYSTEMD_TPM2_LUKS2_TPM2_HEADER
++#define GRUB_SYSTEMD_TPM2_LUKS2_TPM2_HEADER 1
++
++#include <grub/types.h>
++#include <grub/err.h>
++
++extern grub_err_t
++tpm2_luks2_acquire_luks2_key(
++                grub_uint32_t pcr_mask,
++                grub_uint16_t pcr_bank,
++                grub_uint16_t primary_alg,
++                const void *key_data,
++                grub_size_t key_data_size,
++                const void *policy_hash,
++                grub_size_t policy_hash_size,
++                void **ret_decrypted_key,
++                grub_size_t *ret_decrypted_key_size);
++
++#endif /* GRUB_SYSTEMD_TPM2_LUKS2_TPM2_HEADER */
+diff --git a/grub-core/commands/tpm2_key_protector/module.c b/grub-core/commands/tpm2_key_protector/module.c
+index 857f3753f..553538861 100644
+--- a/grub-core/commands/tpm2_key_protector/module.c
++++ b/grub-core/commands/tpm2_key_protector/module.c
+@@ -24,13 +24,14 @@
+ #include <grub/misc.h>
+ #include <grub/mm.h>
+ #include <grub/key_protector.h>
++#include <grub/tpm2.h>
++#include <grub/tpm2srk.h>
+
+ #include <tss2_buffer.h>
+ #include <tss2_types.h>
+ #include <tss2_mu.h>
+
+ #include "tpm2_args.h"
+-#include "tpm2.h"
+ #include "tpm2key.h"
+
+ GRUB_MOD_LICENSE ("GPLv3+");
+@@ -400,170 +401,6 @@ tpm2_protector_unmarshal_tpm2key (void *sealed_key,
+   return err;
+ }
+
+-/* Check if the SRK exists in the specified handle */
+-static grub_err_t
+-tpm2_protector_srk_check (const TPM_HANDLE_t srk_handle)
+-{
+-  TPM_RC_t rc;
+-  TPM2B_PUBLIC_t public;
+-
+-  /* Find SRK */
+-  rc = grub_tpm2_readpublic (srk_handle, NULL, &public);
+-  if (rc == TPM_RC_SUCCESS)
+-    return GRUB_ERR_NONE;
+-
+-  return grub_error (GRUB_ERR_BAD_ARGUMENT, "failed to retrieve SRK from 0x%x (TPM2_ReadPublic: 0x%x)", srk_handle, rc);
+-}
+-
+-/* Get the SRK with the template */
+-static grub_err_t
+-tpm2_protector_srk_get (const grub_srk_type_t srk_type,
+-                       const TPM_HANDLE_t parent,
+-                       TPM_HANDLE_t *srk_handle)
+-{
+-  TPM_RC_t rc;
+-  TPMT_PUBLIC_PARMS_t parms = {0};
+-  TPMS_AUTH_COMMAND_t authCommand = {0};
+-  TPM2B_SENSITIVE_CREATE_t inSensitive = {0};
+-  TPM2B_PUBLIC_t inPublic = {0};
+-  TPM2B_DATA_t outsideInfo = {0};
+-  TPML_PCR_SELECTION_t creationPcr = {0};
+-  TPM2B_PUBLIC_t outPublic = {0};
+-  TPM2B_CREATION_DATA_t creationData = {0};
+-  TPM2B_DIGEST_t creationHash = {0};
+-  TPMT_TK_CREATION_t creationTicket = {0};
+-  TPM2B_NAME_t srkName = {0};
+-  TPM_HANDLE_t tmp_handle = 0;
+-
+-  inPublic.publicArea.type = srk_type.type;
+-  inPublic.publicArea.nameAlg = TPM_ALG_SHA256;
+-  inPublic.publicArea.objectAttributes.restricted = 1;
+-  inPublic.publicArea.objectAttributes.userWithAuth = 1;
+-  inPublic.publicArea.objectAttributes.decrypt = 1;
+-  inPublic.publicArea.objectAttributes.fixedTPM = 1;
+-  inPublic.publicArea.objectAttributes.fixedParent = 1;
+-  inPublic.publicArea.objectAttributes.sensitiveDataOrigin = 1;
+-  inPublic.publicArea.objectAttributes.noDA = 1;
+-
+-  if (srk_type.type == TPM_ALG_RSA)
+-    {
+-      inPublic.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM_ALG_AES;
+- inPublic.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
+-      inPublic.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM_ALG_CFB;
+-      inPublic.publicArea.parameters.rsaDetail.scheme.scheme = TPM_ALG_NULL;
+-      inPublic.publicArea.parameters.rsaDetail.keyBits = srk_type.detail.rsa_bits;
+-      inPublic.publicArea.parameters.rsaDetail.exponent = 0;
+-    }
+-  else if (srk_type.type == TPM_ALG_ECC)
+-    {
+-      inPublic.publicArea.parameters.eccDetail.symmetric.algorithm = TPM_ALG_AES;
+- inPublic.publicArea.parameters.eccDetail.symmetric.keyBits.aes = 128;
+-      inPublic.publicArea.parameters.eccDetail.symmetric.mode.aes = TPM_ALG_CFB;
+-      inPublic.publicArea.parameters.eccDetail.scheme.scheme = TPM_ALG_NULL;
+-      inPublic.publicArea.parameters.eccDetail.curveID = srk_type.detail.ecc_curve;
+-      inPublic.publicArea.parameters.eccDetail.kdf.scheme = TPM_ALG_NULL;
+-    }
+-  else
+-    return grub_error (GRUB_ERR_BAD_ARGUMENT, "unknown SRK algorithm");
+-
+-  /* Test the parameters before SRK generation */
+-  parms.type = srk_type.type;
+-  grub_memcpy (&parms.parameters, &inPublic.publicArea.parameters,
+-              sizeof (TPMU_PUBLIC_PARMS_t));
+-
+-  rc = grub_tpm2_testparms (&parms, NULL);
+-  if (rc != TPM_RC_SUCCESS)
+-    return grub_error (GRUB_ERR_BAD_ARGUMENT, "unsupported SRK template (TPM2_TestParms: 0x%x)", rc);
+-
+-  /* Create SRK */
+-  authCommand.sessionHandle = TPM_RS_PW;
+-  rc = grub_tpm2_createprimary (parent, &authCommand, &inSensitive, &inPublic,
+-                               &outsideInfo, &creationPcr, &tmp_handle, &outPublic,
+-                               &creationData, &creationHash, &creationTicket,
+-                               &srkName, NULL);
+-  if (rc != TPM_RC_SUCCESS)
+-    return grub_error (GRUB_ERR_BAD_DEVICE, "could not create SRK (TPM2_CreatePrimary: 0x%x)", rc);
+-
+-  *srk_handle = tmp_handle;
+-
+-  return GRUB_ERR_NONE;
+-}
+-
+-/*
+- * Load the SRK from the persistent handle or create one with a given type of
+- * template, and then associate the sealed key with the SRK
+- * Return values:
+- * - GRUB_ERR_NONE: Everything is fine.
+- * - GRUB_ERR_BAD_ARGUMENT: The SRK doesn't match. Try another one.
+- * - Other: Something went wrong.
+- */
+-static grub_err_t
+-tpm2_protector_srk_load (const grub_srk_type_t srk_type,
+-                        const tpm2_sealed_key_t *sealed_key,
+-                        const TPM_HANDLE_t parent,
+-                        TPM_HANDLE_t *sealed_handle,
+-                        TPM_HANDLE_t *srk_handle)
+-{
+-  TPMS_AUTH_COMMAND_t authCmd = {0};
+-  TPM2B_NAME_t name = {0};
+-  TPM_RC_t rc;
+-  grub_err_t err;
+-
+-  if (srk_handle == NULL)
+-    return GRUB_ERR_BUG;
+-
+-  if (*srk_handle != 0)
+-    {
+-      err = tpm2_protector_srk_check (*srk_handle);
+-      if (err != GRUB_ERR_NONE)
+-       return err;
+-    }
+-  else
+-    {
+-      err = tpm2_protector_srk_get (srk_type, parent, srk_handle);
+-      if (err != GRUB_ERR_NONE)
+-       return err;
+-    }
+-
+-  /* Load the sealed key and associate it with the SRK */
+-  authCmd.sessionHandle = TPM_RS_PW;
+-  rc = grub_tpm2_load (*srk_handle, &authCmd, &sealed_key->private, &sealed_key->public,
+-                      sealed_handle, &name, NULL);
+-  /*
+-   * If TPM2_Load returns (TPM_RC_INTEGRITY | TPM_RC_P | TPM_RC_1), then it
+-   * implies the wrong SRK is used.
+-   */
+-  if (rc == (TPM_RC_INTEGRITY | TPM_RC_P | TPM_RC_1))
+-    {
+-      err = grub_error (GRUB_ERR_BAD_ARGUMENT, "SRK not matched");
+-      goto error;
+-    }
+-  else if (rc != TPM_RC_SUCCESS)
+-    {
+-      err = grub_error (GRUB_ERR_BAD_DEVICE, "failed to load sealed key (TPM2_Load: 0x%x)", rc);
+-      goto error;
+-    }
+-
+-  return GRUB_ERR_NONE;
+-
+- error:
+-  if (!TPM_HT_IS_PERSISTENT (*srk_handle))
+-    grub_tpm2_flushcontext (*srk_handle);
+-
+-  return err;
+-}
+-
+-static const char *
+-srk_type_to_name (grub_srk_type_t srk_type)
+-{
+-  if (srk_type.type == TPM_ALG_ECC && srk_type.detail.ecc_curve == TPM_ECC_NIST_P256)
+-    return "ECC_NIST_P256";
+-  else if (srk_type.type == TPM_ALG_RSA && srk_type.detail.rsa_bits == 2048)
+-    return "RSA2048";
+-
+-  return "Unknown";
+-}
+-
+ static grub_err_t
+ tpm2_protector_load_key (const tpm2_protector_context_t *ctx,
+                         const tpm2_sealed_key_t *sealed_key,
+@@ -577,10 +414,12 @@ tpm2_protector_load_key (const tpm2_protector_context_t *ctx,
+     {
+       .type = TPM_ALG_ECC,
+       .detail.ecc_curve = TPM_ECC_NIST_P256,
++      .noDA = true,
+     },
+     {
+       .type = TPM_ALG_RSA,
+       .detail.rsa_bits = 2048,
++      .noDA = true,
+     },
+     {
+       .type = TPM_ALG_ERROR,
+@@ -1022,6 +861,7 @@ tpm2_protector_key_from_buffer (const tpm2_protector_context_t *ctx,
+          ctx_w = (tpm2_protector_context_t *)ctx;
+          ctx_w->srk_type.type = TPM_ALG_RSA;
+          ctx_w->srk_type.detail.rsa_bits = 2048;
++         ctx_w->srk_type.noDA = true;
+        }
+     }
+   else
+@@ -1289,6 +1129,7 @@ tpm2_protector_check_args (tpm2_protector_context_t *ctx)
+     {
+       ctx->srk_type.type = TPM_ALG_ECC;
+       ctx->srk_type.detail.ecc_curve = TPM_ECC_NIST_P256;
++      ctx->srk_type.noDA = true;
+     }
+
+   return GRUB_ERR_NONE;
+diff --git a/grub-core/commands/tpm2_key_protector/tpm2_args.h b/grub-core/commands/tpm2_key_protector/tpm2_args.h
+index bdbf9f373..805e293f0 100644
+--- a/grub-core/commands/tpm2_key_protector/tpm2_args.h
++++ b/grub-core/commands/tpm2_key_protector/tpm2_args.h
+@@ -21,18 +21,7 @@
+ #define GRUB_TPM2_INTERNAL_ARGS_HEADER 1
+
+ #include <grub/err.h>
+-
+-#include "tpm2.h"
+-
+-struct grub_srk_type
+-{
+-  TPMI_ALG_PUBLIC_t type;
+-  union {
+-    TPM_KEY_BITS_t rsa_bits;
+-    TPM_ECC_CURVE_t ecc_curve;
+-  } detail;
+-};
+-typedef struct grub_srk_type grub_srk_type_t;
++#include <grub/tpm2.h>
+
+ extern grub_err_t
+ grub_tpm2_protector_parse_pcrs (char *value, grub_uint8_t *pcrs, grub_uint8_t *pcr_count);
+diff --git a/grub-core/disk/luks2.c b/grub-core/disk/luks2.c
+index 8036d76ff..3e0894320 100644
+--- a/grub-core/disk/luks2.c
++++ b/grub-core/disk/luks2.c
+@@ -28,6 +28,8 @@
+ #include <grub/i18n.h>
+ #include <grub/safemath.h>
+
++#include <grub/luks2.h>
++
+ #include <base64.h>
+ #include <json.h>
+
+@@ -36,12 +38,8 @@ GRUB_MOD_LICENSE ("GPLv3+");
+ #define LUKS_MAGIC_1ST "LUKS\xBA\xBE"
+ #define LUKS_MAGIC_2ND "SKUL\xBA\xBE"
+
+-enum grub_luks2_kdf_type
+-{
+-  LUKS2_KDF_TYPE_ARGON2I,
+-  LUKS2_KDF_TYPE_PBKDF2
+-};
+-typedef enum grub_luks2_kdf_type grub_luks2_kdf_type_t;
++/* From tss2_types.h */
++#define TPM_MAX_PCRS                      24
+
+ /* On disk LUKS header */
+ struct grub_luks2_header
+@@ -62,69 +60,6 @@ struct grub_luks2_header
+ } GRUB_PACKED;
+ typedef struct grub_luks2_header grub_luks2_header_t;
+
+-struct grub_luks2_keyslot
+-{
+-  /* The integer key to the associative array of keyslots. */
+-  grub_uint64_t idx;
+-  grub_int64_t key_size;
+-  grub_int64_t priority;
+-  struct
+-  {
+-    const char   *encryption;
+-    grub_uint64_t offset;
+-    grub_uint64_t size;
+-    grub_int64_t  key_size;
+-  } area;
+-  struct
+-  {
+-    const char  *hash;
+-    grub_int64_t stripes;
+-  } af;
+-  struct
+-  {
+-    grub_luks2_kdf_type_t type;
+-    const char           *salt;
+-    union
+-    {
+-      struct
+-      {
+-       grub_int64_t time;
+-       grub_int64_t memory;
+-       grub_int64_t cpus;
+-      } argon2i;
+-      struct
+-      {
+-       const char   *hash;
+-       grub_int64_t iterations;
+-      } pbkdf2;
+-    } u;
+-  } kdf;
+-};
+-typedef struct grub_luks2_keyslot grub_luks2_keyslot_t;
+-
+-struct grub_luks2_segment
+-{
+-  grub_uint64_t idx;
+-  grub_uint64_t offset;
+-  const char   *size;
+-  const char   *encryption;
+-  grub_int64_t sector_size;
+-};
+-typedef struct grub_luks2_segment grub_luks2_segment_t;
+-
+-struct grub_luks2_digest
+-{
+-  grub_uint64_t idx;
+-  /* Both keyslots and segments are interpreted as bitfields here */
+-  grub_uint64_t        keyslots;
+-  grub_uint64_t        segments;
+-  const char   *salt;
+-  const char   *digest;
+-  const char   *hash;
+-  grub_int64_t iterations;
+-};
+-typedef struct grub_luks2_digest grub_luks2_digest_t;
+-
+ gcry_err_code_t AF_merge (const gcry_md_spec_t * hash, grub_uint8_t * src,
+                          grub_uint8_t * dst, grub_size_t blocksize,
+                          grub_size_t blocknumbers);
+@@ -258,11 +193,78 @@ luks2_parse_digest (grub_luks2_digest_t *out, const grub_json_t *digest)
+   return GRUB_ERR_NONE;
+ }
+
++static grub_err_t
++luks2_parse_token (grub_luks2_token_t *out, const grub_json_t *token)
++{
++  grub_json_t keyslots, pcrs, o;
++  grub_size_t i, size;
++  grub_uint64_t bit;
++  const char *type;
++  const char *pcr_bank;
++  const char *alg;
++
++  if (grub_json_getstring (&type, token, "type"))
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "Invalid digest type");
++  else if (grub_strcmp (type, "systemd-tpm2"))
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "Unsupported digest type %s", type);
++  out->type = LUKS2_TOKEN_TYPE_SYSTEMD_TPM2;
++
++  if (grub_json_getvalue (&keyslots, token, "keyslots") ||
++      grub_json_getvalue (&pcrs, token, "tpm2-pcrs") ||
++      grub_json_getstring (&pcr_bank, token, "tpm2-pcr-bank") ||
++      grub_json_getstring (&alg, token, "tpm2-primary-alg") ||
++      grub_json_getstring (&out->u.systemd_tpm2.base64_blob, token, "tpm2-blob") ||
++      grub_json_getstring (&out->u.systemd_tpm2.hex_policy_hash, token, "tpm2-policy-hash"))
++      {
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "Missing token parameters");
++      }
++
++  if (grub_json_getsize (&size, &pcrs))
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "token references no pcrs");
++
++  out->u.systemd_tpm2.pcr_mask = 0;
++  for (i = 0; i < size; i++)
++    {
++      if (grub_json_getchild (&o, &pcrs, i) ||
++          grub_json_getuint64 (&bit, &o, NULL) || bit >= TPM_MAX_PCRS)
++        return grub_error (GRUB_ERR_BAD_ARGUMENT, "Invalid pcr");
++      out->u.systemd_tpm2.pcr_mask |= (1 << bit);
++    }
++
++  if (grub_strcmp (pcr_bank, "sha256") == 0)
++    out->u.systemd_tpm2.pcr_bank = LUKS2_TOKEN_SYSTEMD_TPM2_PCR_BANK_TYPE_SHA256;
++  else if (grub_strcmp (pcr_bank, "sha1") == 0)
++    out->u.systemd_tpm2.pcr_bank = LUKS2_TOKEN_SYSTEMD_TPM2_PCR_BANK_TYPE_SHA1;
++  else
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "Unsupported pcr-bank type %s", pcr_bank);
++
++  if (grub_strcmp (alg, "ecc") == 0)
++    out->u.systemd_tpm2.primary_alg = LUKS2_TOKEN_SYSTEMD_TPM2_ALGO_TYPE_ECC;
++  else if (grub_strcmp (alg, "rsa") == 0)
++    out->u.systemd_tpm2.primary_alg = LUKS2_TOKEN_SYSTEMD_TPM2_ALGO_TYPE_RSA;
++  else
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "Unsupported algo type %s", alg);
++
++  if (grub_json_getsize (&size, &keyslots))
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "token references no keyslots");
++
++  out->keyslots = 0;
++  for (i = 0; i < size; i++)
++    {
++      if (grub_json_getchild (&o, &keyslots, i) ||
++               grub_json_getuint64 (&bit, &o, NULL))
++             return grub_error (GRUB_ERR_BAD_ARGUMENT, "Invalid keyslot");
++      out->keyslots |= (1 << bit);
++    }
++
++  return GRUB_ERR_NONE;
++}
++
+ static grub_err_t
+ luks2_get_keyslot (grub_luks2_keyslot_t *k, grub_luks2_digest_t *d, grub_luks2_segment_t *s,
+-                  const grub_json_t *root, grub_size_t keyslot_json_idx)
++  grub_luks2_token_t *t, const grub_json_t *root, grub_size_t keyslot_json_idx)
+ {
+-  grub_json_t keyslots, keyslot, digests, digest, segments, segment;
++  grub_json_t keyslots, keyslot, digests, digest, segments, segment, tokens, token;
+   grub_size_t json_idx, size;
+
+   /* Get nth keyslot */
+@@ -309,6 +311,27 @@ luks2_get_keyslot (grub_luks2_keyslot_t *k, grub_luks2_digest_t *d, grub_luks2_s
+   if (json_idx == size)
+     return grub_error (GRUB_ERR_FILE_NOT_FOUND, "No segment for digest \"%" PRIuGRUB_UINT64_T "\"", d->idx);
+
++  if (t == NULL)
++    return GRUB_ERR_NONE;
++
++    /* Get token that matches the keyslot. */
++  if (grub_json_getvalue (&tokens, root, "tokens") ||
++      grub_json_getsize (&size, &tokens))
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "Could not get tokens");
++  for (json_idx = 0; json_idx < size; json_idx++)
++    {
++      if (grub_json_getchild (&token, &tokens, json_idx) ||
++         grub_json_getuint64 (&t->idx, &token, NULL) ||
++         grub_json_getchild (&token, &token, 0) ||
++         luks2_parse_token (t, &token))
++       return grub_error (GRUB_ERR_BAD_ARGUMENT, "Could not parse token index %" PRIuGRUB_SIZE, json_idx);
++
++      if ((t->keyslots & (1 << k->idx)))
++       break;
++    }
++  if (json_idx == size)
++      return grub_error (GRUB_ERR_FILE_NOT_FOUND, "No token for keyslot \"%" PRIuGRUB_UINT64_T "\"", k->idx);
++
+   return GRUB_ERR_NONE;
+ }
+
+@@ -555,6 +578,91 @@ luks2_decrypt_key (grub_uint8_t *out_key,
+   return ret;
+ }
+
++extern grub_err_t
++luks2_iterate_keyslot(grub_disk_t source, grub_uint32_t flags, luks2_iterate_fct_t fct)
++{
++  char *json_header = NULL, *ptr;
++  grub_size_t json_idx, size;
++  grub_luks2_header_t header;
++  grub_luks2_keyslot_t keyslot;
++  grub_luks2_digest_t digest;
++  grub_luks2_segment_t segment;
++  grub_luks2_token_t token;
++  grub_json_t *json = NULL, keyslots;
++  grub_err_t ret;
++  grub_size_t sz;
++
++  ret = luks2_read_header (source, &header);
++  if (ret)
++    return ret;
++
++  if (grub_sub (grub_be_to_cpu64 (header.hdr_size), sizeof (header), &sz))
++    return grub_error (GRUB_ERR_OUT_OF_RANGE, "underflow detected while calculating json header size");
++
++  json_header = grub_zalloc (sz);
++  if (!json_header)
++      return GRUB_ERR_OUT_OF_MEMORY;
++
++  /* Read the JSON area. */
++  ret = grub_disk_read (source, 0, grub_be_to_cpu64 (header.hdr_offset) + sizeof (header),
++                       grub_be_to_cpu64 (header.hdr_size) - sizeof (header), json_header);
++  if (ret)
++      goto err;
++
++  ptr = grub_memchr (json_header, 0, grub_be_to_cpu64 (header.hdr_size) - sizeof (header));
++  if (!ptr)
++    goto err;
++
++  ret = grub_json_parse (&json, json_header, grub_be_to_cpu64 (header.hdr_size));
++  if (ret)
++    {
++      ret = grub_error (GRUB_ERR_BAD_ARGUMENT, "Invalid LUKS2 JSON header");
++      goto err;
++    }
++
++  if (grub_json_getvalue (&keyslots, json, "keyslots") ||
++      grub_json_getsize (&size, &keyslots))
++    {
++      ret = grub_error (GRUB_ERR_BAD_ARGUMENT, "Could not get keyslots");
++      goto err;
++    }
++
++  if (grub_disk_native_sectors (source) == GRUB_DISK_SIZE_UNKNOWN)
++    {
++      /* FIXME: Allow use of source disk, and maybe cause errors in read. */
++      grub_dprintf ("luks2", "Source disk %s has an unknown size, "
++                            "conservatively returning error\n", source->name);
++      ret = grub_error (GRUB_ERR_BUG, "Unknown size of luks2 source device");
++      goto err;
++    }
++
++  /* Try all keyslot */
++  for (json_idx = 0; json_idx < size; json_idx++)
++    {
++      grub_errno = GRUB_ERR_NONE;
++      ret = luks2_get_keyslot (&keyslot, &digest, &segment, (flags & LUKS2_ITERATE_FLAGS_WITH_TOKEN) ? &token: NULL, json, json_idx);
++      if (ret)
++       {
++         /*
++          * luks2_get_keyslot() can fail for a variety of reasons that do not
++          * necessarily mean the next keyslot should not be tried (e.g. a new
++          * kdf type). So always try the next slot.
++          */
++         grub_dprintf ("luks2", "Failed to get keyslot %" PRIuGRUB_UINT64_T "\n", keyslot.idx);
++         continue;
++       }
++      if (grub_errno != GRUB_ERR_NONE)
++         grub_dprintf ("luks2", "Ignoring unhandled error %d from luks2_get_keyslot\n", grub_errno);
++
++
++    fct(&keyslot, &digest, &segment, (flags & LUKS2_ITERATE_FLAGS_WITH_TOKEN) ? &token: NULL);
++  }
++err:
++  grub_free (json_header);
++  grub_json_free (json);
++  return ret;
++}
++
+ static grub_err_t
+ luks2_recover_key (grub_disk_t source,
+                   grub_cryptodisk_t crypt,
+@@ -626,7 +734,7 @@ luks2_recover_key (grub_disk_t source,
+       typeof (source->total_sectors) max_crypt_sectors = 0;
+
+       grub_errno = GRUB_ERR_NONE;
+-      ret = luks2_get_keyslot (&keyslot, &digest, &segment, json, json_idx);
++      ret = luks2_get_keyslot (&keyslot, &digest, &segment, NULL, json, json_idx);
+       if (ret)
+        {
+          /*
+diff --git a/grub-core/lib/base64.c b/grub-core/lib/base64.c
+new file mode 100644
+index 000000000..b12668fad
+--- /dev/null
++++ b/grub-core/lib/base64.c
+@@ -0,0 +1,21 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2024 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/dl.h>
++
++GRUB_MOD_LICENSE ("GPLv2+");
+\ No newline at end of file
+diff --git a/grub-core/lib/tpm2srk.c b/grub-core/lib/tpm2srk.c
+new file mode 100644
+index 000000000..3c1e4f7dc
+--- /dev/null
++++ b/grub-core/lib/tpm2srk.c
+@@ -0,0 +1,191 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2022 Microsoft Corporation
++ *  Copyright (C) 2024 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/tpm2srk.h>
++
++#include <grub/dl.h>
++#include <grub/misc.h>
++#include <grub/types.h>
++#include <stddef.h>
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++/* Check if the SRK exists in the specified handle */
++grub_err_t
++tpm2_protector_srk_check (const TPM_HANDLE_t srk_handle)
++{
++  TPM_RC_t rc;
++  TPM2B_PUBLIC_t public;
++
++  /* Find SRK */
++  rc = grub_tpm2_readpublic (srk_handle, NULL, &public);
++  if (rc == TPM_RC_SUCCESS)
++    return GRUB_ERR_NONE;
++
++  return grub_error (GRUB_ERR_BAD_ARGUMENT, "failed to retrieve SRK from 0x%x (TPM2_ReadPublic: 0x%x)", srk_handle, rc);
++}
++
++/* Get the SRK with the template */
++grub_err_t
++tpm2_protector_srk_get (const grub_srk_type_t srk_type,
++                       const TPM_HANDLE_t parent,
++                       TPM_HANDLE_t *srk_handle)
++{
++  TPM_RC_t rc;
++  TPMT_PUBLIC_PARMS_t parms = {0};
++  TPMS_AUTH_COMMAND_t authCommand = {0};
++  TPM2B_SENSITIVE_CREATE_t inSensitive = {0};
++  TPM2B_PUBLIC_t inPublic = {0};
++  TPM2B_DATA_t outsideInfo = {0};
++  TPML_PCR_SELECTION_t creationPcr = {0};
++  TPM2B_PUBLIC_t outPublic = {0};
++  TPM2B_CREATION_DATA_t creationData = {0};
++  TPM2B_DIGEST_t creationHash = {0};
++  TPMT_TK_CREATION_t creationTicket = {0};
++  TPM2B_NAME_t srkName = {0};
++  TPM_HANDLE_t tmp_handle = 0;
++
++  inPublic.publicArea.type = srk_type.type;
++  inPublic.publicArea.nameAlg = TPM_ALG_SHA256;
++  inPublic.publicArea.objectAttributes.restricted = 1;
++  inPublic.publicArea.objectAttributes.userWithAuth = 1;
++  inPublic.publicArea.objectAttributes.decrypt = 1;
++  inPublic.publicArea.objectAttributes.fixedTPM = 1;
++  inPublic.publicArea.objectAttributes.fixedParent = 1;
++  inPublic.publicArea.objectAttributes.sensitiveDataOrigin = 1;
++  inPublic.publicArea.objectAttributes.noDA = srk_type.noDA;
++
++  if (srk_type.type == TPM_ALG_RSA)
++    {
++      inPublic.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM_ALG_AES;
++ inPublic.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
++      inPublic.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM_ALG_CFB;
++      inPublic.publicArea.parameters.rsaDetail.scheme.scheme = TPM_ALG_NULL;
++      inPublic.publicArea.parameters.rsaDetail.keyBits = srk_type.detail.rsa_bits;
++      inPublic.publicArea.parameters.rsaDetail.exponent = 0;
++    }
++  else if (srk_type.type == TPM_ALG_ECC)
++    {
++      inPublic.publicArea.parameters.eccDetail.symmetric.algorithm = TPM_ALG_AES;
++ inPublic.publicArea.parameters.eccDetail.symmetric.keyBits.aes = 128;
++      inPublic.publicArea.parameters.eccDetail.symmetric.mode.aes = TPM_ALG_CFB;
++      inPublic.publicArea.parameters.eccDetail.scheme.scheme = TPM_ALG_NULL;
++      inPublic.publicArea.parameters.eccDetail.curveID = srk_type.detail.ecc_curve;
++      inPublic.publicArea.parameters.eccDetail.kdf.scheme = TPM_ALG_NULL;
++    }
++  else
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "unknown SRK algorithm");
++
++  /* Test the parameters before SRK generation */
++  parms.type = srk_type.type;
++  grub_memcpy (&parms.parameters, &inPublic.publicArea.parameters,
++              sizeof (TPMU_PUBLIC_PARMS_t));
++
++  rc = grub_tpm2_testparms (&parms, NULL);
++  if (rc != TPM_RC_SUCCESS)
++    return grub_error (GRUB_ERR_BAD_ARGUMENT, "unsupported SRK template (TPM2_TestParms: 0x%x)", rc);
++
++  /* Create SRK */
++  authCommand.sessionHandle = TPM_RS_PW;
++  rc = grub_tpm2_createprimary (parent, &authCommand, &inSensitive, &inPublic,
++                               &outsideInfo, &creationPcr, &tmp_handle, &outPublic,
++                               &creationData, &creationHash, &creationTicket,
++                               &srkName, NULL);
++  if (rc != TPM_RC_SUCCESS)
++    return grub_error (GRUB_ERR_BAD_DEVICE, "could not create SRK (TPM2_CreatePrimary: 0x%x)", rc);
++
++  *srk_handle = tmp_handle;
++
++  return GRUB_ERR_NONE;
++}
++
++/*
++ * Load the SRK from the persistent handle or create one with a given type of
++ * template, and then associate the sealed key with the SRK
++ * Return values:
++ * - GRUB_ERR_NONE: Everything is fine.
++ * - GRUB_ERR_BAD_ARGUMENT: The SRK doesn't match. Try another one.
++ * - Other: Something went wrong.
++ */
++grub_err_t
++tpm2_protector_srk_load (const grub_srk_type_t srk_type,
++                        const tpm2_sealed_key_t *sealed_key,
++                        const TPM_HANDLE_t parent,
++                        TPM_HANDLE_t *sealed_handle,
++                        TPM_HANDLE_t *srk_handle)
++{
++  TPMS_AUTH_COMMAND_t authCmd = {0};
++  TPM2B_NAME_t name = {0};
++  TPM_RC_t rc;
++  grub_err_t err;
++
++  if (srk_handle == NULL)
++    return GRUB_ERR_BUG;
++
++  if (*srk_handle != 0)
++    {
++      err = tpm2_protector_srk_check (*srk_handle);
++      if (err != GRUB_ERR_NONE)
++       return err;
++    }
++  else
++    {
++      err = tpm2_protector_srk_get (srk_type, parent, srk_handle);
++      if (err != GRUB_ERR_NONE)
++       return err;
++    }
++
++  /* Load the sealed key and associate it with the SRK */
++  authCmd.sessionHandle = TPM_RS_PW;
++  rc = grub_tpm2_load (*srk_handle, &authCmd, &sealed_key->private, &sealed_key->public,
++                      sealed_handle, &name, NULL);
++  /*
++   * If TPM2_Load returns (TPM_RC_INTEGRITY | TPM_RC_P | TPM_RC_1), then it
++   * implies the wrong SRK is used.
++   */
++  if (rc == (TPM_RC_INTEGRITY | TPM_RC_P | TPM_RC_1))
++    {
++      err = grub_error (GRUB_ERR_BAD_ARGUMENT, "SRK not matched");
++      goto error;
++    }
++  else if (rc != TPM_RC_SUCCESS)
++    {
++      err = grub_error (GRUB_ERR_BAD_DEVICE, "failed to load sealed key (TPM2_Load: 0x%x)", rc);
++      goto error;
++    }
++
++  return GRUB_ERR_NONE;
++
++ error:
++  if (!TPM_HT_IS_PERSISTENT (*srk_handle))
++    grub_tpm2_flushcontext (*srk_handle);
++
++  return err;
++}
++
++const char *
++srk_type_to_name (grub_srk_type_t srk_type)
++{
++  if (srk_type.type == TPM_ALG_ECC && srk_type.detail.ecc_curve == TPM_ECC_NIST_P256)
++    return "ECC_NIST_P256";
++  else if (srk_type.type == TPM_ALG_RSA && srk_type.detail.rsa_bits == 2048)
++    return "RSA2048";
++
++  return "Unknown";
++}
+\ No newline at end of file
+diff --git a/include/grub/luks2.h b/include/grub/luks2.h
+new file mode 100644
+index 000000000..494307398
+--- /dev/null
++++ b/include/grub/luks2.h
+@@ -0,0 +1,148 @@
++/* luks2.h - On disk structures for LUKS2. */
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2006,2007  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef GRUB_LUKS2_H
++#define GRUB_LUKS2_H   1
++
++#include <grub/disk.h>
++#include <grub/err.h>
++
++enum grub_luks2_kdf_type
++{
++  LUKS2_KDF_TYPE_ARGON2I,
++  LUKS2_KDF_TYPE_PBKDF2
++};
++typedef enum grub_luks2_kdf_type grub_luks2_kdf_type_t;
++
++struct grub_luks2_keyslot
++{
++  /* The integer key to the associative array of keyslots. */
++  grub_uint64_t idx;
++  grub_int64_t key_size;
++  grub_int64_t priority;
++  struct
++  {
++    const char   *encryption;
++    grub_uint64_t offset;
++    grub_uint64_t size;
++    grub_int64_t  key_size;
++  } area;
++  struct
++  {
++    const char  *hash;
++    grub_int64_t stripes;
++  } af;
++  struct
++  {
++    grub_luks2_kdf_type_t type;
++    const char           *salt;
++    union
++    {
++      struct
++      {
++       grub_int64_t time;
++       grub_int64_t memory;
++       grub_int64_t cpus;
++      } argon2i;
++      struct
++      {
++       const char   *hash;
++       grub_int64_t iterations;
++      } pbkdf2;
++    } u;
++  } kdf;
++};
++typedef struct grub_luks2_keyslot grub_luks2_keyslot_t;
++
++struct grub_luks2_segment
++{
++  grub_uint64_t idx;
++  grub_uint64_t offset;
++  const char   *size;
++  const char   *encryption;
++  grub_int64_t sector_size;
++};
++typedef struct grub_luks2_segment grub_luks2_segment_t;
++
++struct grub_luks2_digest
++{
++  grub_uint64_t idx;
++  /* Both keyslots and segments are interpreted as bitfields here */
++  grub_uint64_t        keyslots;
++  grub_uint64_t        segments;
++  const char   *salt;
++  const char   *digest;
++  const char   *hash;
++  grub_int64_t iterations;
++};
++typedef struct grub_luks2_digest grub_luks2_digest_t;
++
++
++enum grub_luks2_token_type
++{
++  LUKS2_TOKEN_TYPE_NONE,
++  LUKS2_TOKEN_TYPE_SYSTEMD_TPM2
++};
++
++typedef enum grub_luks2_token_type grub_luks2_token_type_t;
++
++enum grub_luks2_token_systemd_tpm2_algo_type
++{
++  LUKS2_TOKEN_SYSTEMD_TPM2_ALGO_TYPE_ECC,
++  LUKS2_TOKEN_SYSTEMD_TPM2_ALGO_TYPE_RSA
++};
++
++typedef enum grub_luks2_token_systemd_tpm2_algo_type grub_luks2_token_systemd_tpm2_algo_type_t;
++
++enum grub_luks2_token_systemd_tpm2_pcr_bank_type
++{
++  LUKS2_TOKEN_SYSTEMD_TPM2_PCR_BANK_TYPE_SHA256,
++  LUKS2_TOKEN_SYSTEMD_TPM2_PCR_BANK_TYPE_SHA1
++};
++
++typedef enum grub_luks2_token_systemd_tpm2_pcr_bank_type grub_luks2_token_systemd_tpm2_pcr_bank_type_t;
++
++struct grub_luks2_token
++{
++  grub_uint64_t idx;
++  grub_luks2_token_type_t type;
++  grub_uint64_t        keyslots;
++  union
++  {
++    struct
++    {
++      grub_uint32_t pcr_mask;
++      grub_luks2_token_systemd_tpm2_pcr_bank_type_t pcr_bank;
++      grub_luks2_token_systemd_tpm2_algo_type_t primary_alg;
++      const char *base64_blob;
++      const char *hex_policy_hash;
++    } systemd_tpm2;
++  } u;
++};
++typedef struct grub_luks2_token grub_luks2_token_t;
++
++typedef void (*luks2_iterate_fct_t)(grub_luks2_keyslot_t *k, grub_luks2_digest_t *d, grub_luks2_segment_t *s, grub_luks2_token_t *t);
++
++#define LUKS2_ITERATE_FLAGS_NONE 0
++#define LUKS2_ITERATE_FLAGS_WITH_TOKEN 1 << 0
++
++extern grub_err_t
++luks2_iterate_keyslot(grub_disk_t source, grub_uint32_t flags, luks2_iterate_fct_t fct);
++
++#endif /* ! GRUB_LUKS2_H */
+\ No newline at end of file
+diff --git a/grub-core/commands/tpm2_key_protector/tpm2.h b/include/grub/tpm2.h
+similarity index 85%
+rename from grub-core/commands/tpm2_key_protector/tpm2.h
+rename to include/grub/tpm2.h
+index 1c1d871b4..1e25a9bdd 100644
+--- a/grub-core/commands/tpm2_key_protector/tpm2.h
++++ b/include/grub/tpm2.h
+@@ -33,4 +33,15 @@ struct tpm2_sealed_key {
+ };
+ typedef struct tpm2_sealed_key tpm2_sealed_key_t;
+
++struct grub_srk_type
++{
++  TPMI_ALG_PUBLIC_t type;
++  union {
++    TPM_KEY_BITS_t rsa_bits;
++    TPM_ECC_CURVE_t ecc_curve;
++  } detail;
++  bool noDA;
++};
++typedef struct grub_srk_type grub_srk_type_t;
++
+ #endif /* ! GRUB_TPM2_TPM2_HEADER */
+diff --git a/include/grub/tpm2srk.h b/include/grub/tpm2srk.h
+new file mode 100644
+index 000000000..684d89bba
+--- /dev/null
++++ b/include/grub/tpm2srk.h
+@@ -0,0 +1,44 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2022 Microsoft Corporation
++ *  Copyright (C) 2024 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef GRUB_TPM2_INTERNAL_SRK_HEADER
++#define GRUB_TPM2_INTERNAL_SRK_HEADER 1
++
++#include <grub/err.h>
++#include <grub/tpm2.h>
++
++grub_err_t
++tpm2_protector_srk_check (const TPM_HANDLE_t srk_handle);
++
++grub_err_t
++tpm2_protector_srk_get (const grub_srk_type_t srk_type,
++                       const TPM_HANDLE_t parent,
++                       TPM_HANDLE_t *srk_handle);
++
++grub_err_t
++tpm2_protector_srk_load (const grub_srk_type_t srk_type,
++                const tpm2_sealed_key_t *sealed_key,
++                const TPM_HANDLE_t parent,
++                TPM_HANDLE_t *sealed_handle,
++                TPM_HANDLE_t *srk_handle);
++
++const char *
++srk_type_to_name (grub_srk_type_t srk_type);
++
++#endif //GRUB_TPM2_INTERNAL_SRK_HEADER
+diff --git a/util/grub-protect.c b/util/grub-protect.c
+index 40d4a3fc5..c565daf5e 100644
+--- a/util/grub-protect.c
++++ b/util/grub-protect.c
+@@ -31,12 +31,14 @@
+ #include <grub/emu/misc.h>
+
+ #include <grub/util/misc.h>
++#include <grub/tpm2.h>
++#include <grub/tpm2srk.h>
+
+ #include <tss2_buffer.h>
+ #include <tss2_mu.h>
+ #include <tcg2.h>
+ #include <tpm2_args.h>
+-#include <tpm2.h>
++#include <base64.h>
+
+ #pragma GCC diagnostic ignored "-Wmissing-prototypes"
+ #pragma GCC diagnostic ignored "-Wmissing-declarations"
+@@ -534,18 +536,10 @@ protect_tpm2_get_policy_digest (protect_args_t *args, TPM2B_DIGEST_t *digest)
+ static grub_err_t
+ protect_tpm2_get_srk (protect_args_t *args, TPM_HANDLE_t *srk)
+ {
++  grub_err_t ret;
+   TPM_RC_t rc;
+   TPM2B_PUBLIC_t public;
+   TPMS_AUTH_COMMAND_t authCommand = {0};
+-  TPM2B_SENSITIVE_CREATE_t inSensitive = {0};
+-  TPM2B_PUBLIC_t inPublic = {0};
+-  TPM2B_DATA_t outsideInfo = {0};
+-  TPML_PCR_SELECTION_t creationPcr = {0};
+-  TPM2B_PUBLIC_t outPublic = {0};
+-  TPM2B_CREATION_DATA_t creationData = {0};
+-  TPM2B_DIGEST_t creationHash = {0};
+-  TPMT_TK_CREATION_t creationTicket = {0};
+-  TPM2B_NAME_t srkName = {0};
+   TPM_HANDLE_t srkHandle;
+
+   if (args->tpm2_srk != 0)
+@@ -567,50 +561,11 @@ protect_tpm2_get_srk (protect_args_t *args, TPM_HANDLE_t *srk)
+        }
+     }
+
+-  /* Create SRK */
+   authCommand.sessionHandle = TPM_RS_PW;
+-  inPublic.publicArea.type = args->srk_type.type;
+-  inPublic.publicArea.nameAlg = TPM_ALG_SHA256;
+-  inPublic.publicArea.objectAttributes.restricted = 1;
+-  inPublic.publicArea.objectAttributes.userWithAuth = 1;
+-  inPublic.publicArea.objectAttributes.decrypt = 1;
+-  inPublic.publicArea.objectAttributes.fixedTPM = 1;
+-  inPublic.publicArea.objectAttributes.fixedParent = 1;
+-  inPublic.publicArea.objectAttributes.sensitiveDataOrigin = 1;
+-  inPublic.publicArea.objectAttributes.noDA = 1;
+-
+-  switch (args->srk_type.type)
+-    {
+-    case TPM_ALG_RSA:
+-      inPublic.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM_ALG_AES;
+- inPublic.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
+-      inPublic.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM_ALG_CFB;
+-      inPublic.publicArea.parameters.rsaDetail.scheme.scheme = TPM_ALG_NULL;
+-      inPublic.publicArea.parameters.rsaDetail.keyBits = args->srk_type.detail.rsa_bits;
+-      inPublic.publicArea.parameters.rsaDetail.exponent = 0;
+-      break;
+-
+-    case TPM_ALG_ECC:
+-      inPublic.publicArea.parameters.eccDetail.symmetric.algorithm = TPM_ALG_AES;
+- inPublic.publicArea.parameters.eccDetail.symmetric.keyBits.aes = 128;
+-      inPublic.publicArea.parameters.eccDetail.symmetric.mode.aes = TPM_ALG_CFB;
+-      inPublic.publicArea.parameters.eccDetail.scheme.scheme = TPM_ALG_NULL;
+-      inPublic.publicArea.parameters.eccDetail.curveID = args->srk_type.detail.ecc_curve;
+-      inPublic.publicArea.parameters.eccDetail.kdf.scheme = TPM_ALG_NULL;
+-      break;
+-
+-    default:
+-      return GRUB_ERR_BAD_ARGUMENT;
+-    }
+-
+-  rc = grub_tpm2_createprimary (TPM_RH_OWNER, &authCommand, &inSensitive, &inPublic,
+-                               &outsideInfo, &creationPcr, &srkHandle, &outPublic,
+-                               &creationData, &creationHash, &creationTicket,
+-                               &srkName, NULL);
+-  if (rc != TPM_RC_SUCCESS)
++  ret = tpm2_protector_srk_get(args->srk_type, TPM_RH_OWNER, &srkHandle);
++  if (ret != GRUB_ERR_NONE)
+     {
+-      fprintf (stderr, "Failed to create SRK (TPM2_CreatePrimary: 0x%x).\n", rc);
+-      return GRUB_ERR_BAD_DEVICE;
++      return ret;
+     }
+
+   /* Persist SRK */
+@@ -1274,6 +1229,7 @@ protect_tpm2_args_verify (protect_args_t *args)
+        {
+          args->srk_type.type = TPM_ALG_ECC;
+          args->srk_type.detail.ecc_curve = TPM_ECC_NIST_P256;
++         args->srk_type.noDA = true;
+        }
+
+       if (args->tpm2_bank == TPM_ALG_ERROR)
+--
+2.39.5
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  Makefile.util.def: EXISTS (1669 lines)
+  grub-core/Makefile.core.def: EXISTS (2829 lines)
+  grub-core/commands/systemd_tpm2_key_protector/module.c: MISSING on master
+  grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.c: MISSING on master
+  grub-core/commands/systemd_tpm2_key_protector/tpm2_luks2.h: MISSING on master
+  grub-core/commands/tpm2_key_protector/module.c: EXISTS (1493 lines)
+  grub-core/commands/tpm2_key_protector/tpm2_args.h: EXISTS (46 lines)
+  grub-core/disk/luks2.c: EXISTS (842 lines)
+  grub-core/lib/base64.c: MISSING on master
+  grub-core/lib/tpm2srk.c: MISSING on master
+  include/grub/luks2.h: MISSING on master
+  grub-core/commands/tpm2_key_protector/tpm2.h: EXISTS (36 lines)
+  include/grub/tpm2srk.h: MISSING on master
+  util/grub-protect.c: EXISTS (1621 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +1273 -318 lines
+
+================================================================================

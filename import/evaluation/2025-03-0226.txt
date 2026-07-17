@@ -1,0 +1,1234 @@
+================================================================================
+EVALUATION: 2025-03-0226
+================================================================================
+
+Mailing list subject: [PATCH 2/2] Remove qemu_mips port
+Commit subject:       Remove qemu_mips port
+Author:               Vladimir Serbinenko <phcoder@gmail.com>
+Date:                 2025-03-29
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+It was removed from qemu and so there is no current implmentation
+for it anymore. As for tests malta port can be used for them
+
+Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 1150 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 1150 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ .travis.yml                          |   2 +-
+ Makefile.am                          |  11 ----
+ configure.ac                         |  12 +---
+ docs/grub.texi                       |   2 +-
+ gentpl.py                            |   8 +--
+ grub-core/Makefile.am                |  15 -----
+ grub-core/Makefile.core.def          |  16 -----
+ grub-core/boot/mips/startup_raw.S    |  19 ------
+ grub-core/commands/nativedisk.c      |   2 -
+ grub-core/disk/pata.c                |  23 -------
+ grub-core/kern/mips/startup.S        |   6 --
+ grub-core/loader/mips/linux.c        |  67 -------------------
+ grub-core/term/at_keyboard.c         |   4 +-
+ grub-core/term/i386/pc/vga_text.c    |   2 +-
+ grub-core/tests/gfxterm_menu.c       |   2 +-
+ grub-core/tests/videotest_checksum.c |   2 +-
+ include/grub/kernel.h                |   3 +-
+ include/grub/misc.h                  |   3 +-
+ include/grub/offsets.h               |   8 ---
+ include/grub/util/install.h          |   2 -
+ include/grub/util/mkimage.h          |   2 +-
+ include/grub/vga.h                   |   5 --
+ po/exclude.pot                       | Bin 140931 -> 140490 bytes
+ tests/cdboot_test.in                 |   2 +-
+ tests/fddboot_test.in                |   2 +-
+ tests/file_filter_test.in            |   2 +-
+ tests/grub_func_test.in              |   3 -
+ tests/netboot_test.in                |   2 +-
+ tests/partmap_test.in                |   2 +-
+ tests/serial_test.in                 |   2 +-
+ tests/util/grub-shell.in             |  23 -------
+ util/grub-install-common.c           |   2 -
+ util/grub-install.c                  |  14 ----
+ util/grub-mkimagexx.c                |   1 -
+ util/grub-mkrescue.c                 |   4 --
+ util/grub-module-verifier.c          |   2 -
+ util/mkimage.c                       |  95 ---------------------------
+ 37 files changed, 23 insertions(+), 349 deletions(-)
+
+diff --git a/.travis.yml b/.travis.yml
+index 4bd05a30a..5a1e58f47 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -89,7 +89,7 @@ matrix:
+         - CROSS_TARGETS="ia64-linux"
+     - name: "mips"
+       env:
+-        - GRUB_TARGETS="mips-arc mipsel-arc mipsel-qemu_mips mips-qemu_mips"
++        - GRUB_TARGETS="mips-arc mipsel-arc"
+         - CROSS_TARGETS="mips64-linux"
+     - name: "arm"
+       env:
+diff --git a/Makefile.am b/Makefile.am
+index 43635d5ff..145fbd19a 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -403,17 +403,6 @@ if COND_mips_loongson
+ BOOTCHECKS = bootcheck-linux-loongson
+ endif
+ 
+-if COND_mipsel
+-if COND_mips_qemu_mips
+-BOOTCHECKS = bootcheck-linux-mipsel
+-endif
+-endif
+-if COND_mipseb
+-if COND_mips_qemu_mips
+-BOOTCHECKS = bootcheck-linux-mips
+-endif
+-endif
+-
+ if COND_powerpc_ieee1275
+ BOOTCHECKS = bootcheck-linux-ppc
+ endif
+diff --git a/configure.ac b/configure.ac
+index ce338c13f..cf968914c 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -184,14 +184,10 @@ case "$target_cpu"-"$platform" in
+   powerpc-ieee1275) ;;
+   sparc64-ieee1275) ;;
+   ia64-efi) ;;
+-  mips-qemu_mips) ;;
+-  mips-qemu-mips) platform=qemu_mips;;
+   mips-arc) ;;
+   mips-malta) ;;
+   mipsel-arc) ;;
+   mipsel-malta) ;;
+-  mipsel-qemu_mips) ;;
+-  mipsel-qemu-mips) platform=qemu_mips;;
+   mipsel-yeeloong) platform=loongson ;;
+   mipsel-fuloong) platform=loongson ;;
+   mipsel-loongson) ;;
+@@ -254,7 +250,6 @@ case "$platform" in
+   pc)		machine_CPPFLAGS="$machine_CPPFLAGS -DGRUB_MACHINE_PCBIOS=1" ;;
+   emu)		machine_CPPFLAGS="$machine_CPPFLAGS -DGRUB_MACHINE_EMU=1" ;;
+   loongson)	machine_CPPFLAGS="$machine_CPPFLAGS -DGRUB_MACHINE_MIPS_LOONGSON=1" ;;
+-  qemu_mips)	machine_CPPFLAGS="$machine_CPPFLAGS -DGRUB_MACHINE_MIPS_QEMU_MIPS=1" ;;
+   malta)	machine_CPPFLAGS="$machine_CPPFLAGS -DGRUB_MACHINE_MIPS_MALTA=1" ;;
+   arc)		machine_CPPFLAGS="$machine_CPPFLAGS -DGRUB_MACHINE_ARC=1" ;;
+ esac
+@@ -273,7 +268,7 @@ case "${target_cpu}-$platform" in
+         TARGET_LINK_ADDR=0x80700000
+ 	TARGET_DECOMPRESSOR_LINK_ADDR=0x80600000
+ 	;;
+-     mips*-qemu_mips | mips*-loongson | mips*-malta)
++     mips*-loongson | mips*-malta)
+         TARGET_DECOMPRESSOR_LINK_ADDR=0x80100000
+ 	;;
+ esac
+@@ -1826,7 +1821,7 @@ if test x"$grub_build_mkfont_excuse" = x ; then
+ else
+   enable_build_grub_mkfont=no
+ fi
+-if test x"$enable_build_grub_mkfont" = xno && ( test "x$platform" = xqemu || test "x$platform" = xloongson || test "x$platform" = xmalta || test "x$platform" = xqemu_mips || test "x$platform" = xcoreboot ); then
++if test x"$enable_build_grub_mkfont" = xno && ( test "x$platform" = xqemu || test "x$platform" = xloongson || test "x$platform" = xmalta || test "x$platform" = xcoreboot ); then
+   if test x"$grub_build_mkfont_excuse" = x ; then
+     AC_MSG_ERROR([qemu, coreboot and loongson ports need build-time grub-mkfont])
+   else
+@@ -1911,7 +1906,7 @@ if test x"$enable_build_grub_mkfont" = xno ; then
+   FONT_SOURCE=
+ fi
+ 
+-if test "x$FONT_SOURCE" = x && ( test "x$platform" = xqemu || test "x$platform" = xloongson || test "x$platform" = xmalta || test "x$platform" = xqemu_mips || test "x$platform" = xcoreboot ); then
++if test "x$FONT_SOURCE" = x && ( test "x$platform" = xqemu || test "x$platform" = xloongson || test "x$platform" = xmalta || test "x$platform" = xcoreboot ); then
+   if test x"$grub_build_mkfont_excuse" = x ; then
+     AC_MSG_ERROR([qemu, coreboot and loongson ports need unifont])
+   else
+@@ -2184,7 +2179,6 @@ AM_CONDITIONAL([COND_loongarch64_efi], [test x$target_cpu = xloongarch64 -a x$pl
+ AM_CONDITIONAL([COND_mips], [test x$target_cpu = xmips -o x$target_cpu = xmipsel])
+ AM_CONDITIONAL([COND_mips_arc], [test "(" x$target_cpu = xmips -o x$target_cpu = xmipsel ")"  -a x$platform = xarc])
+ AM_CONDITIONAL([COND_mips_loongson], [test x$target_cpu = xmipsel -a x$platform = xloongson])
+-AM_CONDITIONAL([COND_mips_qemu_mips], [test "(" x$target_cpu = xmips -o x$target_cpu = xmipsel ")"  -a x$platform = xqemu_mips])
+ AM_CONDITIONAL([COND_mips_malta], [test "(" x$target_cpu = xmips -o x$target_cpu = xmipsel ")"  -a x$platform = xmalta])
+ AM_CONDITIONAL([COND_mipsel], [test x$target_cpu = xmipsel])
+ AM_CONDITIONAL([COND_mipseb], [test x$target_cpu = xmips])
+diff --git a/docs/grub.texi b/docs/grub.texi
+index d9b26fa36..781a27a2a 100644
+--- a/docs/grub.texi
++++ b/docs/grub.texi
+@@ -2549,7 +2549,7 @@ The following properties are supported by all components:
+ @chapter Booting GRUB from the network
+ 
+ The following instructions don't work for *-emu, i386-qemu, i386-coreboot,
+-i386-multiboot, mips_loongson, mips-arc and mips_qemu_mips
++i386-multiboot, mips_loongson and mips-arc
+ 
+ To generate a netbootable directory, run:
+ 
+diff --git a/gentpl.py b/gentpl.py
+index b375911d0..3187a548d 100644
+--- a/gentpl.py
++++ b/gentpl.py
+@@ -31,7 +31,7 @@ GRUB_PLATFORMS = [ "emu", "i386_pc", "i386_efi", "i386_qemu", "i386_coreboot",
+                    "i386_xen", "x86_64_xen", "i386_xen_pvh",
+                    "mips_loongson", "mips_malta", "sparc64_ieee1275",
+                    "powerpc_ieee1275", "mips_arc", "ia64_efi",
+-                   "mips_qemu_mips", "arm_uboot", "arm_efi", "arm64_efi",
++                   "arm_uboot", "arm_efi", "arm64_efi",
+                    "arm_coreboot", "loongarch64_efi", "riscv32_efi", "riscv64_efi" ]
+ 
+ GROUPS = {}
+@@ -42,7 +42,7 @@ GROUPS["common"]   = GRUB_PLATFORMS[:]
+ GROUPS["i386"]        = [ "i386_pc", "i386_efi", "i386_qemu", "i386_coreboot", "i386_multiboot", "i386_ieee1275" ]
+ GROUPS["x86_64"]      = [ "x86_64_efi" ]
+ GROUPS["x86"]         = GROUPS["i386"] + GROUPS["x86_64"]
+-GROUPS["mips"]        = [ "mips_loongson", "mips_qemu_mips", "mips_arc", "mips_malta" ]
++GROUPS["mips"]        = [ "mips_loongson", "mips_arc", "mips_malta" ]
+ GROUPS["sparc64"]     = [ "sparc64_ieee1275" ]
+ GROUPS["powerpc"]     = [ "powerpc_ieee1275" ]
+ GROUPS["arm"]         = [ "arm_uboot", "arm_efi", "arm_coreboot" ]
+@@ -63,7 +63,7 @@ GROUPS["coreboot"]  = [ "i386_coreboot", "arm_coreboot" ]
+ GROUPS["noemu"]   = GRUB_PLATFORMS[:]; GROUPS["noemu"].remove("emu")
+ 
+ # Groups based on hardware features
+-GROUPS["cmos"] = GROUPS["x86"][:] + ["mips_loongson", "mips_qemu_mips", "mips_malta",
++GROUPS["cmos"] = GROUPS["x86"][:] + ["mips_loongson", "mips_malta",
+                                      "sparc64_ieee1275", "powerpc_ieee1275"]
+ GROUPS["cmos"].remove("i386_efi"); GROUPS["cmos"].remove("x86_64_efi");
+ GROUPS["pci"]      = GROUPS["x86"] + ["mips_loongson", "mips_malta"]
+@@ -75,7 +75,7 @@ GROUPS["videomodules"]   = GRUB_PLATFORMS[:];
+ for i in GROUPS["videoinkernel"]: GROUPS["videomodules"].remove(i)
+ 
+ # Similar for terminfo
+-GROUPS["terminfoinkernel"] = [ "emu", "mips_loongson", "mips_arc", "mips_qemu_mips", "i386_xen_pvh", "mips_malta" ] + GROUPS["xen"] + GROUPS["ieee1275"] + GROUPS["uboot"];
++GROUPS["terminfoinkernel"] = [ "emu", "mips_loongson", "mips_arc", "i386_xen_pvh", "mips_malta" ] + GROUPS["xen"] + GROUPS["ieee1275"] + GROUPS["uboot"];
+ GROUPS["terminfomodule"]   = GRUB_PLATFORMS[:];
+ for i in GROUPS["terminfoinkernel"]: GROUPS["terminfomodule"].remove(i)
+ 
+diff --git a/grub-core/Makefile.am b/grub-core/Makefile.am
+index db386af5c..24c3f3d4a 100644
+--- a/grub-core/Makefile.am
++++ b/grub-core/Makefile.am
+@@ -206,16 +206,6 @@ KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/arc/arc.h
+ KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/terminfo.h
+ endif
+ 
+-if COND_mips_qemu_mips
+-KERNEL_HEADER_FILES += $(top_builddir)/include/grub/keyboard_layouts.h
+-KERNEL_HEADER_FILES += $(top_builddir)/include/grub/machine/kernel.h
+-KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/serial.h
+-KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/loader.h
+-KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/terminfo.h
+-KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/extcmd.h
+-KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/lib/arg.h
+-endif
+-
+ if COND_mips_malta
+ #KERNEL_HEADER_FILES += $(top_builddir)/include/grub/keyboard_layouts.h
+ KERNEL_HEADER_FILES += $(top_builddir)/include/grub/machine/kernel.h
+@@ -246,11 +236,6 @@ KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/extcmd.h
+ KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/lib/arg.h
+ endif
+ 
+-if COND_mips_qemu_mips
+-KERNEL_HEADER_FILES += $(top_builddir)/include/grub/machine/memory.h
+-KERNEL_HEADER_FILES += $(top_builddir)/include/grub/machine/kernel.h
+-endif
+-
+ if COND_powerpc_ieee1275
+ KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/ieee1275/ieee1275.h
+ KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/ieee1275/alloc.h
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 482ed4d7b..04b78cba5 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -102,7 +102,6 @@ kernel = {
+   powerpc_ieee1275_ldflags = '-Wl,-Ttext,0x200000';
+   sparc64_ieee1275_ldflags = '-Wl,-Ttext,0x4400';
+   mips_arc_ldflags    = '-Wl,-Ttext,$(TARGET_LINK_ADDR)';
+-  mips_qemu_mips_ldflags    = '-Wl,-Ttext,0x80200000';
+   mips_malta_ldflags    = '-Wl,-Ttext,0x80200000';
+ 
+   mips_arc_cppflags = '-DGRUB_DECOMPRESSOR_LINK_ADDR=$(TARGET_DECOMPRESSOR_LINK_ADDR)';
+@@ -304,16 +303,6 @@ kernel = {
+   mips_malta = kern/mips/malta/pci.c;
+   mips_malta = bus/pci.c;
+ 
+-  mips_qemu_mips = kern/mips/qemu_mips/init.c;
+-  mips_qemu_mips = term/ns8250.c;
+-  mips_qemu_mips = term/serial.c;
+-  mips_qemu_mips = term/at_keyboard.c;
+-  mips_qemu_mips = term/ps2.c;
+-  mips_qemu_mips = commands/boot.c;
+-  mips_qemu_mips = commands/keylayouts.c;
+-  mips_qemu_mips = term/i386/pc/vga_text.c;
+-  mips_qemu_mips = kern/vga_init.c;
+-
+   mips_arc = kern/mips/arc/init.c;
+   mips_arc = term/arc/console.c;
+   mips_arc = disk/arc/arcdisk.c;
+@@ -693,7 +682,6 @@ module = {
+ 
+   enable = x86;
+   enable = mips_loongson;
+-  enable = mips_qemu_mips;
+ };
+ 
+ module = {
+@@ -969,7 +957,6 @@ module = {
+   sparc64_ieee1275 = lib/ieee1275/reboot.c;
+   mips_arc = lib/mips/arc/reboot.c;
+   mips_loongson = lib/mips/loongson/reboot.c;
+-  mips_qemu_mips = lib/mips/qemu_mips/reboot.c;
+   mips_malta = lib/mips/malta/reboot.c;
+   xen = lib/xen/reboot.c;
+   i386_xen_pvh = lib/xen/reboot.c;
+@@ -994,7 +981,6 @@ module = {
+   name = hdparm;
+   common = commands/hdparm.c;
+   enable = pci;
+-  enable = mips_qemu_mips;
+ };
+ 
+ module = {
+@@ -1312,7 +1298,6 @@ module = {
+   name = ata;
+   common = disk/ata.c;
+   enable = pci;
+-  enable = mips_qemu_mips;
+ };
+ 
+ module = {
+@@ -1325,7 +1310,6 @@ module = {
+   name = pata;
+   common = disk/pata.c;
+   enable = pci;
+-  enable = mips_qemu_mips;
+ };
+ 
+ module = {
+diff --git a/grub-core/boot/mips/startup_raw.S b/grub-core/boot/mips/startup_raw.S
+index 6a81b3733..1b7c66cae 100644
+--- a/grub-core/boot/mips/startup_raw.S
++++ b/grub-core/boot/mips/startup_raw.S
+@@ -55,25 +55,6 @@ codestart:
+ 
+ 	/* Parse arguments. Has to be done before relocation.
+ 	So need to do it in asm.  */
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-	lui $t0, %hi (((16 << 20) - 264 + 4) | 0x80000000)
+-	lw $t1, %lo (((16 << 20) - 264 + 4) | 0x80000000) ($t0)
+-
+-	lui $t2, 0x1234
+-	ori $t2, 0x5678
+-
+-	bne $t1, $t2, 1f
+-	 nop
+-
+-	lui $t0, %hi (((16 << 20) - 264) | 0x80000000)
+-	b 2f
+-	 lw $s4, %lo (((16 << 20) - 264) | 0x80000000) ($t0)
+-	
+-1:
+-	li $s4, 0
+-2:	
+-#endif
+-
+ #ifdef GRUB_MACHINE_MIPS_LOONGSON
+ 	move $s2, $zero
+ 	move $s3, $zero
+diff --git a/grub-core/commands/nativedisk.c b/grub-core/commands/nativedisk.c
+index 580c8d3b0..eb1a6067a 100644
+--- a/grub-core/commands/nativedisk.c
++++ b/grub-core/commands/nativedisk.c
+@@ -35,8 +35,6 @@ static const char *modnames_def[] = {
+   /* FIXME: autogenerate this.  */
+ #if defined (__i386__) || defined (__x86_64__) || defined (GRUB_MACHINE_MIPS_LOONGSON)
+   "pata", "ahci", "usbms", "ohci", "uhci", "ehci"
+-#elif defined (GRUB_MACHINE_MIPS_QEMU_MIPS)
+-  "pata"
+ #else
+ #error "Fill this"
+ #endif
+diff --git a/grub-core/disk/pata.c b/grub-core/disk/pata.c
+index 0578a93e1..32e5d23b6 100644
+--- a/grub-core/disk/pata.c
++++ b/grub-core/disk/pata.c
+@@ -22,12 +22,8 @@
+ #include <grub/disk.h>
+ #include <grub/dl.h>
+ #include <grub/mm.h>
+-#ifndef GRUB_MACHINE_MIPS_QEMU_MIPS
+ #include <grub/pci.h>
+ #include <grub/cs5536.h>
+-#else
+-#define GRUB_MACHINE_PCI_IO_BASE  0xb4000000
+-#endif
+ #include <grub/time.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+@@ -113,13 +109,8 @@ grub_pata_wait (void)
+   grub_millisleep (50);
+ }
+ 
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-#define grub_ata_to_cpu16(x) ((grub_uint16_t) (x))
+-#define grub_cpu_to_ata16(x) ((grub_uint16_t) (x))
+-#else
+ #define grub_ata_to_cpu16 grub_le_to_cpu16
+ #define grub_cpu_to_ata16 grub_cpu_to_le16
+-#endif
+ 
+ static void
+ grub_pata_pio_read (struct grub_pata_device *dev, char *buf, grub_size_t size)
+@@ -343,7 +334,6 @@ grub_pata_device_initialize (int port, int device, int addr)
+   return 0;
+ }
+ 
+-#ifndef GRUB_MACHINE_MIPS_QEMU_MIPS
+ static int
+ grub_pata_pciinit (grub_pci_device_t dev,
+ 		   grub_pci_id_t pciid,
+@@ -462,19 +452,6 @@ grub_pata_initialize (void)
+   grub_pci_iterate (grub_pata_pciinit, NULL);
+   return 0;
+ }
+-#else
+-static grub_err_t
+-grub_pata_initialize (void)
+-{
+-  int i;
+-  for (i = 0; i < 2; i++)
+-    {
+-      grub_pata_device_initialize (i, 0, grub_pata_ioaddress[i]);
+-      grub_pata_device_initialize (i, 1, grub_pata_ioaddress[i]);
+-    }
+-  return 0;
+-}
+-#endif
+ 
+ static grub_err_t
+ grub_pata_open (int id, int devnum, struct grub_ata *ata)
+diff --git a/grub-core/kern/mips/startup.S b/grub-core/kern/mips/startup.S
+index 1fdb58aca..0d5266551 100644
+--- a/grub-core/kern/mips/startup.S
++++ b/grub-core/kern/mips/startup.S
+@@ -57,12 +57,6 @@ cont:
+ 	/* Save our base.  */
+ 	move $s0, $ra
+ 
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-	lui $t1, %hi(grub_arch_busclock)
+-	addiu $t1, %lo(grub_arch_busclock)
+-	sw $s4, 8($t1)
+-#endif
+-
+ #ifdef GRUB_MACHINE_MIPS_LOONGSON
+ 	lui $t1, %hi(grub_arch_busclock)
+ 	addiu $t1, %lo(grub_arch_busclock)
+diff --git a/grub-core/loader/mips/linux.c b/grub-core/loader/mips/linux.c
+index 7264ba2b6..e33e6be0c 100644
+--- a/grub-core/loader/mips/linux.c
++++ b/grub-core/loader/mips/linux.c
+@@ -58,16 +58,12 @@ static grub_size_t linux_size;
+ static struct grub_relocator *relocator;
+ static grub_uint8_t *playground;
+ static grub_addr_t target_addr, entry_addr;
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-static char *params;
+-#else
+ static int linux_argc;
+ static grub_off_t argv_off;
+ #ifdef GRUB_MACHINE_MIPS_LOONGSON
+ static grub_off_t envp_off;
+ #endif
+ static grub_off_t rd_addr_arg_off, rd_size_arg_off;
+-#endif
+ static int initrd_loaded = 0;
+ 
+ static grub_err_t
+@@ -80,29 +76,6 @@ grub_linux_boot (void)
+   /* Boot the kernel.  */
+   state.gpr[1] = entry_addr;
+ 
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-  {
+-    grub_err_t err;
+-    grub_relocator_chunk_t ch;
+-    grub_uint32_t *memsize;
+-    grub_uint32_t *magic;
+-    char *str;
+-
+-    err = grub_relocator_alloc_chunk_addr (relocator, &ch,
+-					   ((16 << 20) - 264),
+-					   grub_strlen (params) + 1 + 8);
+-    if (err)
+-      return err;
+-    memsize = get_virtual_current_address (ch);
+-    magic = memsize + 1;
+-    *memsize = grub_mmap_get_lower ();
+-    *magic = 0x12345678;
+-    str = (char *) (magic + 1);
+-    grub_strcpy (str, params);
+-  }
+-#endif
+-
+-#ifndef GRUB_MACHINE_MIPS_QEMU_MIPS
+   state.gpr[4] = linux_argc;
+   state.gpr[5] = target_addr + argv_off;
+ #ifdef GRUB_MACHINE_MIPS_LOONGSON
+@@ -111,7 +84,6 @@ grub_linux_boot (void)
+   state.gpr[6] = 0;
+ #endif
+   state.gpr[7] = 0;
+-#endif
+   state.jumpreg = 1;
+   grub_relocator32_boot (relocator, state);
+ 
+@@ -124,11 +96,6 @@ grub_linux_unload (void)
+   grub_relocator_unload (relocator);
+   grub_dl_unref (my_mod);
+ 
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-  grub_free (params);
+-  params = 0;
+-#endif
+-
+   loaded = 0;
+ 
+   return GRUB_ERR_NONE;
+@@ -223,11 +190,9 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+   grub_elf_t elf = 0;
+   int size;
+   void *extra = NULL;
+-#ifndef GRUB_MACHINE_MIPS_QEMU_MIPS
+   int i;
+   grub_uint32_t *linux_argv;
+   char *linux_args;
+-#endif
+   grub_err_t err;
+ #ifdef GRUB_MACHINE_MIPS_LOONGSON
+   char *linux_envs;
+@@ -252,9 +217,6 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+   grub_loader_unset ();
+   loaded = 0;
+ 
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-  size = 0;
+-#else
+   /* For arguments.  */
+   linux_argc = argc;
+ #ifdef GRUB_MACHINE_MIPS_LOONGSON
+@@ -287,7 +249,6 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+     + ALIGN_UP (sizeof ("highmemsize=XXXXXXXXXXXXXXXXXXXX"), 4)
+     + ALIGN_UP (sizeof ("busclock=XXXXXXXXXX"), 4)
+     + ALIGN_UP (sizeof ("cpuclock=XXXXXXXXXX"), 4);
+-#endif
+ 
+   if (grub_elf_is_elf32 (elf))
+     err = grub_linux_load32 (elf, argv[0], &extra, size);
+@@ -302,20 +263,6 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+   if (err)
+     return err;
+ 
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-  /* Create kernel command line.  */
+-  size = grub_loader_cmdline_size(argc, argv);
+-  params = grub_malloc (size + sizeof (LINUX_IMAGE));
+-  if (! params)
+-    {
+-      grub_linux_unload ();
+-      return grub_errno;
+-    }
+-
+-  grub_memcpy (params, LINUX_IMAGE, sizeof (LINUX_IMAGE));
+-  grub_create_loader_cmdline (argc, argv, params + sizeof (LINUX_IMAGE) - 1,
+-			      size, GRUB_VERIFY_KERNEL_CMDLINE);
+-#else
+   linux_argv = extra;
+   argv_off = (grub_uint8_t *) linux_argv - (grub_uint8_t *) playground;
+   extra = linux_argv + (linux_argc + 1 + 2);
+@@ -404,7 +351,6 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+   linux_envs += ALIGN_UP (grub_strlen (linux_envs) + 1, 4);
+ 
+   linux_envp[4] = 0;
+-#endif
+ #endif
+ 
+   grub_loader_set (grub_linux_boot, grub_linux_unload, 1);
+@@ -455,18 +401,6 @@ grub_cmd_initrd (grub_command_t cmd __attribute__ ((unused)),
+   if (grub_initrd_load (&initrd_ctx, initrd_src))
+     goto fail;
+ 
+-#ifdef GRUB_MACHINE_MIPS_QEMU_MIPS
+-  {
+-    char *tmp;
+-    tmp = grub_xasprintf ("%s rd_start=0x%" PRIxGRUB_ADDR
+-			  " rd_size=0x%" PRIxGRUB_ADDR, params,
+-			  initrd_dest, size);
+-    if (!tmp)
+-      goto fail;
+-    grub_free (params);
+-    params = tmp;
+-  }
+-#else
+   grub_snprintf ((char *) playground + rd_addr_arg_off,
+ 		 sizeof ("rd_start=0xXXXXXXXXXXXXXXXX"), "rd_start=0x%llx",
+ 		(unsigned long long) initrd_dest);
+@@ -480,7 +414,6 @@ grub_cmd_initrd (grub_command_t cmd __attribute__ ((unused)),
+   ((grub_uint32_t *) (playground + argv_off))[linux_argc]
+     = target_addr + rd_size_arg_off;
+   linux_argc++;
+-#endif
+ 
+   initrd_loaded = 1;
+ 
+diff --git a/grub-core/term/at_keyboard.c b/grub-core/term/at_keyboard.c
+index f8a129eb7..ba4a63fde 100644
+--- a/grub-core/term/at_keyboard.c
++++ b/grub-core/term/at_keyboard.c
+@@ -97,7 +97,7 @@ grub_keyboard_controller_write (grub_uint8_t c)
+   grub_outb (c, KEYBOARD_REG_DATA);
+ }
+ 
+-#if defined (GRUB_MACHINE_MIPS_LOONGSON) || defined (GRUB_MACHINE_QEMU) || defined (GRUB_MACHINE_COREBOOT) || defined (GRUB_MACHINE_MIPS_QEMU_MIPS)
++#if defined (GRUB_MACHINE_MIPS_LOONGSON) || defined (GRUB_MACHINE_QEMU) || defined (GRUB_MACHINE_COREBOOT)
+ #define USE_SCANCODE_SET 1
+ #else
+ #define USE_SCANCODE_SET 0
+@@ -267,7 +267,7 @@ grub_keyboard_controller_init (void)
+       keyboard_controller_wait_until_ready ();
+       grub_inb (KEYBOARD_REG_DATA);
+     }
+-#if defined (GRUB_MACHINE_MIPS_LOONGSON) || defined (GRUB_MACHINE_MIPS_QEMU_MIPS)
++#if defined (GRUB_MACHINE_MIPS_LOONGSON)
+   grub_keyboard_controller_orig = 0;
+   grub_keyboard_orig_set = 2;
+ #elif defined (GRUB_MACHINE_QEMU) || defined (GRUB_MACHINE_COREBOOT)
+diff --git a/grub-core/term/i386/pc/vga_text.c b/grub-core/term/i386/pc/vga_text.c
+index b88fa9d2e..c36ff2bd8 100644
+--- a/grub-core/term/i386/pc/vga_text.c
++++ b/grub-core/term/i386/pc/vga_text.c
+@@ -33,7 +33,7 @@
+ #include <grub/machine/int.h>
+ #endif
+ 
+-#if defined (GRUB_MACHINE_COREBOOT) || defined (GRUB_MACHINE_QEMU) || defined (GRUB_MACHINE_MIPS_QEMU_MIPS) || defined (GRUB_MACHINE_MULTIBOOT)
++#if defined (GRUB_MACHINE_COREBOOT) || defined (GRUB_MACHINE_QEMU) || defined (GRUB_MACHINE_MULTIBOOT)
+ #include <grub/machine/console.h>
+ #endif
+ 
+diff --git a/grub-core/tests/gfxterm_menu.c b/grub-core/tests/gfxterm_menu.c
+index ea4352703..15b02e7ee 100644
+--- a/grub-core/tests/gfxterm_menu.c
++++ b/grub-core/tests/gfxterm_menu.c
+@@ -127,7 +127,7 @@ gfxterm_menu (void)
+       {
+ 	grub_uint64_t start;
+ 
+-#if defined (GRUB_MACHINE_MIPS_QEMU_MIPS) || defined (GRUB_MACHINE_IEEE1275)
++#if defined (GRUB_MACHINE_IEEE1275)
+ 	if (grub_test_video_modes[i].width > 1024)
+ 	  continue;
+ 	if (grub_strcmp (tests[j].name, "gfxmenu") == 0
+diff --git a/grub-core/tests/videotest_checksum.c b/grub-core/tests/videotest_checksum.c
+index a4bff5ed8..02fd4bfe5 100644
+--- a/grub-core/tests/videotest_checksum.c
++++ b/grub-core/tests/videotest_checksum.c
+@@ -50,7 +50,7 @@ videotest_checksum (void)
+   for (i = 0; i < ARRAY_SIZE (grub_test_video_modes); i++)
+     {
+       grub_err_t err;
+-#if defined (GRUB_MACHINE_MIPS_QEMU_MIPS) || defined (GRUB_MACHINE_IEEE1275)
++#if defined (GRUB_MACHINE_IEEE1275)
+       if (grub_test_video_modes[i].width > 1024)
+ 	continue;
+ #endif
+diff --git a/include/grub/kernel.h b/include/grub/kernel.h
+index bd1a9ebd5..f4b4886d4 100644
+--- a/include/grub/kernel.h
++++ b/include/grub/kernel.h
+@@ -79,8 +79,7 @@ struct grub_module_info64
+ #endif
+ 
+ #if defined (GRUB_MACHINE_PCBIOS) || defined (GRUB_MACHINE_COREBOOT) \
+-  || defined (GRUB_MACHINE_MULTIBOOT) || defined (GRUB_MACHINE_MIPS_QEMU_MIPS) \
+-  || defined (GRUB_MACHINE_MIPS_MALTA) \
++  || defined (GRUB_MACHINE_MULTIBOOT) || defined (GRUB_MACHINE_MIPS_MALTA) \
+   || defined (GRUB_MACHINE_MIPS_LOONGSON) || defined (GRUB_MACHINE_ARC) \
+   || (defined (__sparc__) && defined (GRUB_MACHINE_IEEE1275)) \
+   || defined (GRUB_MACHINE_UBOOT) || defined (GRUB_MACHINE_XEN) \
+diff --git a/include/grub/misc.h b/include/grub/misc.h
+index e087e7b3e..faadb489c 100644
+--- a/include/grub/misc.h
++++ b/include/grub/misc.h
+@@ -492,8 +492,7 @@ grub_abs (int x)
+ }
+ 
+ /* Reboot the machine.  */
+-#if defined (GRUB_MACHINE_EMU) || defined (GRUB_MACHINE_QEMU_MIPS) || \
+-    defined (GRUB_MACHINE_EFI)
++#if defined (GRUB_MACHINE_EMU) || defined (GRUB_MACHINE_EFI)
+ void EXPORT_FUNC(grub_reboot) (void) __attribute__ ((noreturn));
+ #else
+ void grub_reboot (void) __attribute__ ((noreturn));
+diff --git a/include/grub/offsets.h b/include/grub/offsets.h
+index a77be45ea..cba761dc1 100644
+--- a/include/grub/offsets.h
++++ b/include/grub/offsets.h
+@@ -75,13 +75,6 @@
+ 
+ #define GRUB_KERNEL_MIPS_LOONGSON_TOTAL_MODULE_SIZE	0x08
+ 
+-#define GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ADDR         0x80200000
+-#define GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ALIGN  32
+-#define GRUB_DECOMPRESSOR_MIPS_QEMU_MIPS_COMPRESSED_SIZE          0x8
+-#define GRUB_DECOMPRESSOR_MIPS_QEMU_MIPS_UNCOMPRESSED_SIZE        0xc
+-#define GRUB_DECOMPRESSOR_MIPS_QEMU_MIPS_UNCOMPRESSED_ADDR        0x10
+-#define GRUB_KERNEL_MIPS_QEMU_MIPS_TOTAL_MODULE_SIZE	0x08
+-
+ #define GRUB_KERNEL_MIPS_MALTA_LINK_ADDR         0x80200000
+ #define GRUB_KERNEL_MIPS_MALTA_LINK_ALIGN  32
+ #define GRUB_DECOMPRESSOR_MIPS_MALTA_COMPRESSED_SIZE          0x8
+@@ -127,7 +120,6 @@
+ 
+ #define GRUB_KERNEL_MIPS_LOONGSON_MOD_ALIGN 0x4
+ #define GRUB_KERNEL_MIPS_ARC_MOD_ALIGN 0x4
+-#define GRUB_KERNEL_MIPS_QEMU_MIPS_MOD_ALIGN 0x4
+ #define GRUB_KERNEL_MIPS_MALTA_MOD_ALIGN 0x4
+ 
+ #define GRUB_KERNEL_ARM_UBOOT_MOD_ALIGN 	0x8
+diff --git a/include/grub/util/install.h b/include/grub/util/install.h
+index f59a19780..375b5d1db 100644
+--- a/include/grub/util/install.h
++++ b/include/grub/util/install.h
+@@ -102,8 +102,6 @@ enum grub_install_plat
+     GRUB_INSTALL_PLATFORM_IA64_EFI,
+     GRUB_INSTALL_PLATFORM_ARM_UBOOT,
+     GRUB_INSTALL_PLATFORM_ARM_EFI,
+-    GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS,
+-    GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS,
+     GRUB_INSTALL_PLATFORM_I386_XEN,
+     GRUB_INSTALL_PLATFORM_X86_64_XEN,
+     GRUB_INSTALL_PLATFORM_I386_XEN_PVH,
+diff --git a/include/grub/util/mkimage.h b/include/grub/util/mkimage.h
+index 9d74f82c5..3fd99aef6 100644
+--- a/include/grub/util/mkimage.h
++++ b/include/grub/util/mkimage.h
+@@ -72,7 +72,7 @@ struct grub_install_image_target_desc
+     IMAGE_I386_IEEE1275,
+     IMAGE_LOONGSON_ELF, IMAGE_QEMU, IMAGE_PPC, IMAGE_YEELOONG_FLASH,
+     IMAGE_FULOONG2F_FLASH, IMAGE_I386_PC_PXE, IMAGE_MIPS_ARC,
+-    IMAGE_QEMU_MIPS_FLASH, IMAGE_UBOOT, IMAGE_XEN, IMAGE_I386_PC_ELTORITO,
++    IMAGE_UBOOT, IMAGE_XEN, IMAGE_I386_PC_ELTORITO,
+     IMAGE_XEN_PVH
+   } id;
+   enum
+diff --git a/include/grub/vga.h b/include/grub/vga.h
+index 1d8449c64..8de7b267d 100644
+--- a/include/grub/vga.h
++++ b/include/grub/vga.h
+@@ -19,12 +19,7 @@
+ #ifndef GRUB_VGA_HEADER
+ #define GRUB_VGA_HEADER	1
+ 
+-#ifndef GRUB_MACHINE_MIPS_QEMU_MIPS
+ #include <grub/pci.h>
+-#else
+-#include <grub/cpu/io.h>
+-#define GRUB_MACHINE_PCI_IO_BASE  0xb4000000
+-#endif
+ 
+ #include <grub/vgaregs.h>
+ 
+diff --git a/po/exclude.pot b/po/exclude.pot
+index 816089c30cbd36939b2a72724b3d591a0ac8a290..eb7c4226e5f141304201143f6112c7660227ad32 100644
+GIT binary patch
+delta 22
+ecmZoZ%W>)?#|9_g$rFM^n+5#03-~h@Uk3ng?g;<@
+
+delta 186
+zcmX?glB4-7#|9_g$qvpUOeRK?H@Jy0o0ytU*PX^FG2JMbQISnA*~-Mo2rR&&o0^k0
+z`Js<0ld<LGjc%e6Cg!GGxy9+3DGExtnFYnVg{irv@wu4=(+z_em1ICVO$@LqD4rbe
+psl{w!Y5_JE#E~^IH^Z(JWa)GpBSz`T0)8UR3BKDCd>ON@0{}0bJ23zN
+
+diff --git a/tests/cdboot_test.in b/tests/cdboot_test.in
+index 46dcc3acd..5ea664af4 100644
+--- a/tests/cdboot_test.in
++++ b/tests/cdboot_test.in
+@@ -24,7 +24,7 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+     *-emu)
+ 	exit 77;;
+     # PLATFORM: Flash targets
+-    mips-malta | mipsel-malta | i386-qemu | i386-coreboot | mips-qemu_mips | mipsel-qemu_mips)
++    mips-malta | mipsel-malta | i386-qemu | i386-coreboot)
+ 	exit 77;;
+     # FIXME: currently grub-shell uses only -kernel for loongson
+     mipsel-loongson)
+diff --git a/tests/fddboot_test.in b/tests/fddboot_test.in
+index c6ea2883e..7d9d48726 100644
+--- a/tests/fddboot_test.in
++++ b/tests/fddboot_test.in
+@@ -24,7 +24,7 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+     *-emu)
+ 	exit 77;;
+     # PLATFORM: Flash targets
+-    mips-malta | mipsel-malta | i386-qemu | i386-coreboot | mips-qemu_mips | mipsel-qemu_mips)
++    mips-malta | mipsel-malta | i386-qemu | i386-coreboot)
+ 	exit 77;;
+     # FIXME: currently grub-shell uses only -kernel for loongson
+     mipsel-loongson)
+diff --git a/tests/file_filter_test.in b/tests/file_filter_test.in
+index 826b45699..bc4cd9337 100644
+--- a/tests/file_filter_test.in
++++ b/tests/file_filter_test.in
+@@ -50,7 +50,7 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+     *-emu)
+ 	exit 0;;
+     # PLATFORM: Flash targets
+-    i386-qemu | i386-coreboot | mips-malta | mipsel-malta | mips-qemu_mips | mipsel-qemu_mips)
++    i386-qemu | i386-coreboot | mips-malta | mipsel-malta)
+ 	exit 0;;
+     # FIXME: currently grub-shell uses only -kernel for loongson
+     mipsel-loongson)
+diff --git a/tests/grub_func_test.in b/tests/grub_func_test.in
+index 1fa3c4352..4fc07609d 100644
+--- a/tests/grub_func_test.in
++++ b/tests/grub_func_test.in
+@@ -9,9 +9,6 @@ if [ ! -e "@builddir@/"unicode.pf2 ]; then
+ fi
+ 
+ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+-    # PLATFORM: Max RAM is 256M
+-    mips-qemu_mips | mipsel-qemu_mips)
+-	mem=256M;;
+     loongarch64-efi)
+ 	mem=3G;;
+     *)
+diff --git a/tests/netboot_test.in b/tests/netboot_test.in
+index 9b87adfa4..d81488371 100644
+--- a/tests/netboot_test.in
++++ b/tests/netboot_test.in
+@@ -24,7 +24,7 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+     *-emu)
+ 	exit 77;;
+     # PLATFORM: Flash targets
+-    mips-malta | mipsel-malta | i386-qemu | i386-coreboot | mips-qemu_mips | mipsel-qemu_mips)
++    mips-malta | mipsel-malta | i386-qemu | i386-coreboot)
+ 	exit 77;;
+     # FIXME: currently grub-shell uses only -kernel for loongson
+     mipsel-loongson)
+diff --git a/tests/partmap_test.in b/tests/partmap_test.in
+index f71cdaabe..6d1fcd4bb 100644
+--- a/tests/partmap_test.in
++++ b/tests/partmap_test.in
+@@ -66,7 +66,7 @@ list_parts () {
+ }
+ 
+ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+-    mips-malta | mipsel-malta | mips-qemu_mips | mipsel-qemu_mips | i386-qemu | i386-multiboot | i386-coreboot | mipsel-loongson)
++    mips-malta | mipsel-malta | i386-qemu | i386-multiboot | i386-coreboot | mipsel-loongson)
+ 	disk=ata0
+ 	;;
+     powerpc-ieee1275)
+diff --git a/tests/serial_test.in b/tests/serial_test.in
+index 48655d4b9..f60e02a14 100644
+--- a/tests/serial_test.in
++++ b/tests/serial_test.in
+@@ -24,7 +24,7 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+     *-emu)
+ 	exit 77;;
+     # PLATFORM: Flash targets.
+-    i386-qemu | i386-coreboot | mips-qemu_mips | mipsel-qemu_mips)
++    i386-qemu | i386-coreboot)
+ 	exit 77;;
+     # FIXME: Currently grub-shell uses only -kernel for loongson.
+     mipsel-loongson)
+diff --git a/tests/util/grub-shell.in b/tests/util/grub-shell.in
+index 369af2894..aa0a6c8c1 100644
+--- a/tests/util/grub-shell.in
++++ b/tests/util/grub-shell.in
+@@ -112,13 +112,6 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+ 	halt_cmd=reboot
+ 	;;
+ 
+-    mips-qemu_mips)
+-	boot=mips_qemu
+-	qemu=qemu-system-mips
+-	qemuopts="-M mips $qemuopts"
+-	console=vga_text
+-	;;
+-
+     mips-malta)
+ 	boot=malta
+ 	qemu=qemu-system-mips
+@@ -143,12 +136,6 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
+ 	halt_cmd=reboot
+ 	trim=1
+ 	;;
+-    mipsel-qemu_mips)
+-	boot=mipsel_qemu
+-	qemu=qemu-system-mipsel
+-	qemuopts="-M mips $qemuopts"
+-	console=vga_text
+-	;;
+     mipsel-malta)
+ 	boot=mipsel_malta
+ 	qemu=qemu-system-mipsel
+@@ -597,11 +584,6 @@ if [ x$boot = xqemu ]; then
+     device="cdrom "
+ fi
+ 
+-if [ x$boot = xmipsel_qemu ]; then
+-    bootdev="-kernel ${rom_directory}/mipsel-qemu_mips.elf"
+-    device="cdrom "
+-fi
+-
+ if [ x$boot = xmipsel_malta ]; then
+     bootdev="-kernel ${rom_directory}/mipsel-malta.elf"
+     device="cdrom "
+@@ -612,11 +594,6 @@ if [ x$boot = xmipsel_fulong2e ]; then
+     device="cdrom "
+ fi
+ 
+-if [ x$boot = xmips_qemu ]; then
+-    bootdev="-kernel ${rom_directory}/mips-qemu_mips.elf"
+-    device="cdrom "
+-fi
+-
+ if [ x$boot = xmips_malta ]; then
+     bootdev="-kernel ${rom_directory}/mips-malta.elf"
+     device="cdrom "
+diff --git a/util/grub-install-common.c b/util/grub-install-common.c
+index 48d9d652d..5f5f0662e 100644
+--- a/util/grub-install-common.c
++++ b/util/grub-install-common.c
+@@ -915,10 +915,8 @@ static struct
+     [GRUB_INSTALL_PLATFORM_X86_64_XEN] =       { "x86_64",      "xen"       },
+     [GRUB_INSTALL_PLATFORM_I386_XEN_PVH] =     { "i386",        "xen_pvh"   },
+     [GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON] =  { "mipsel",      "loongson"  },
+-    [GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS] = { "mipsel",      "qemu_mips" },
+     [GRUB_INSTALL_PLATFORM_MIPSEL_MALTA] = { "mipsel",      "malta" },
+     [GRUB_INSTALL_PLATFORM_MIPS_MALTA] =   { "mips",        "malta" },
+-    [GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS] =   { "mips",        "qemu_mips" },
+     [GRUB_INSTALL_PLATFORM_MIPSEL_ARC] =       { "mipsel",      "arc"       },
+     [GRUB_INSTALL_PLATFORM_MIPS_ARC] =         { "mips",        "arc"       },
+     [GRUB_INSTALL_PLATFORM_SPARC64_IEEE1275] = { "sparc64",     "ieee1275"  },
+diff --git a/util/grub-install.c b/util/grub-install.c
+index bf3caa60b..b128a9b85 100644
+--- a/util/grub-install.c
++++ b/util/grub-install.c
+@@ -501,8 +501,6 @@ have_bootdev (enum grub_install_plat pl)
+     case GRUB_INSTALL_PLATFORM_I386_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_ARM_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_I386_MULTIBOOT:
+-    case GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS:
+-    case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
+     case GRUB_INSTALL_PLATFORM_MIPSEL_MALTA:
+     case GRUB_INSTALL_PLATFORM_MIPS_MALTA:
+ 
+@@ -948,8 +946,6 @@ main (int argc, char *argv[])
+     case GRUB_INSTALL_PLATFORM_ARM_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_I386_MULTIBOOT:
+     case GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON:
+-    case GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS:
+-    case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
+     case GRUB_INSTALL_PLATFORM_MIPSEL_MALTA:
+     case GRUB_INSTALL_PLATFORM_MIPS_MALTA:
+       disk_module = xstrdup ("native");
+@@ -989,8 +985,6 @@ main (int argc, char *argv[])
+     case GRUB_INSTALL_PLATFORM_ARM_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_I386_MULTIBOOT:
+     case GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON:
+-    case GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS:
+-    case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
+     case GRUB_INSTALL_PLATFORM_MIPSEL_MALTA:
+     case GRUB_INSTALL_PLATFORM_MIPS_MALTA:
+     case GRUB_INSTALL_PLATFORM_I386_XEN:
+@@ -1539,8 +1533,6 @@ main (int argc, char *argv[])
+ 		  case GRUB_INSTALL_PLATFORM_I386_COREBOOT:
+ 		  case GRUB_INSTALL_PLATFORM_ARM_COREBOOT:
+ 		  case GRUB_INSTALL_PLATFORM_I386_MULTIBOOT:
+-		  case GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS:
+-		  case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
+ 		  case GRUB_INSTALL_PLATFORM_MIPSEL_MALTA:
+ 		  case GRUB_INSTALL_PLATFORM_MIPS_MALTA:
+ 		    g = grub_util_guess_baremetal_drive (*curdev);
+@@ -1629,8 +1621,6 @@ main (int argc, char *argv[])
+ 		grub_install_get_platform_platform (platform));
+       break;
+     case GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON:
+-    case GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS:
+-    case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
+     case GRUB_INSTALL_PLATFORM_MIPSEL_MALTA:
+     case GRUB_INSTALL_PLATFORM_MIPS_MALTA:
+       core_name = "core.elf";
+@@ -1730,8 +1720,6 @@ main (int argc, char *argv[])
+     case GRUB_INSTALL_PLATFORM_RISCV32_EFI:
+     case GRUB_INSTALL_PLATFORM_RISCV64_EFI:
+     case GRUB_INSTALL_PLATFORM_IA64_EFI:
+-    case GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS:
+-    case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
+     case GRUB_INSTALL_PLATFORM_I386_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_ARM_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_I386_MULTIBOOT:
+@@ -2026,8 +2014,6 @@ main (int argc, char *argv[])
+       break;
+ 
+     case GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON:
+-    case GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS:
+-    case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
+     case GRUB_INSTALL_PLATFORM_I386_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_ARM_COREBOOT:
+     case GRUB_INSTALL_PLATFORM_I386_MULTIBOOT:
+diff --git a/util/grub-mkimagexx.c b/util/grub-mkimagexx.c
+index 448862b2e..781242a1b 100644
+--- a/util/grub-mkimagexx.c
++++ b/util/grub-mkimagexx.c
+@@ -2516,7 +2516,6 @@ SUFFIX (grub_mkimage_load_image) (const char *kernel_path,
+       if (image_target->id == IMAGE_YEELOONG_FLASH
+ 	  || image_target->id == IMAGE_FULOONG2F_FLASH
+ 	  || image_target->id == IMAGE_LOONGSON_ELF
+-	  || image_target->id == IMAGE_QEMU_MIPS_FLASH
+ 	  || image_target->id == IMAGE_MIPS_ARC)
+ 	{
+ 	  layout->kernel_size = bss_start;
+diff --git a/util/grub-mkrescue.c b/util/grub-mkrescue.c
+index 82b9c247e..709007ab1 100644
+--- a/util/grub-mkrescue.c
++++ b/util/grub-mkrescue.c
+@@ -966,7 +966,6 @@ main (int argc, char *argv[])
+   make_image_fwdisk (GRUB_INSTALL_PLATFORM_MIPSEL_ARC, "mipsel-arc", "arc.exe");
+ 
+   grub_install_push_module ("pata");
+-  make_image (GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS, "mipsel-qemu_mips-elf", "roms/mipsel-qemu_mips.elf");
+   make_image (GRUB_INSTALL_PLATFORM_MIPSEL_MALTA, "mipsel-malta-elf", "roms/mipsel-malta.elf");
+ 
+   make_image (GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON, "mipsel-loongson-elf", "loongson.elf");
+@@ -974,7 +973,6 @@ main (int argc, char *argv[])
+   make_image (GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON, "mipsel-yeeloong-flash", "mipsel-yeeloong.bin");
+   make_image (GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON, "mipsel-fuloong2f-flash", "mipsel-fuloong2f.bin");
+ 
+-  make_image (GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS, "mips-qemu_mips-elf", "roms/mips-qemu_mips.elf");
+   make_image (GRUB_INSTALL_PLATFORM_MIPS_MALTA, "mips-malta-elf", "roms/mips-malta.elf");
+ 
+   grub_install_push_module ("at_keyboard");
+@@ -996,11 +994,9 @@ main (int argc, char *argv[])
+ 	const char *from, *to;
+       } roms[] =
+ 	  {
+-	    {GRUB_INSTALL_PLATFORM_MIPSEL_QEMU_MIPS, "roms/mipsel-qemu_mips.elf", "mipsel-qemu_mips.elf"},
+ 	    {GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON, "loongson.elf", "mipsel-loongson.elf"},
+ 	    {GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON, "roms/mipsel-yeeloong.bin", "mipsel-yeeloong.bin"},
+ 	    {GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON, "roms/mipsel-fulong.bin", "mipsel-fulong.bin"},
+-	    {GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS, "roms/mips-qemu_mips.elf", "mips-qemu_mips.elf"},
+ 	    {GRUB_INSTALL_PLATFORM_I386_QEMU, "roms/qemu.img", "qemu.img"},
+ 	    {GRUB_INSTALL_PLATFORM_I386_COREBOOT, "roms/coreboot.elf", "coreboot.elf"},
+ 	    {GRUB_INSTALL_PLATFORM_MIPS_MALTA, "roms/mips-malta.elf", "mips-malta.elf"},
+diff --git a/util/grub-module-verifier.c b/util/grub-module-verifier.c
+index 6ac7f9b80..9b15a4481 100644
+--- a/util/grub-module-verifier.c
++++ b/util/grub-module-verifier.c
+@@ -225,10 +225,8 @@ static struct platform_whitelist whitelists[] = {
+ 
+   /* video is compiled-in on MIPS.  */
+   {"mipsel", "loongson", (const char *[]) {"all_video", 0}},
+-  {"mipsel", "qemu_mips", (const char *[]) {"all_video", 0}},
+   {"mipsel", "malta", (const char *[]) {"all_video", 0}},
+   {"mipsel", "arc", (const char *[]) {"all_video", 0}},
+-  {"mips", "qemu_mips", (const char *[]) {"all_video", 0}},
+   {"mips", "malta", (const char *[]) {"all_video", 0}},
+   {"mips", "arc", (const char *[]) {"all_video", 0}},
+ };
+diff --git a/util/mkimage.c b/util/mkimage.c
+index b72c25814..afb01af0d 100644
+--- a/util/mkimage.c
++++ b/util/mkimage.c
+@@ -479,78 +479,6 @@ static const struct grub_install_image_target_desc image_targets[] =
+       .link_align = GRUB_KERNEL_MIPS_MALTA_LINK_ALIGN,
+       .default_compression = GRUB_COMPRESSION_NONE
+     },
+-    {
+-      .dirname = "mipsel-qemu_mips",
+-      .names = { "mipsel-qemu_mips-elf", NULL },
+-      .voidp_sizeof = 4,
+-      .bigendian = 0,
+-      .id = IMAGE_LOONGSON_ELF,
+-      .flags = PLATFORM_FLAGS_DECOMPRESSORS,
+-      .total_module_size = GRUB_KERNEL_MIPS_QEMU_MIPS_TOTAL_MODULE_SIZE,
+-      .decompressor_compressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_COMPRESSED_SIZE,
+-      .decompressor_uncompressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_SIZE,
+-      .decompressor_uncompressed_addr = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_ADDR,
+-      .section_align = 1,
+-      .vaddr_offset = 0,
+-      .link_addr = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ADDR,
+-      .elf_target = EM_MIPS,
+-      .link_align = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ALIGN,
+-      .default_compression = GRUB_COMPRESSION_NONE
+-    },
+-    {
+-      .dirname = "mips-qemu_mips",
+-      .names = { "mips-qemu_mips-flash", NULL },
+-      .voidp_sizeof = 4,
+-      .bigendian = 1,
+-      .id = IMAGE_QEMU_MIPS_FLASH,
+-      .flags = PLATFORM_FLAGS_DECOMPRESSORS,
+-      .total_module_size = GRUB_KERNEL_MIPS_QEMU_MIPS_TOTAL_MODULE_SIZE,
+-      .decompressor_compressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_COMPRESSED_SIZE,
+-      .decompressor_uncompressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_SIZE,
+-      .decompressor_uncompressed_addr = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_ADDR,
+-      .section_align = 1,
+-      .vaddr_offset = 0,
+-      .link_addr = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ADDR,
+-      .elf_target = EM_MIPS,
+-      .link_align = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ALIGN,
+-      .default_compression = GRUB_COMPRESSION_NONE
+-    },
+-    {
+-      .dirname = "mipsel-qemu_mips",
+-      .names = { "mipsel-qemu_mips-flash", NULL },
+-      .voidp_sizeof = 4,
+-      .bigendian = 0,
+-      .id = IMAGE_QEMU_MIPS_FLASH,
+-      .flags = PLATFORM_FLAGS_DECOMPRESSORS,
+-      .total_module_size = GRUB_KERNEL_MIPS_QEMU_MIPS_TOTAL_MODULE_SIZE,
+-      .decompressor_compressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_COMPRESSED_SIZE,
+-      .decompressor_uncompressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_SIZE,
+-      .decompressor_uncompressed_addr = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_ADDR,
+-      .section_align = 1,
+-      .vaddr_offset = 0,
+-      .link_addr = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ADDR,
+-      .elf_target = EM_MIPS,
+-      .link_align = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ALIGN,
+-      .default_compression = GRUB_COMPRESSION_NONE
+-    },
+-    {
+-      .dirname = "mips-qemu_mips",
+-      .names = { "mips-qemu_mips-elf", NULL },
+-      .voidp_sizeof = 4,
+-      .bigendian = 1,
+-      .id = IMAGE_LOONGSON_ELF,
+-      .flags = PLATFORM_FLAGS_DECOMPRESSORS,
+-      .total_module_size = GRUB_KERNEL_MIPS_QEMU_MIPS_TOTAL_MODULE_SIZE,
+-      .decompressor_compressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_COMPRESSED_SIZE,
+-      .decompressor_uncompressed_size = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_SIZE,
+-      .decompressor_uncompressed_addr = GRUB_DECOMPRESSOR_MIPS_LOONGSON_UNCOMPRESSED_ADDR,
+-      .section_align = 1,
+-      .vaddr_offset = 0,
+-      .link_addr = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ADDR,
+-      .elf_target = EM_MIPS,
+-      .link_align = GRUB_KERNEL_MIPS_QEMU_MIPS_LINK_ALIGN,
+-      .default_compression = GRUB_COMPRESSION_NONE
+-    },
+     {
+       .dirname = "mips-malta",
+       .names = { "mips-malta-elf", NULL },
+@@ -1277,7 +1205,6 @@ grub_install_generate_image (const char *dir, const char *prefix,
+     case IMAGE_FULOONG2F_FLASH:
+     case IMAGE_EFI:
+     case IMAGE_MIPS_ARC:
+-    case IMAGE_QEMU_MIPS_FLASH:
+     case IMAGE_XEN:
+     case IMAGE_XEN_PVH:
+       break;
+@@ -1711,28 +1638,6 @@ grub_install_generate_image (const char *dir, const char *prefix,
+       free (boot_path);
+     }
+     break;
+-    case IMAGE_QEMU_MIPS_FLASH:
+-    {
+-      char *rom_img;
+-      size_t rom_size;
+-
+-      if (core_size > 512 * 1024)
+-	grub_util_error ("%s", _("firmware image is too big"));
+-      rom_size = 512 * 1024;
+-
+-      rom_img = xmalloc (rom_size);
+-      memset (rom_img, 0, rom_size);
+-
+-      memcpy (rom_img, core_img, core_size);
+-
+-      memset (rom_img + core_size, 0,
+-	      rom_size - core_size);
+-
+-      free (core_img);
+-      core_img = rom_img;
+-      core_size = rom_size;
+-    }
+-    break;
+ 
+     case IMAGE_UBOOT:
+     {
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  .travis.yml: EXISTS (109 lines)
+  Makefile.am: EXISTS (494 lines)
+  configure.ac: EXISTS (2703 lines)
+  docs/grub.texi: EXISTS (12070 lines)
+  gentpl.py: EXISTS (915 lines)
+  grub-core/Makefile.am: EXISTS (526 lines)
+  grub-core/Makefile.core.def: EXISTS (2829 lines)
+  grub-core/boot/mips/startup_raw.S: EXISTS (300 lines)
+  grub-core/commands/nativedisk.c: EXISTS (332 lines)
+  grub-core/disk/pata.c: EXISTS (556 lines)
+  grub-core/kern/mips/startup.S: EXISTS (126 lines)
+  grub-core/loader/mips/linux.c: EXISTS (508 lines)
+  grub-core/term/at_keyboard.c: EXISTS (342 lines)
+  grub-core/term/i386/pc/vga_text.c: EXISTS (289 lines)
+  grub-core/tests/gfxterm_menu.c: EXISTS (180 lines)
+  grub-core/tests/videotest_checksum.c: EXISTS (80 lines)
+  include/grub/kernel.h: EXISTS (134 lines)
+  include/grub/misc.h: EXISTS (581 lines)
+  include/grub/offsets.h: EXISTS (168 lines)
+  include/grub/util/install.h: EXISTS (313 lines)
+  include/grub/util/mkimage.h: EXISTS (187 lines)
+  include/grub/vga.h: EXISTS (129 lines)
+  po/exclude.pot: EXISTS (7489 lines)
+  tests/cdboot_test.in: EXISTS (40 lines)
+  tests/fddboot_test.in: EXISTS (52 lines)
+  tests/file_filter_test.in: EXISTS (79 lines)
+  tests/grub_func_test.in: EXISTS (28 lines)
+  tests/netboot_test.in: EXISTS (46 lines)
+  tests/partmap_test.in: EXISTS (500 lines)
+  tests/serial_test.in: EXISTS (64 lines)
+  tests/util/grub-shell.in: EXISTS (729 lines)
+  util/grub-install-common.c: EXISTS (1231 lines)
+  util/grub-install.c: EXISTS (2059 lines)
+  util/grub-mkimagexx.c: EXISTS (2682 lines)
+  util/grub-mkrescue.c: EXISTS (1047 lines)
+  util/grub-module-verifier.c: EXISTS (267 lines)
+  util/mkimage.c: EXISTS (2077 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +59 -387 lines
+
+================================================================================
