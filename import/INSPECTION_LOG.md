@@ -141,10 +141,10 @@ All have FAILED.patch + code changes. master has: `tpm2_dump_pcr` command in
 **Decision**: DROP — all features already upstream.
 **Dropped branches**: 2025-04-0059, 2025-04-0057, 2025-04-0061, 2025-04-0063, 2025-04-0064, 2025-04-0065, 2025-04-0066, 2025-04-0070, 2025-04-0069
 
-## Series: 2025-04-0266 (6 of 7, Brown/Philipson) — KEEP
+## Series: 2025-04-0266 (7 of 7, Brown/Philipson/Żygowski) — KEEP
 
 **Topic**: AMD SKINIT Secure Launch: x86 definitions, PSP discovery, core SKINIT,
-EFI support, TMR setup
+EFI support, TMR setup, multiboot2 support
 
 | Branch | Commit content | Author | Verdict |
 |--------|---------------|--------|---------|
@@ -154,8 +154,9 @@ EFI support, TMR setup
 | 2025-04-0268 | FAILED.patch only: TMR setup to protect RAM from DMA | Brown | Not upstream |
 | 2025-04-0271 | FAILED.patch only: AMD SKINIT Secure Launch core | Philipson | Not upstream |
 | 2025-04-0272 | FAILED.patch only: EFI AMD SKINIT support | Philipson | Not upstream |
+| 2025-04-0273 | FAILED.patch only: multiboot2 SKINIT Secure Launch | Żygowski | Not upstream |
 
-RFC PATCH v2 parts 1-6/7 (part 7 not in failed.txt). Two co-authors.
+RFC PATCH v2, all 7 parts. Three co-authors.
 All FAILED.patch only. No slaunch/PSP/SKINIT code on master. All target files
 MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`,
 `include/grub/i386/skinit.h`, `include/grub/slaunch.h`, `include/grub/slr_table.h`.
@@ -474,7 +475,7 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 **Decision**: DROP.
 **Dropped branches**: 2026-02-0066, 2026-02-0067, 2026-02-0068
 
-## Series: 2026-03-0010 (4 of 9, Nicholas Vinson) — KEEP
+## Series: 2026-03-0010 (5 of 9, Nicholas Vinson / Daniel Kiper) — KEEP
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
@@ -482,6 +483,7 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 | 2026-03-0012 | FAILED.patch + code: Drop `-Ttext` checks for i386-pc | Not upstream |
 | 2026-03-0014 | FAILED.patch only: Rename `i386-cygwin-img-ld.sc` to `.lds` | Not upstream |
 | 2026-03-0015 | FAILED.patch only: Update `.lds` to use `--defsym` | Not upstream |
+| 2026-03-0017 | FAILED.patch only: Re: cover letter for v4 series | Not upstream |
 
 ld.lld compatibility: `--image-base` revert and `-Ttext` removal NOT on master.
 configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback

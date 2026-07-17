@@ -190,13 +190,6 @@ Also confirmed upstream during series inspection (2025-07-0066).
 **Author**: khaliid caliy
 **Evidence**: master startup.S line 34 still has `call`. Not upstream.
 
-## 2025-04-0054 — KEEP
-
-**Subject**: Re: loader/efi/chainloader: Enhance error messages
-**Author**: khaliid caliy
-**Change**: Add `GRUB_EFI_INVALID_PARAMETER`, `NOT_FOUND`, `UNSUPPORTED` error cases.
-**Evidence**: none of these error strings on master chainloader.c.
-
 ## 2025-04-0075 — DROP
 
 **Subject**: Re: arm64: Limit memory allocations to 4GB boundary
@@ -236,7 +229,7 @@ Also confirmed upstream during series inspection (2025-07-0066).
 **Subject**: Add Xen command line parsing (v1)
 **Author**: Aaron Rainbolt | Superseded by v5 (2025-08-0076), confirmed upstream.
 
-## 2025-04-0254 — KEEP
+## 2025-04-0254 — DROP
 
 **Subject**: loader/efi/chainloader: Enhance error message (v1)
 **Author**: khaliid caliy
@@ -261,7 +254,7 @@ Also confirmed upstream during series inspection (2025-07-0066).
 **Author**: Vladimir Serbinenko | **Change**: Add `-mno-inline-int-divide`.
 **Evidence**: not found on master configure.ac.
 
-## 2025-05-0037 — KEEP
+## 2025-05-0037 — DROP
 
 **Subject**: loader/efi/linux: Enhance linux command error messages (v2)
 **Author**: khaliid caliy
@@ -416,12 +409,6 @@ Clean applies but branch tip = master tip (kern/misc memcpy). ALREADY_APPLIED.
 
 **Subject**: loader/efi/linux v3 1/6 + v4 6/6
 **Evidence**: Part of series 2025-06-0177, confirmed upstream.
-
-## 2025-06-0188 — KEEP
-
-**Subject**: efi/tpcm: Add UEFI interface for TPCM module (v2)
-**Author**: chench246
-**Evidence**: `grub-core/commands/efi/tpcm.c`, `include/grub/efi/tpcm.h` MISSING on master.
 
 ## 2025-07-0004 — KEEP
 
@@ -994,22 +981,6 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Change**: Add `grub_free(ctx.chunk)` on error paths.
 **Evidence**: master relocator.c lines 1443, 1461 `grub_free (ctx.chunk)`.
 
-## 2025-04-0029 — KEEP
-
-**Subject**: loader/efi: Enhance error messages in chainloader
-**Author**: khaliid caliy | **fp=1 code=0**
-**Target**: `grub-core/loader/efi/chainloader.c`
-**Change**: Add `GRUB_EFI_INVALID_PARAMETER`, `NOT_FOUND`, `UNSUPPORTED` error cases.
-**Evidence**: none of these status-specific error strings on master chainloader.c.
-
-## 2025-04-0108 — KEEP
-
-**Subject**: Disable gfxterm_menu and cmdline_cat tests
-**Author**: Vladimir Serbinenko | **fp=1 code=3**
-**Target**: `grub-core/Makefile.core.def`, test source files
-**Change**: Comment out gfxterm_menu/cmdline_cat test modules (unifont workaround).
-**Evidence**: master Makefile.core.def:2388 still has tests enabled.
-
 ## 2025-04-0125 — DROP
 
 **Subject**: b64dec: Adjust for compilation in GRUB environment (v11 part 3)
@@ -1055,13 +1026,6 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Author**: khaalid | **fp=1 code=0**
 **Target**: `grub-core/commands/efi/lsefivar.c`
 **Evidence**: master `lsefivar.c` (152L). Already upstream.
-
-## 2025-05-0082 — KEEP
-
-**Subject**: Fwd: efi/tpcm: Add TPCM module support
-**Author**: hao chen | **fp=1 code=0**
-**Target**: `grub-core/commands/efi/tpcm.c`, `grub-core/commands/tpcm.c`, `include/grub/efi/tpcm.h`
-**Evidence**: all 3 files MISSING on master. Same feature as 2025-06-0188/2025-07-0004.
 
 ## 2025-05-0108 — DROP
 
@@ -1205,7 +1169,7 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Author**: Glenn Washburn | **fp=1 code=1**
 **Evidence**: master grub-mkrescue.c:342 uses `fout` (renamed from `mdadm`).
 
-## 2025-11-0166 — KEEP
+## 2025-11-0166 — DROP
 
 **Subject**: Check linker for --image-base support (v2)
 **Author**: Nicholas Vinson | **fp=1 code=2**
@@ -1225,6 +1189,46 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Author**: Andrew Hamilton | **fp=0 code=1** (clean apply)
 **Change**: Add `Autoconf Archive macros (autoconf-archive)` to INSTALL.
 **Evidence**: not found on master INSTALL.
+
+## 2025-05-0082 — DROP
+
+**Subject**: Fwd: efi/tpcm: Add TPCM module support (v1)
+**Evidence**: Superseded by v3 (2025-07-0004). Same feature, same files.
+
+## 2025-06-0188 — DROP
+
+**Subject**: efi/tpcm: Add UEFI interface for TPCM module (v2)
+**Evidence**: Superseded by v3 (2025-07-0004). Same feature, same files.
+
+## 2025-04-0029 — DROP
+
+**Subject**: loader/efi: Enhance error messages in chainloader
+**Evidence**: Superseded by Re: 2025-04-0054, then by v3 series 2025-05-0076.
+
+## 2025-04-0054 — DROP
+
+**Subject**: Re: loader/efi/chainloader: Enhance error messages (RESEND)
+**Evidence**: Superseded by v3 series 2025-05-0076. Same topic, same file.
+
+## 2025-04-0108 — DROP
+
+**Subject**: Disable gfxterm_menu and cmdline_cat tests
+**Evidence**: Superseded by 2025-05-0032 (same topic, later submission by Washburn).
+
+## 2025-04-0254 — DROP
+
+**Subject**: loader/efi/chainloader: Enhance error message (v1)
+**Evidence**: Superseded by v3 series 2025-05-0076. Same topic, same file.
+
+## 2025-05-0037 — DROP
+
+**Subject**: loader/efi/linux: Enhance linux command error messages (v2)
+**Evidence**: Superseded by v3 (2025-05-0077 in series 2025-05-0076).
+
+## 2025-11-0166 — DROP
+
+**Subject**: Check linker for --image-base support (v2)
+**Evidence**: Superseded by v4 series 2026-03-0010. Same topic, same files.
 
 ## 2026-01-0019 — KEEP
 

@@ -24,10 +24,10 @@ no `else if (grub_errno)` guards after `iterate_dir_call_hook` calls (lines 874,
 **Decision**: KEEP — patch 2 carries unmerged error propagation fixes.
 
 
-## Series: [2025-04-0266](series/2025-04-0266) (6 of 7, Brown/Philipson) — KEEP
+## Series: [2025-04-0266](series/2025-04-0266) (7 of 7, Brown/Philipson/Żygowski) — KEEP
 
 **Topic**: AMD SKINIT Secure Launch: x86 definitions, PSP discovery, core SKINIT,
-EFI support, TMR setup
+EFI support, TMR setup, multiboot2 support
 
 | Branch | Commit content | Author | Verdict |
 |--------|---------------|--------|---------|
@@ -37,8 +37,9 @@ EFI support, TMR setup
 | 2025-04-0268 | FAILED.patch only: TMR setup to protect RAM from DMA | Brown | Not upstream |
 | 2025-04-0271 | FAILED.patch only: AMD SKINIT Secure Launch core | Philipson | Not upstream |
 | 2025-04-0272 | FAILED.patch only: EFI AMD SKINIT support | Philipson | Not upstream |
+| 2025-04-0273 | FAILED.patch only: multiboot2 SKINIT Secure Launch | Żygowski | Not upstream |
 
-RFC PATCH v2 parts 1-6/7 (part 7 not in failed.txt). Two co-authors.
+RFC PATCH v2, all 7 parts. Three co-authors.
 All FAILED.patch only. No slaunch/PSP/SKINIT code on master. All target files
 MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`,
 `include/grub/i386/skinit.h`, `include/grub/slaunch.h`, `include/grub/slr_table.h`.
@@ -179,7 +180,7 @@ Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
 **Decision**: KEEP — autoconf-archive note not upstream.
 
 
-## Series: [2026-03-0010](series/2026-03-0010) (4 of 9, Nicholas Vinson) — KEEP
+## Series: [2026-03-0010](series/2026-03-0010) (5 of 9, Nicholas Vinson / Daniel Kiper) — KEEP
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
@@ -187,6 +188,7 @@ Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
 | 2026-03-0012 | FAILED.patch + code: Drop `-Ttext` checks for i386-pc | Not upstream |
 | 2026-03-0014 | FAILED.patch only: Rename `i386-cygwin-img-ld.sc` to `.lds` | Not upstream |
 | 2026-03-0015 | FAILED.patch only: Update `.lds` to use `--defsym` | Not upstream |
+| 2026-03-0017 | FAILED.patch only: Re: cover letter for v4 series | Not upstream |
 
 ld.lld compatibility: `--image-base` revert and `-Ttext` removal NOT on master.
 configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
@@ -198,7 +200,7 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 
 ## KEEP — Standalone
 
-43 entries. Full list: [`standalone.txt`](standalone.txt).
+34 entries. Full list: [`standalone.txt`](standalone.txt).
 
 ## 2025-01-0096 — KEEP
 
@@ -251,14 +253,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Evidence**: master startup.S line 34 still has `call`. Not upstream.
 
 
-## 2025-04-0054 — KEEP
-
-**Subject**: Re: loader/efi/chainloader: Enhance error messages
-**Author**: khaliid caliy
-**Change**: Add `GRUB_EFI_INVALID_PARAMETER`, `NOT_FOUND`, `UNSUPPORTED` error cases.
-**Evidence**: none of these error strings on master chainloader.c.
-
-
 ## 2025-04-0094 — KEEP
 
 **Subject**: Use ET_DYN images and PHDRs for creating relocatable images
@@ -273,14 +267,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Author**: Vladimir Serbinenko
 **Change**: `GRUB_EFI_ALLOCATE_MAX_ADDRESS` → `GRUB_EFI_ALLOCATE_ANY_PAGES`.
 **Evidence**: `ALLOCATE_ANY_PAGES` not found on master mm.c.
-
-
-## 2025-04-0254 — KEEP
-
-**Subject**: loader/efi/chainloader: Enhance error message (v1)
-**Author**: khaliid caliy
-**Change**: Add `UNSUPPORTED`, `INVALID_PARAMETER`, hex status in error messages.
-**Evidence**: none of these error strings on master chainloader.c.
 
 
 ## 2025-04-0273 — KEEP
@@ -302,13 +288,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Subject**: ia64: Disable optimizations using floating-point (v2)
 **Author**: Vladimir Serbinenko | **Change**: Add `-mno-inline-int-divide`.
 **Evidence**: not found on master configure.ac.
-
-
-## 2025-05-0037 — KEEP
-
-**Subject**: loader/efi/linux: Enhance linux command error messages (v2)
-**Author**: khaliid caliy
-**Evidence**: Enhanced error strings not on master linux.c.
 
 
 ## 2025-05-0075 — KEEP
@@ -343,13 +322,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 
 **Subject**: Containerfile(s) for development
 **Evidence**: `container/Containerfile*`, `container/README` MISSING on master.
-
-
-## 2025-06-0188 — KEEP
-
-**Subject**: efi/tpcm: Add UEFI interface for TPCM module (v2)
-**Author**: chench246
-**Evidence**: `grub-core/commands/efi/tpcm.c`, `include/grub/efi/tpcm.h` MISSING on master.
 
 
 ## 2025-07-0004 — KEEP
@@ -391,24 +363,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Evidence**: master configure.ac still has `--image-base` check.
 
 
-## 2025-04-0029 — KEEP
-
-**Subject**: loader/efi: Enhance error messages in chainloader
-**Author**: khaliid caliy | **fp=1 code=0**
-**Target**: `grub-core/loader/efi/chainloader.c`
-**Change**: Add `GRUB_EFI_INVALID_PARAMETER`, `NOT_FOUND`, `UNSUPPORTED` error cases.
-**Evidence**: none of these status-specific error strings on master chainloader.c.
-
-
-## 2025-04-0108 — KEEP
-
-**Subject**: Disable gfxterm_menu and cmdline_cat tests
-**Author**: Vladimir Serbinenko | **fp=1 code=3**
-**Target**: `grub-core/Makefile.core.def`, test source files
-**Change**: Comment out gfxterm_menu/cmdline_cat test modules (unifont workaround).
-**Evidence**: master Makefile.core.def:2388 still has tests enabled.
-
-
 ## 2025-04-0142 — KEEP
 
 **Subject**: Prepend debug traces with absolute and relative timestamps
@@ -416,14 +370,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Target**: `configure.ac`, `grub-core/kern/misc.c`
 **Change**: Add `--with-debug-timestamps` configure option.
 **Evidence**: `DEBUG_WITH_TIMESTAMPS` not found on master.
-
-
-## 2025-05-0082 — KEEP
-
-**Subject**: Fwd: efi/tpcm: Add TPCM module support
-**Author**: hao chen | **fp=1 code=0**
-**Target**: `grub-core/commands/efi/tpcm.c`, `grub-core/commands/tpcm.c`, `include/grub/efi/tpcm.h`
-**Evidence**: all 3 files MISSING on master. Same feature as 2025-06-0188/2025-07-0004.
 
 
 ## 2025-06-0011 — KEEP
@@ -476,14 +422,6 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Author**: Andrew Hamilton | **fp=1 code=3**
 **Change**: Same `GRUB_FORCE_EFI_ALL_VIDEO` feature as series 2025-11-0014.
 **Evidence**: not on master (confirmed in series inspection).
-
-
-## 2025-11-0166 — KEEP
-
-**Subject**: Check linker for --image-base support (v2)
-**Author**: Nicholas Vinson | **fp=1 code=2**
-**Target**: `acinclude.m4`, `configure.ac`
-**Evidence**: part of ld.lld compatibility series. Not upstream.
 
 
 ## 2025-11-0238 — KEEP
@@ -890,7 +828,7 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 
 ## DROP — Standalone
 
-142 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
+150 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
 All in [`drop_new.txt`](drop_new.txt).
 
 ## 2025-01-0094 — DROP
@@ -1082,6 +1020,21 @@ Also confirmed upstream during series inspection (2025-07-0066).
 
 **Subject**: Add Xen command line parsing (v1)
 **Author**: Aaron Rainbolt | Superseded by v5 (2025-08-0076), confirmed upstream.
+
+
+## 2025-04-0254 — DROP
+
+**Subject**: loader/efi/chainloader: Enhance error message (v1)
+**Author**: khaliid caliy
+**Change**: Add `UNSUPPORTED`, `INVALID_PARAMETER`, hex status in error messages.
+**Evidence**: none of these error strings on master chainloader.c.
+
+
+## 2025-05-0037 — DROP
+
+**Subject**: loader/efi/linux: Enhance linux command error messages (v2)
+**Author**: khaliid caliy
+**Evidence**: Enhanced error strings not on master linux.c.
 
 
 ## 2025-05-0046 — DROP
@@ -1968,4 +1921,42 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Subject**: util/grub-mkrescue: Fix copy/paste issue referencing mdadm
 **Author**: Glenn Washburn | **fp=1 code=1**
 **Evidence**: master grub-mkrescue.c:342 uses `fout` (renamed from `mdadm`).
+
+
+## 2025-11-0166 — DROP
+
+**Subject**: Check linker for --image-base support (v2)
+**Author**: Nicholas Vinson | **fp=1 code=2**
+**Target**: `acinclude.m4`, `configure.ac`
+**Evidence**: part of ld.lld compatibility series. Not upstream.
+
+
+## 2025-05-0082 — DROP
+
+**Subject**: Fwd: efi/tpcm: Add TPCM module support (v1)
+**Evidence**: Superseded by v3 (2025-07-0004). Same feature, same files.
+
+
+## 2025-06-0188 — DROP
+
+**Subject**: efi/tpcm: Add UEFI interface for TPCM module (v2)
+**Evidence**: Superseded by v3 (2025-07-0004). Same feature, same files.
+
+
+## 2025-04-0029 — DROP
+
+**Subject**: loader/efi: Enhance error messages in chainloader
+**Evidence**: Superseded by Re: 2025-04-0054, then by v3 series 2025-05-0076.
+
+
+## 2025-04-0054 — DROP
+
+**Subject**: Re: loader/efi/chainloader: Enhance error messages (RESEND)
+**Evidence**: Superseded by v3 series 2025-05-0076. Same topic, same file.
+
+
+## 2025-04-0108 — DROP
+
+**Subject**: Disable gfxterm_menu and cmdline_cat tests
+**Evidence**: Superseded by 2025-05-0032 (same topic, later submission by Washburn).
 
