@@ -1,6 +1,6 @@
 # Evaluation Log: Compatibility
 
-In-depth review of 11 compatibility patches kept for manual incorporation.
+In-depth review of 9 compatibility patches kept for manual incorporation.
 
 ---
 
@@ -45,28 +45,6 @@ differences. Not removing the source files — just disabling the build.
 **Manual fix effort**: Trivial
 
 ---
-
-## 2025-06-0117 — gnulib: GCC-15 compile fix
-
-**Files**: `bootstrap.conf`, new `grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch`
-**Author**: Andrew Hamilton | **Size**: +15/-5 lines | **Standalone**
-
-**What it does**: Adds a gnulib patch that fixes a GCC-15 compilation error
-in `base64.c`. The patch modifies the gnulib `base64_encode` function signature
-to avoid a strict-aliasing violation that GCC-15 flags as an error.
-
-**Code review**:
-- Same pattern as other gnulib patches (applied during `bootstrap`)
-- Adds the patch file + registers it in `bootstrap.conf`
-- Targeted fix for a specific compiler version — won't affect older compilers
-- Without this, GRUB fails to build with GCC-15
-
-**Complexity**: Simple
-**Risk**: None
-**Manual fix effort**: Low — create patch file, add to bootstrap.conf
-
----
-
 ## 2025-07-0038 — import_gcry: Make compatible with python 3.4
 
 **File**: `util/import_gcry.py`
@@ -109,31 +87,6 @@ help text format for `--depth` (now shows `--[no-]depth`), breaking the old chec
 **Manual fix effort**: Very low — 2 line changes
 
 ---
-
-## 2025-09-0195 — efi/tpm: TCG2 1.1 version check
-
-**File**: `grub-core/commands/efi/tpm.c`
-**Author**: Luca Boccassi | **Size**: +31/-4 lines | **Standalone**
-
-**What it does**: Adds `grub_tpm2_pcr_banks_reporting_present()` which checks the
-TCG2 protocol `StructureVersion` before calling `get_active_pcr_banks()`. The
-`get_active_pcr_banks()` call was added in TCG2 spec v1.1 — calling it on v1.0
-firmware crashes.
-
-**Code review**:
-- Caches the result in a `static grub_int8_t` (-1 = unchecked, 0/1 = result)
-- Checks `StructureVersion.Major < 1 || (Major == 1 && Minor < 1)` — correct
-  for "< 1.1"
-- References the actual TCG spec (section 6.2, Table 4)
-- Commit message links to a real systemd bug: https://github.com/systemd/systemd/issues/38932
-- This is a production issue on real hardware
-
-**Complexity**: Medium — TPM protocol versioning
-**Risk**: Low — only adds a guard before an existing call
-**Manual fix effort**: Medium — 30+ lines, needs correct placement in tpm.c
-
----
-
 ## 2026-01-0021 — configure: autoconf-archive error message
 
 **File**: `configure.ac`

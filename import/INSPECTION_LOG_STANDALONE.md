@@ -559,12 +559,6 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Subject**: tests: include verbosity on tests.in checks
 **Evidence**: master tests have `set -ex` (e.g. btrfs_test.in:3).
 
-## 2025-09-0195 — KEEP
-
-**Subject**: efi/tpm: call get_active_pcr_banks only with TCG2 1.1+
-**Author**: Luca Boccassi
-**Evidence**: `tpm2_pcr_banks_reporting_present` not found on master.
-
 ## 2025-09-0237 — DROP
 
 **Subject**: Re: Make grub_error() more verbose
@@ -1056,13 +1050,6 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Subject**: tpm2_key_protector: Dump the PCR bank for key unsealing (v2)
 **Author**: Gary Lin | **fp=1 code=1**
 **Evidence**: master module.c:180 `tpm2_dump_bank`. Confirmed earlier.
-
-## 2025-06-0117 — KEEP
-
-**Subject**: gnulib: Add patch to allow GRUB w/GCC-15 compile (v2)
-**Author**: Andrew Hamilton | **fp=1 code=2**
-**Target**: `bootstrap.conf`, `grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch`
-**Evidence**: `gcc-15-compile-fix.patch` MISSING on master.
 
 ## 2025-09-0037 — KEEP
 

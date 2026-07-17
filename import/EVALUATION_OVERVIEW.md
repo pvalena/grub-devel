@@ -1,6 +1,6 @@
 # Evaluation Overview
 
-63 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
+61 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
 Each file contains: commit message, FAILED.patch (the intended change that needs
 manual incorporation), any conflict resolution artifacts, and master context.
 
@@ -13,10 +13,10 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | Bug fix | 6 |
 | New feature | 24 |
 | Enhancement | 19 |
-| Compatibility | 11 |
+| Compatibility | 9 |
 | RFC | 1 |
 | Documentation | 2 |
-| **Total** | **63** |
+| **Total** | **61** |
 
 ---
 
@@ -46,7 +46,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-05-0201](evaluation/2025-05-0201.txt) | Enhancement | +75 -18 lines | [2025-05-0201](series/2025-05-0201) | Exporting variables to upper levels |
 | [2025-05-0202](evaluation/2025-05-0202.txt) | Documentation | +10 -2 lines | [2025-05-0201](series/2025-05-0201) | Docs for the new options of the ‘export’ command |
 | [2025-05-0256](evaluation/2025-05-0256.txt) | Bug fix | +27 -18 lines | standalone | Regarding bug in affs filesystem parser |
-| [2025-06-0117](evaluation/2025-06-0117.txt) | Compatibility | +15 -5 lines | standalone | gnulib: Add patch to allow GRUB w/GCC-15 compile |
 | [2025-06-0121](evaluation/2025-06-0121.txt) | New feature | +70 -3 lines | standalone | Create a Containerfile with required grub packages for development |
 | [2025-06-0143](evaluation/2025-06-0143.txt) | New feature | +138 -3 lines | standalone | Create Containerfiles with required grub packages for development |
 | [2025-07-0004](evaluation/2025-07-0004.txt) | New feature | +229 -6 lines | standalone | efi/tpcm: Add UEFI interface for TPCM module |
@@ -67,7 +66,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-08-0013](evaluation/2025-08-0013.txt) | New feature | +796 -103 lines | [2025-08-0012](series/2025-08-0012) | zfs: Support datto encryption |
 | [2025-08-0167](evaluation/2025-08-0167.txt) | Compatibility | +3 -5 lines | standalone | bootstrap: Ensure shallow GNULIB clone Works on Newer GIT |
 | [2025-09-0037](evaluation/2025-09-0037.txt) | Bug fix | +33 -4 lines | standalone | lsefi: fixed memory leaks |
-| [2025-09-0195](evaluation/2025-09-0195.txt) | Compatibility | +31 -4 lines | standalone | efi/tpm: call get_active_pcr_banks() only with TCG2 1.1 or newer |
 | [2025-09-0238](evaluation/2025-09-0238.txt) | Enhancement | +2 -3 lines | standalone | Hint missing zstd support for PvGrub2 "not xen image" |
 | [2025-10-0189](evaluation/2025-10-0189.txt) | Enhancement | +43 -14 lines | standalone | commands/hashsum: Allow to store hash in variable |
 | [2025-10-0294](evaluation/2025-10-0294.txt) | New feature | +171 -3 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: add fs_envblk open helper |
