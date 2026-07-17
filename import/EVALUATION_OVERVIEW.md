@@ -1,22 +1,17 @@
 # Evaluation Overview
 
-46 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
-Each file contains: commit message, FAILED.patch (the intended change that needs
-manual incorporation), any conflict resolution artifacts, and master context.
+46 KEEP branches evaluated. Per-branch data in [`evaluation/`](evaluation/).
+In-depth code reviews with complexity, risk, and effort assessments:
 
----
-
-## Summary by type
-
-| Type | Count |
-|------|------:|
-| Bug fix | 6 |
-| New feature | 17 |
-| Enhancement | 11 |
-| Compatibility | 9 |
-| RFC | 1 |
-| Documentation | 2 |
-| **Total** | **46** |
+| Category | Count | Evaluation log |
+|----------|------:|----------------|
+| Bug fix | 6 | [EVALUATION_LOG_BUGFIX.md](EVALUATION_LOG_BUGFIX.md) |
+| New feature | 17 | [EVALUATION_LOG_NEWFEATURE.md](EVALUATION_LOG_NEWFEATURE.md) |
+| Enhancement | 11 | [EVALUATION_LOG_ENHANCEMENT.md](EVALUATION_LOG_ENHANCEMENT.md) |
+| Compatibility | 9 | [EVALUATION_LOG_COMPAT.md](EVALUATION_LOG_COMPAT.md) |
+| RFC | 1 | [EVALUATION_LOG_RFC_DOCS.md](EVALUATION_LOG_RFC_DOCS.md) |
+| Documentation | 2 | [EVALUATION_LOG_RFC_DOCS.md](EVALUATION_LOG_RFC_DOCS.md) |
+| **Total** | **46** | |
 
 ---
 
