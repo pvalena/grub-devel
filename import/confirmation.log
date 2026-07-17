@@ -531,3 +531,125 @@ Master pkcs7.c: 452
 Master ibm,secure-boot: 2
 Master integrity in lvm.c (strncmp): 		   * Cache and integrity LVs have extra parts that
 			   grub_strncmp (p, "integrity\"", sizeof ("integrity\"") - 1) == 0)
+
+=== SERIES BATCH 2 ===
+--- Series 2025-03-0198 (7 patches): PKS v2, superseded by v18 ---
+Patch files touch: grub-core/commands/appendedsig/appendedsig.c grub-core/Makefile.am 
+Master platform_keystore.c: 315
+
+--- Series 2025-04-0016 (3 patches): libgcrypt 1.10.3, superseded by v14 ---
+Patch imports libgcrypt 1.10.3. Master VERSION: 1.11.0
+
+--- Series 2025-04-0057 (9 patches): tpm2_key_protector v5 ---
+Master tpm2_dump_pcr: 10
+Master NV index: 10
+Master tpm2_key_protector_test NV: 10
+
+--- Series 2025-05-0113 (3 patches): NTFS fixes ---
+Master run_size: 4
+Master read_symlink != NULL: 1
+Master 'pu offset size incorrect': 1
+
+--- Series 2025-09-0115 (2 patches): QEMU patches, wrong ML ---
+Patch targets QEMU files: hw/core/machine.c
+File exists on GRUB master: 0
+
+=== SERIES BATCH 3 ===
+--- Series 2025-05-0151 (dissolved): already confirmed as standalone drops ---
+--- Series 2025-05-0166 (2 patches): NTFS v3 ---
+Master 'edat offset is out of bounds': 2
+
+--- Series 2025-06-0040 (2 patches): gnulib regcomp/regexec ---
+Master fix-regcomp-resource-leak.patch: 110
+Master fix-regexec-resource-leak.patch: 11
+
+--- Series 2025-06-0177 (4 patches): linux LoadOptions ---
+Master args_len: 4
+Master NUL terminate LoadOptions: 1
+
+--- Series 2025-07-0066 (3 patches): shim loader protocol ---
+Master SHIM_IMAGE_LOADER_GUID: 1
+Master last_verified_image_handle: 8
+
+=== SERIES BATCH 4 ===
+--- Series 2025-07-0287 (2 patches): argon2 v1, superseded by v5 ---
+Patch files: grub-core/lib/argon2.c
+v5 touches same: grub-core/lib/argon2.c
+Master argon2.c: 52
+
+--- Series 2025-08-0076 (3 patches): xen cmdline v5 ---
+Master GRUB_XEN_MAX_GUEST_CMDLINE: 2
+Master grub_parse_xen_cmdline: 1
+
+--- Series 2025-08-0173 (2 patches): INSTALL/BUGS docs ---
+Master INSTALL libtasn1: 1
+Master BUGS savannah: 1
+
+--- Series 2025-08-0182 (3 patches): docs new modules + URLs ---
+Master gcry_blake2_module: 2
+Master https gnu.org/software/grub: 3
+
+--- Series 2025-08-0194 (7 patches): appended-sig v9, superseded by v18 ---
+Patch files overlap with v18: grub-core/commands/appendedsig/appendedsig.h -> 133
+Master appendedsig.c: 1728
+
+=== SERIES BATCH 5 ===
+--- Series 2025-09-0005 (2 patches): tss2 cap_pcr v3, superseded by v4 ---
+Patch files: grub-core/lib/tss2/tcg2.h
+v4 same file: Master grub_tcg2_cap_pcr: 1
+
+--- Series 2025-10-0092 (3 patches): tss2 PCR_Event v4 ---
+Master TPM_CC_PCR_Event: 1
+Master cap_pcr ieee1275: 1
+Master cap_pcrs in module: 10
+
+--- Series 2025-10-0142 (11 patches): appended-sig v18 ---
+Master OBJ_TYPE_GPG_PUBKEY: 1
+Master appended-signature-size: 1
+Master append_add_db_cert: 2
+Master pks.h: 112
+
+--- Series 2025-10-0160 (3 patches): appended-sig v18 tests/docs ---
+Master appended_signature_test.c: 348
+Master 'Signing GRUB for UEFI': 1
+
+--- Series 2025-10-0235 (9 patches): argon2/kdf v5 ---
+Master grub_crypto_argon: 6
+Master argon2_test.c: 139
+Master kdf patch 12: 79
+
+=== SERIES BATCH 6 (final) ===
+--- Series 2025-10-0266 (3 patches): btrfs envblk v5 ---
+Master GRUB_ENV_BTRFS_OFFSET: 1
+Master fs_envblk_open: 3
+
+--- Series 2025-10-0329 (7 patches): sha256 hw accel v3 ---
+Master hwfeatures-gcry.c: 52
+Master cpuid.h: 1
+Master sha256 accel patch: 43
+
+--- Series 2025-11-0097 (2 patches): erofs test v3 ---
+Master erofs_test.in (no root check): 0
+Master dump.erofs FSTIME: 1
+
+--- Series 2025-11-0104 (2 patches): ZFS ZSTD test split v6 ---
+Master zfs_zstd_test.in: 30
+Master mkfs.ext2 -r detection: 1
+
+--- Series 2025-11-0120 (2 patches): cryptomount test ---
+Master argon2 testcase (not testcase_fail): eval testcase "'LUKS2 test with argon2 pbkdf:'" \
+Master builddir: 1
+
+--- Series 2025-11-0142 (3 patches): docs spelling ---
+Master 'easily portable across': 1
+Master 'privileged user': 1
+Master '@node Tests': 1
+
+--- Series 2025-11-0204 (2 patches): bootstrap linguas v4 ---
+Master INSTALL step 2 bootstrap:   2. Type `./bootstrap'.
+Master bootstrap.conf linguas: 3
+
+--- Series 2026-02-0066 (3 patches): NVMeoFC v7 ---
+Master fcp-targets: 2
+Master nvme-discovery-controllers: 2
+Master add_multiple_nvme_bootdevices: 3
