@@ -1,6 +1,6 @@
 # Evaluation Overview
 
-64 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
+63 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
 Each file contains: commit message, FAILED.patch (the intended change that needs
 manual incorporation), any conflict resolution artifacts, and master context.
 
@@ -15,8 +15,8 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | Enhancement | 19 |
 | Compatibility | 11 |
 | RFC | 1 |
-| Documentation | 3 |
-| **Total** | **64** |
+| Documentation | 2 |
+| **Total** | **63** |
 
 ---
 
@@ -74,7 +74,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-10-0296](evaluation/2025-10-0296.txt) | New feature | +38 -4 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: add fs_envblk write helper |
 | [2025-10-0297](evaluation/2025-10-0297.txt) | Enhancement | +57 -5 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: wire set_variables to optional fs_envblk |
 | [2025-10-0299](evaluation/2025-10-0299.txt) | Enhancement | +15 -3 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: wire unset_variables to optional fs_envblk |
-| [2025-10-0304](evaluation/2025-10-0304.txt) | Documentation | +61 -3 lines | [2025-10-0294](series/2025-10-0294) | docs: add Btrfs env block and special env vars |
 | [2025-11-0027](evaluation/2025-11-0027.txt) | Enhancement | +27 -7 lines | standalone | util/grub.d/00_header.in: Disable loading all_video for EFI |
 | [2025-11-0238](evaluation/2025-11-0238.txt) | New feature | +299 -6 lines | standalone | tests: add functional tests for ECB mode using various ciphers |
 | [2025-12-0072](evaluation/2025-12-0072.txt) | Documentation | +0 | standalone | INSTALL: Add new requirement for configure |

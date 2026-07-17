@@ -1,6 +1,6 @@
 # Evaluation Log: RFC & Documentation
 
-In-depth review of 1 RFC proposal and 3 documentation patches kept for manual incorporation.
+In-depth review of 1 RFC proposal and 2 documentation patches kept for manual incorporation.
 
 ---
 
@@ -56,29 +56,6 @@ reply in the thread visible from the patch data.
 **Manual fix effort**: Very low — but must be applied together with 2025-05-0201
 
 ---
-
-### 2025-10-0304 — Btrfs environment block documentation
-
-**File**: `docs/grub.texi`
-**Author**: Michael Chang | **Size**: +61 lines
-**Series**: [2025-10-0294](series/2025-10-0294) (patch 5 of 5 remaining)
-
-**What it does**: Adds a new section documenting the Btrfs environment block feature:
-how the reserved header area works, why it's needed for copy-on-write filesystems,
-and how it enables `grub-reboot` and `GRUB_SAVEDEFAULT` on Btrfs volumes.
-
-**Code review**:
-- Adds `@node Special environment block variables` section
-- Explains the Btrfs-specific CoW problem and the reserved-area solution
-- References `grub-reboot` and `GRUB_SAVEDEFAULT` — both already exist on master
-- The code infrastructure (fs_envblk_open/write) is already upstream —
-  only this documentation is missing
-- Clean Texinfo, proper cross-references
-
-**Complexity**: Trivial (documentation only)
-**Risk**: None
-**Manual fix effort**: Low — single section insertion in grub.texi.
-May need context adjustment if grub.texi structure has shifted.
 
 ---
 

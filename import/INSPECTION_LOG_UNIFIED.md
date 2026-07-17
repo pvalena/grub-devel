@@ -832,7 +832,7 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 
 ## DROP — Standalone
 
-158 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
+159 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
 All in [`drop_new.txt`](drop_new.txt).
 
 ## 2025-01-0094 — DROP
@@ -2046,3 +2046,15 @@ different wording). Series dissolved, sibling 2025-12-0029 also upstream.
 **Change**: Replace `macroman` with `CSMACINTOSH` encoding in grub-fs-tester.
 **Evidence**: master grub-fs-tester.in:746-748 has CSMACINTOSH. Already upstream.
 Was in series 2025-12-0028, series dissolved.
+
+
+## 2025-10-0304 — DROP
+
+**Subject**: docs: add Btrfs env block and special env vars
+**Author**: Michael Chang | **fp=1 code=1**
+**Target**: `docs/grub.texi`
+**Change**: Add Btrfs environment block documentation section.
+**Evidence**: master grub.texi lines 3374, 4008-4021 have the exact content:
+"Special environment block variables" section, "reserved area" and "copy-on-write"
+explanation. Found during in-depth evaluation — earlier inspection missed it
+because the check only looked for the section title, not the content.
