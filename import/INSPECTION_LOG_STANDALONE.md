@@ -1385,3 +1385,26 @@ Was in series 2025-12-0028, series dissolved.
 "Special environment block variables" section, "reserved area" and "copy-on-write"
 explanation. Found during in-depth evaluation — earlier inspection missed it
 because the check only looked for the section title, not the content.
+
+## 2025-06-0117 — DROP
+
+**Subject**: gnulib: Add patch to allow GRUB w/GCC-15 compile (v2)
+**Author**: Andrew Hamilton | **fp=1 code=2**
+**Target**: `bootstrap.conf`, `grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch`
+**Change**: Add `_GL_ATTRIBUTE_NONSTRING` to `b64c[64]` in gnulib `base64.c`.
+**Evidence**: master has identical fix under different filename: `fix-gcc-15-compile.patch`
+(bootstrap.conf:89, file exists). Same content: `_GL_ATTRIBUTE_NONSTRING`. Found during
+in-depth evaluation double-check — earlier inspection checked for the patch filename
+`gcc-15-compile-fix.patch` which doesn't exist, missing the renamed `fix-gcc-15-compile.patch`.
+
+## 2025-09-0195 — DROP
+
+**Subject**: efi/tpm: call get_active_pcr_banks() only with TCG2 1.1 or newer
+**Author**: Luca Boccassi | **fp=1 code=1**
+**Target**: `grub-core/commands/efi/tpm.c`
+**Change**: Add `grub_tpm2_pcr_banks_reporting_present()` wrapper to check TCG2 version.
+**Evidence**: master tpm.c lines 373-376 already check `StructureVersion.Major < 1 ||
+(Major == 1 && Minor < 1)` before `get_active_pcr_banks` at line 378. Different
+implementation (inline check vs wrapper function), same protection. Found during
+evaluation double-check — earlier inspection checked for the wrapper function name
+which doesn't exist, missing the inline version check.

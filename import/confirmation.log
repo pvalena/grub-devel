@@ -678,3 +678,89 @@ v4 same files: acinclude.m4 configure.ac
 
 --- 2025-11-0014/0015 (GRUB_FORCE_EFI superseded by v2 2025-11-0027) ---
 Series touches: util/grub-mkconfig.in. v2 touches: grub-mkconfig.in + 00_header.in + docs. v2 is more complete, supersedes.
+=== 2025-05-0025: ia64 -mno-inline-int-divide ===
+Patch adds: +       CFLAGS="$TARGET_CFLAGS -mno-inline-int-divide -mno-inline-float-divide -mno-inline-sqrt -Werror"
+Master: 
+=== 2025-05-0032: test disable ===
+Patch comments out: gfxterm_menu + cmdline_cat. Master has them enabled:   name = gfxterm_menu;
+  common = tests/gfxterm_menu.c;
+
+=== 2025-06-0117: GCC-15 gnulib patch ===
+Patch creates: gcc-15-compile-fix.patch. Master: 0
+Master bootstrap.conf references it: 1
+
+=== 2025-07-0038: python 3.4 f-string removal ===
+Patch replaces f-strings with %. Master still has f-strings: 4
+Specific f-string on master:      open (os.path.join ("grub-core", "Makefile.gcry.def"), "w", encoding="utf-8") as conf, \
+
+=== 2025-08-0167: bootstrap depth regex ===
+Patch changes grep pattern. Master still has old: Master has new pattern: 0
+=== What does bootstrap.conf say about gcc-15? ===
+89:      fix-gcc-15-compile \
+
+=== Does the patch file exist on master? ===
+100644 blob 287332ea0f40db2d4b2a9f5e592d50b0148feb59	grub-core/lib/gnulib-patches/fix-gcc-15-compile.patch
+
+=== What does the patch's FAILED.patch actually add? ===
+diff --git a/bootstrap.conf b/bootstrap.conf
+diff --git a/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch b/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch
+=== Master's fix-gcc-15-compile.patch ===
+--- a/lib/base64.c
++++ b/lib/base64.c
+@@ -61,7 +61,7 @@
+   return ch;
+ }
+
+-static const char b64c[64] =
++static const char b64c[64] _GL_ATTRIBUTE_NONSTRING =
+   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+ /* Base64 encode IN array of size INLEN into OUT array. OUT needs
+
+=== Our gcc-15-compile-fix.patch ===
++--- a/lib/base64.c
+++++ b/lib/base64.c
++@@ -61,7 +61,7 @@
++   return ch;
++ }
++
++-static const char b64c[64] =
+++static const char b64c[64] _GL_ATTRIBUTE_NONSTRING =
++   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
++
++ /* Base64 encode IN array of size INLEN into OUT array. OUT needs
+-- 
+2.39.5
+
+
+
+=== 2025-09-0195: TCG2 version check ===
+Patch adds grub_tpm2_pcr_banks_reporting_present. Master: 0
+Master checks StructureVersion before get_active_pcr_banks: 2
+
+=== 2026-01-0021: autoconf-archive m4_fatal ===
+Patch adds m4_ifndef AX_CHECK_LINK_FLAG. Master: 0
+
+=== 2026-01-0053: AROS ===
+Patch modifies Makefile.in. Master Makefile.in -lpthread count: 0
+
+=== 2026-02-0101: PKS emu exclude ===
+Patch adds GRUB_MACHINE_EMU guard. Master platform_keystore.h: 
+=== 2026-03-0010: ld.lld --image-base revert ===
+Patch reverts --image-base check. Master still has it:     AX_CHECK_LINK_FLAG([-Wl,--image-base,0],
+
+=== 2026-03-0012: ld.lld -Ttext removal ===
+Patch removes -Ttext. Master still has it:         [TARGET_IMG_BASE_LDOPT="-Wl,--image-base,0 -Wl,-Ttext"],
+=== Master StructureVersion context ===
+371-  if (status != GRUB_EFI_SUCCESS)
+372-    return (grub_uint32_t) (tpm2_active_pcr_banks = 0);
+373:  if (caps.StructureVersion.Major < 1 ||
+374:      (caps.StructureVersion.Major == 1 && caps.StructureVersion.Minor < 1))
+375-    /* There's a working TPM2 but without querying protocol, let userspace figure it out. */
+376-    return (grub_uint32_t) (tpm2_active_pcr_banks = GRUB_UINT_MAX);
+
+=== Master get_active_pcr_banks call context ===
+375-    /* There's a working TPM2 but without querying protocol, let userspace figure it out. */
+376-    return (grub_uint32_t) (tpm2_active_pcr_banks = GRUB_UINT_MAX);
+377-
+378:  status = tpm->get_active_pcr_banks (tpm, &active_pcr_banks);
