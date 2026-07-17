@@ -1,6 +1,6 @@
 # Evaluation Overview
 
-72 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
+70 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
 Each file contains: commit message, FAILED.patch (the intended change that needs
 manual incorporation), any conflict resolution artifacts, and master context.
 
@@ -10,13 +10,13 @@ manual incorporation), any conflict resolution artifacts, and master context.
 
 | Type | Count |
 |------|------:|
-| Bug fix | 11 |
+| Bug fix | 9 |
 | New feature | 24 |
 | Enhancement | 20 |
 | Compatibility | 11 |
 | RFC | 1 |
 | Documentation | 5 |
-| **Total** | **72** |
+| **Total** | **70** |
 
 ---
 
@@ -40,7 +40,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-04-0271](evaluation/2025-04-0271.txt) | New feature | +665 -26 lines | [2025-04-0266](series/2025-04-0266) | slaunch/skinit: AMD SKINIT Secure Launch core implementation |
 | [2025-04-0272](evaluation/2025-04-0272.txt) | New feature | +197 -33 lines | [2025-04-0266](series/2025-04-0266) | efi: Add AMD SKINIT Secure Launch support |
 | [2025-04-0273](evaluation/2025-04-0273.txt) | New feature | +16 -6 lines | [2025-04-0266](series/2025-04-0266) | multiboot2: Support SKINIT Secure Launch |
-| [2025-05-0008](evaluation/2025-05-0008.txt) | Bug fix | +2 -4 lines | standalone | ntfs: Fix attribute validation check |
 | [2025-05-0025](evaluation/2025-05-0025.txt) | Compatibility | +5 -7 lines | standalone | ia64: Disable optimizations using floating-point arithmetics |
 | [2025-05-0032](evaluation/2025-05-0032.txt) | Compatibility | +5 -4 lines | [2025-05-0032](series/2025-05-0032) | tests: Disable gfxterm_menu and cmdline_cat tests |
 | [2025-05-0033](evaluation/2025-05-0033.txt) | Bug fix | +6 -4 lines | [2025-05-0032](series/2025-05-0032) | fs/zfs: Fix another memory leak in ZFS code |
@@ -49,7 +48,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-05-0201](evaluation/2025-05-0201.txt) | Enhancement | +75 -18 lines | [2025-05-0201](series/2025-05-0201) | Exporting variables to upper levels |
 | [2025-05-0202](evaluation/2025-05-0202.txt) | Documentation | +10 -2 lines | [2025-05-0201](series/2025-05-0201) | Docs for the new options of the ‘export’ command |
 | [2025-05-0256](evaluation/2025-05-0256.txt) | Bug fix | +27 -18 lines | standalone | Regarding bug in affs filesystem parser |
-| [2025-06-0011](evaluation/2025-06-0011.txt) | Bug fix | +7 -3 lines | standalone | unix/hostdisk: Fix signed integer overflow |
 | [2025-06-0117](evaluation/2025-06-0117.txt) | Compatibility | +15 -5 lines | standalone | gnulib: Add patch to allow GRUB w/GCC-15 compile |
 | [2025-06-0121](evaluation/2025-06-0121.txt) | New feature | +70 -3 lines | standalone | Create a Containerfile with required grub packages for development |
 | [2025-06-0143](evaluation/2025-06-0143.txt) | New feature | +138 -3 lines | standalone | Create Containerfiles with required grub packages for development |

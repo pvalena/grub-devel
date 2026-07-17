@@ -9,8 +9,8 @@
 
 | Category | Count | Files |
 |----------|------:|-------|
-| **DROP** (already upstream or superseded) | 290 | `drop_new.txt` |
-| **KEEP standalone** | 28 | `standalone.txt` |
+| **DROP** (already upstream or superseded) | 292 | `drop_new.txt` |
+| **KEEP standalone** | 26 | `standalone.txt` |
 | **KEEP series** | 44 members in 11 series | `series/*` |
 | **Total** | 362 | |
 

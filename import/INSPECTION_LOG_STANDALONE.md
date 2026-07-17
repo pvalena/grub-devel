@@ -242,12 +242,6 @@ Also confirmed upstream during series inspection (2025-07-0066).
 **Author**: Michał Żygowski | Part of SKINIT RFC series.
 **Evidence**: `grub-core/loader/slaunch/skl.c` MISSING on master.
 
-## 2025-05-0008 — KEEP
-
-**Subject**: ntfs: Fix attribute validation check
-**Author**: Vladimir Serbinenko | **Change**: `curr += min_size` → `curr = min_size`.
-**Evidence**: neither pattern found on master (code restructured, but fix not applied).
-
 ## 2025-05-0025 — KEEP
 
 **Subject**: ia64: Disable optimizations using floating-point (v2)
@@ -1043,14 +1037,6 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Change**: Restructure `validate_attribute` call in `next_attribute`.
 **Evidence**: master ntfs.c:238 already has `validate_attribute` check.
 
-## 2025-06-0011 — KEEP
-
-**Subject**: unix/hostdisk: Fix signed integer overflow
-**Author**: Lidong Chen | **fp=1 code=1**
-**Target**: `grub-core/osdep/unix/hostdisk.c`
-**Change**: Add `if (len > GRUB_SSIZE_MAX) return -1` checks.
-**Evidence**: `GRUB_SSIZE_MAX` not found in master hostdisk.c.
-
 ## 2025-06-0031 — DROP
 
 **Subject**: tests/tpm2_key_protector_test: Add tests for SHA384 PCR
@@ -1294,3 +1280,23 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Author**: Andrew Hamilton | **fp=1 code=1**
 **Change**: Add `attr_cur >= at->mft->buf` bounds check.
 **Evidence**: master ntfs.c line 417 has `at->attr_cur >= at->mft->buf`.
+
+## 2025-06-0011 — DROP
+
+**Subject**: unix/hostdisk: Fix signed integer overflow
+**Author**: Lidong Chen | **fp=1 code=1**
+**Target**: `grub-core/osdep/unix/hostdisk.c`
+**Change**: Add `if (len > GRUB_SSIZE_MAX) return -1` in fd_read/fd_write.
+**Evidence**: master commit `86e8f2c4b` (same author, same CIDs 473850/473863) uses
+`SSIZE_MAX` instead of `GRUB_SSIZE_MAX`. Functionally identical. Reviewed-by Kiper.
+Originally classified KEEP because grep for `GRUB_SSIZE_MAX` found no match on master.
+
+## 2025-05-0008 — DROP
+
+**Subject**: ntfs: Fix attribute validation check
+**Author**: Vladimir Serbinenko | **fp=1 code=1**
+**Target**: `grub-core/fs/ntfs.c`
+**Change**: `curr += min_size` → `curr = min_size` in `validate_attribute()` run list loop.
+**Evidence**: master commit `0e1762c8a` (Andrew Hamilton) fixes the same bug differently:
+introduces `run_size` variable, uses `curr += (run_size + 1)`. Reviewed-by Kiper.
+Same underlying issue (quadratic `curr` growth), different fix approach.
