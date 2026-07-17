@@ -91,7 +91,12 @@ done
     echo "--------------------------------------------------------------------------------"
     echo ""
     # Determine assessment based on what we know
-    if [ "$exists" = "0" ] 2>/dev/null; then
+    has_missing=$(git -C "$GRUB" show "${B}:FAILED.patch" 2>/dev/null \
+        | grep '^diff --git' | sed 's|diff --git a/||;s| b/.*||' \
+        | while read tf; do
+            git -C "$GRUB" show "master:$tf" 2>/dev/null | wc -l | grep -q '^0$' && echo "yes"
+          done | head -1)
+    if [ "${has_missing:-no}" = "yes" ]; then
         echo "Type:       NEW FEATURE (target files missing on master)"
     else
         echo "Type:       ENHANCEMENT / FIX (modifies existing files)"
