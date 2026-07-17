@@ -36,7 +36,7 @@ master `grub-core/disk/diskfilter.c` has the split validation loop (lines 982, 9
 All 6 commits are FAILED.patch-only (no code files changed in commit = auto-merge found
 code already present).
 
-## Series: 2025-01-0098 (dissolved — patch 1 upstream, patch 2 standalone KEEP)
+## Series: xfs-iterate-dir (dissolved — patch 1 upstream, patch 2 standalone KEEP)
 
 **Topic**: fs/xfs: Fix return values and error propagation in `grub_xfs_iterate_dir`
 
@@ -162,7 +162,7 @@ MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`,
 `include/grub/i386/skinit.h`, `include/grub/slaunch.h`, `include/grub/slr_table.h`.
 **Decision**: KEEP — new feature, not upstream.
 
-## Series: 2025-05-0032 (dissolved — patch 2 upstream, patch 1 standalone KEEP)
+## Series: test-disable-zfs (dissolved — patch 2 upstream, patch 1 standalone KEEP)
 
 **Topic**: Disable gfxterm_menu/cmdline_cat tests + ZFS memory leak fix
 
@@ -176,8 +176,6 @@ Test disable (2025-05-0032) is NOT on master — tests still enabled, patch was
 not accepted (workaround for unifont issue). Independent patches grouped by
 proximity; keeping as a unit for review.
 **Decision**: KEEP — test disable not upstream.
-
-## Series: 2025-01-0098 (dissolved — patch 1 upstream, patch 2 standalone KEEP) (noted earlier)
 
 ## Series: 2025-05-0076 (2 patches, khaalid) — KEEP
 

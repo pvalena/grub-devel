@@ -1330,3 +1330,22 @@ is NOT upstream and remains as standalone KEEP. This patch is fully redundant.
 **Evidence**: master commit `e23704ad4` (same author, Reviewed-by Kiper). Exact same patches.
 **Context**: Was patch 7 of 11 in libgcrypt v14 series. Patch 11 (2025-07-0039, sexp.c leak)
 is NOT upstream and remains in the series. This patch is fully redundant.
+
+## 2025-01-0099 — KEEP
+
+**Subject**: fs/xfs: Propagate incorrect inode error from grub_xfs_read_inode
+**Author**: Egor Ignatov | **fp=1 code=0**
+**Target**: `grub-core/fs/xfs.c`
+**Change**: Remove `grub_print_error()` calls in `iterate_dir_call_hook()`, add
+`else if (grub_errno) return 0` guards after every `iterate_dir_call_hook()` call.
+**Evidence**: master still has `grub_print_error` at lines 818, 824, 836. Not upstream.
+**Context**: Was patch 2 of xfs series 2025-01-0098. Patch 1 merged to master.
+
+## 2025-05-0032 — KEEP
+
+**Subject**: tests: Disable gfxterm_menu and cmdline_cat tests
+**Author**: Glenn Washburn | **fp=1 code=0**
+**Target**: `grub-core/Makefile.core.def`
+**Change**: Comment out gfxterm_menu and cmdline_cat test modules (unifont workaround).
+**Evidence**: master Makefile.core.def:2388 still has tests enabled. Not upstream.
+**Context**: Was patch 1 of test/zfs series 2025-05-0032. Patch 2 (zfs leak) merged to master.

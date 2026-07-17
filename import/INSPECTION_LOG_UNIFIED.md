@@ -7,22 +7,7 @@ Pipeline documentation: [FINAL_REPORT.md](FINAL_REPORT.md).
 
 ## KEEP — Series
 
-11 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
-
-## Series: [2025-01-0098](series/2025-01-0098) (2 patches, Egor Ignatov) — KEEP
-
-**Topic**: fs/xfs: Fix return values and error propagation in `grub_xfs_iterate_dir`
-
-| Branch | Commit content | Verdict |
-|--------|---------------|---------|
-| 2025-01-0098 | FAILED.patch only: fix return value to `return 0` after `grub_error()` | Already upstream |
-| 2025-01-0099 | FAILED.patch only: remove `grub_print_error`, add `grub_errno` propagation | **NOT upstream** |
-
-**Evidence**: Patch 1's changes are on master (lines 889, 1012 use `grub_error` + `return 0`).
-Patch 2's changes are NOT on master: `grub_print_error` still present at lines 818, 824, 836;
-no `else if (grub_errno)` guards after `iterate_dir_call_hook` calls (lines 874, 877).
-**Decision**: KEEP — patch 2 carries unmerged error propagation fixes.
-
+9 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
 
 ## Series: [2025-04-0266](series/2025-04-0266) (7 of 7, Brown/Philipson/Żygowski) — KEEP
 
@@ -45,8 +30,7 @@ MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`,
 `include/grub/i386/skinit.h`, `include/grub/slaunch.h`, `include/grub/slr_table.h`.
 **Decision**: KEEP — new feature, not upstream.
 
-
-## Series: [2025-05-0032](series/2025-05-0032) (2 patches, Glenn Washburn) — KEEP
+## Series: test-disable-zfs (dissolved — patch 2 upstream, patch 1 standalone KEEP)
 
 **Topic**: Disable gfxterm_menu/cmdline_cat tests + ZFS memory leak fix
 
@@ -89,7 +73,7 @@ Not upstream — no `unexport` command, no `grub_env_set_export_mode`, no `-g` f
 **Decision**: KEEP.
 
 
-## Series: [2025-07-0029](series/2025-07-0029) (11 of 15 patches, Vladimir Serbinenko) — KEEP
+## Series: [2025-07-0029](series/2025-07-0029) (10 of 15 patches, Vladimir Serbinenko) — KEEP
 
 **Topic**: Import libgcrypt 1.11, b64dec, blake2, import script, coverity fixes, memory leak
 
@@ -189,7 +173,7 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 
 ## KEEP — Standalone
 
-32 entries. Full list: [`standalone.txt`](standalone.txt).
+34 entries. Full list: [`standalone.txt`](standalone.txt).
 
 ## 2025-01-0096 — KEEP
 
@@ -447,6 +431,26 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Evidence**: `grub-core/loader/i386/efi/linux.c` MISSING on master.
 
 
+## 2025-01-0099 — KEEP
+
+**Subject**: fs/xfs: Propagate incorrect inode error from grub_xfs_read_inode
+**Author**: Egor Ignatov | **fp=1 code=0**
+**Target**: `grub-core/fs/xfs.c`
+**Change**: Remove `grub_print_error()` calls in `iterate_dir_call_hook()`, add
+`else if (grub_errno) return 0` guards after every `iterate_dir_call_hook()` call.
+**Evidence**: master still has `grub_print_error` at lines 818, 824, 836. Not upstream.
+**Context**: Was patch 2 of xfs series 2025-01-0098. Patch 1 merged to master.
+
+
+## 2025-05-0032 — KEEP
+
+**Subject**: tests: Disable gfxterm_menu and cmdline_cat tests
+**Author**: Glenn Washburn | **fp=1 code=0**
+**Target**: `grub-core/Makefile.core.def`
+**Change**: Comment out gfxterm_menu and cmdline_cat test modules (unifont workaround).
+**Evidence**: master Makefile.core.def:2388 still has tests enabled. Not upstream.
+**Context**: Was patch 1 of test/zfs series 2025-05-0032. Patch 2 (zfs leak) merged to master.
+
 ---
 
 ## DROP — Series
@@ -487,6 +491,20 @@ no `cache_pool` field, `CACHE_USES_CACHEVOL` match (line 851), `grub_util_info` 
 master `grub-core/disk/diskfilter.c` has the split validation loop (lines 982, 996).
 All 6 commits are FAILED.patch-only (no code files changed in commit = auto-merge found
 code already present).
+
+## Series: xfs-iterate-dir (dissolved — patch 1 upstream, patch 2 standalone KEEP)
+
+**Topic**: fs/xfs: Fix return values and error propagation in `grub_xfs_iterate_dir`
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-01-0098 | FAILED.patch only: fix return value to `return 0` after `grub_error()` | Already upstream |
+| 2025-01-0099 | FAILED.patch only: remove `grub_print_error`, add `grub_errno` propagation | **NOT upstream** |
+
+**Evidence**: Patch 1's changes are on master (lines 889, 1012 use `grub_error` + `return 0`).
+Patch 2's changes are NOT on master: `grub_print_error` still present at lines 818, 824, 836;
+no `else if (grub_errno)` guards after `iterate_dir_call_hook` calls (lines 874, 877).
+**Decision**: KEEP — patch 2 carries unmerged error propagation fixes.
 
 
 ## Series: 2025-03-0012 (4 of 6 patches, Glenn Washburn)
@@ -814,7 +832,7 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 
 ## DROP — Standalone
 
-152 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
+155 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
 All in [`drop_new.txt`](drop_new.txt).
 
 ## 2025-01-0094 — DROP
@@ -1967,3 +1985,37 @@ Originally classified KEEP because grep for `GRUB_SSIZE_MAX` found no match on m
 **Evidence**: master commit `0e1762c8a` (Andrew Hamilton) fixes the same bug differently:
 introduces `run_size` variable, uses `curr += (run_size + 1)`. Reviewed-by Kiper.
 Same underlying issue (quadratic `curr` growth), different fix approach.
+
+
+## 2025-01-0098 — DROP (series context)
+
+**Subject**: fs/xfs: Fix grub_xfs_iterate_dir return value in case of failure
+**Author**: Egor Ignatov | **fp=1 code=0**
+**Target**: `grub-core/fs/xfs.c`
+**Change**: `return grub_error()` → `grub_error(); return 0` at 2 boundary check sites.
+**Evidence**: master commit `f20988738` (same author, Reviewed-by Kiper). Exact same patch.
+**Context**: Was patch 1 of 2 in xfs series. Patch 2 (2025-01-0099, error propagation)
+is NOT upstream and remains as standalone KEEP. This patch is fully redundant.
+
+
+## 2025-05-0033 — DROP (series context)
+
+**Subject**: fs/zfs: Fix another memory leak in ZFS code
+**Author**: Glenn Washburn | **fp=1 code=1**
+**Target**: `grub-core/fs/zfs/zfs.c`
+**Change**: Add `free_sahdrp` flag to track heap allocation, free on exit.
+**Evidence**: master commit `34bd00ee2` (same author, Reviewed-by Kiper). Exact same patch.
+**Context**: Was patch 2 of 2 in test-disable series. Patch 1 (2025-05-0032, test disable)
+is NOT upstream and remains as standalone KEEP. This patch is fully redundant.
+
+
+## 2025-07-0034 — DROP (series context)
+
+**Subject**: libgcrypt: Fix coverity warnings
+**Author**: Vladimir Serbinenko | **fp=1 code=2**
+**Target**: 2 new patch files in `grub-core/lib/libgcrypt-patches/`
+**Change**: NULL check in mpiutil + resource free in sexp error path. Coverity CID 369001/369003.
+**Evidence**: master commit `e23704ad4` (same author, Reviewed-by Kiper). Exact same patches.
+**Context**: Was patch 7 of 11 in libgcrypt v14 series. Patch 11 (2025-07-0039, sexp.c leak)
+is NOT upstream and remains in the series. This patch is fully redundant.
+

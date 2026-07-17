@@ -1,6 +1,6 @@
 # Evaluation Overview
 
-70 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
+67 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
 Each file contains: commit message, FAILED.patch (the intended change that needs
 manual incorporation), any conflict resolution artifacts, and master context.
 
@@ -10,13 +10,13 @@ manual incorporation), any conflict resolution artifacts, and master context.
 
 | Type | Count |
 |------|------:|
-| Bug fix | 9 |
+| Bug fix | 6 |
 | New feature | 24 |
 | Enhancement | 20 |
 | Compatibility | 11 |
 | RFC | 1 |
 | Documentation | 5 |
-| **Total** | **70** |
+| **Total** | **67** |
 
 ---
 
@@ -25,8 +25,7 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | Branch | Type | Size | Series | Summary |
 |--------|------|------|--------|---------|
 | [2025-01-0096](evaluation/2025-01-0096.txt) | Bug fix | +4 -2 lines | standalone | term/ns8250: return in case of a null SPCR base addresses |
-| [2025-01-0098](evaluation/2025-01-0098.txt) | Bug fix | +10 -5 lines | [2025-01-0098](series/2025-01-0098) | fs/xfs: Fix grub_xfs_iterate_dir return value in case of failure |
-| [2025-01-0099](evaluation/2025-01-0099.txt) | Bug fix | +13 -5 lines | [2025-01-0098](series/2025-01-0098) | fs/xfs: Propagate incorrect inode error from grub_xfs_read_inode |
+| [2025-01-0099](evaluation/2025-01-0099.txt) | Bug fix | +13 -5 lines | 2025-01-0098 (2 members) | fs/xfs: Propagate incorrect inode error from grub_xfs_read_inode |
 | [2025-03-0059](evaluation/2025-03-0059.txt) | Bug fix | +5 -3 lines | standalone | tss2: restore buffer offset on tpm2_submit_command retry |
 | [2025-03-0061](evaluation/2025-03-0061.txt) | New feature | +1273 -318 lines | standalone | key_protector: Add systemd TPM2 Key Protector |
 | [2025-03-0186](evaluation/2025-03-0186.txt) | Enhancement | +100 -32 lines | standalone | pgp: factor out rsa_pad |
@@ -41,8 +40,7 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-04-0272](evaluation/2025-04-0272.txt) | New feature | +197 -33 lines | [2025-04-0266](series/2025-04-0266) | efi: Add AMD SKINIT Secure Launch support |
 | [2025-04-0273](evaluation/2025-04-0273.txt) | New feature | +16 -6 lines | [2025-04-0266](series/2025-04-0266) | multiboot2: Support SKINIT Secure Launch |
 | [2025-05-0025](evaluation/2025-05-0025.txt) | Compatibility | +5 -7 lines | standalone | ia64: Disable optimizations using floating-point arithmetics |
-| [2025-05-0032](evaluation/2025-05-0032.txt) | Compatibility | +5 -4 lines | [2025-05-0032](series/2025-05-0032) | tests: Disable gfxterm_menu and cmdline_cat tests |
-| [2025-05-0033](evaluation/2025-05-0033.txt) | Bug fix | +6 -4 lines | [2025-05-0032](series/2025-05-0032) | fs/zfs: Fix another memory leak in ZFS code |
+| [2025-05-0032](evaluation/2025-05-0032.txt) | Compatibility | +5 -4 lines | 2025-05-0032 (2 members) | tests: Disable gfxterm_menu and cmdline_cat tests |
 | [2025-05-0076](evaluation/2025-05-0076.txt) | Enhancement | +3 -9 lines | [2025-05-0076](series/2025-05-0076) | loader/efi/chainloader: Enhance error message of chainloader command |
 | [2025-05-0077](evaluation/2025-05-0077.txt) | Enhancement | +3 -5 lines | [2025-05-0076](series/2025-05-0076) | loader/efi/linux: Enhance error message of linux command |
 | [2025-05-0201](evaluation/2025-05-0201.txt) | Enhancement | +75 -18 lines | [2025-05-0201](series/2025-05-0201) | Exporting variables to upper levels |
@@ -56,7 +54,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-07-0031](evaluation/2025-07-0031.txt) | New feature | +1031 -311 lines | [2025-07-0029](series/2025-07-0029) | Adjust import script, definitions and API users for libgcrypt 1.11 |
 | [2025-07-0032](evaluation/2025-07-0032.txt) | New feature | +247 -5 lines | [2025-07-0029](series/2025-07-0029) | Add DSA and RSA SEXP tests |
 | [2025-07-0033](evaluation/2025-07-0033.txt) | New feature | (see file) | [2025-07-0029](series/2025-07-0029) | Import libgcrypt 1.11 |
-| [2025-07-0034](evaluation/2025-07-0034.txt) | Bug fix | (see file) | [2025-07-0029](series/2025-07-0029) | libgcrypt: Fix coverity warnings |
 | [2025-07-0035](evaluation/2025-07-0035.txt) | Enhancement | +4 -5 lines | [2025-07-0029](series/2025-07-0029) | Remove now unneeded gcrypt compilation flag |
 | [2025-07-0037](evaluation/2025-07-0037.txt) | Enhancement | +10 -12 lines | [2025-07-0029](series/2025-07-0029) | gcry: Ignore sign-compare warnings |
 | [2025-07-0038](evaluation/2025-07-0038.txt) | Compatibility | +6 -8 lines | [2025-07-0029](series/2025-07-0029) | import_gcry: Make compatible with python 3.4 |

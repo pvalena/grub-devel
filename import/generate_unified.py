@@ -37,11 +37,16 @@ def parse_entries(filename):
     return entries
 
 
-def classify(heading, body):
+def classify(heading, body, drops=None):
     if 'KEEP' in heading:
         return 'KEEP'
     if 'DROP' in heading or 'dissolved' in heading.lower():
         return 'DROP'
+    # Check if the primary branch is in the drops set (authoritative)
+    if drops:
+        m = re.search(r'(20\d{2}-\d{2}-\d{4})', heading)
+        if m and m.group(1) in drops:
+            return 'DROP'
     for line in body.split('\n'):
         if 'Decision' in line:
             if 'DROP' in line:
@@ -71,10 +76,12 @@ def main():
     series_entries = parse_entries(os.path.join(DIR, 'INSPECTION_LOG.md'))
     standalone_entries = parse_entries(os.path.join(DIR, 'INSPECTION_LOG_STANDALONE.md'))
 
-    series_keep = dedup([(h, b) for h, b in series_entries if classify(h, b) == 'KEEP'])
-    series_drop = dedup([(h, b) for h, b in series_entries if classify(h, b) == 'DROP'])
-    standalone_keep = dedup([(h, b) for h, b in standalone_entries if classify(h, b) == 'KEEP'])
-    standalone_drop = dedup([(h, b) for h, b in standalone_entries if classify(h, b) == 'DROP'])
+    drops = set(l.strip() for l in open(os.path.join(DIR, 'drop_new.txt')))
+
+    series_keep = dedup([(h, b) for h, b in series_entries if classify(h, b, drops) == 'KEEP'])
+    series_drop = dedup([(h, b) for h, b in series_entries if classify(h, b, drops) == 'DROP'])
+    standalone_keep = dedup([(h, b) for h, b in standalone_entries if classify(h, b, drops) == 'KEEP'])
+    standalone_drop = dedup([(h, b) for h, b in standalone_entries if classify(h, b, drops) == 'DROP'])
 
     existing_files = set(os.listdir(os.path.join(DIR, 'series')))
 
