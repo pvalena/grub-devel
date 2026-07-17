@@ -1,6 +1,6 @@
 # Evaluation Overview
 
-61 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
+53 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
 Each file contains: commit message, FAILED.patch (the intended change that needs
 manual incorporation), any conflict resolution artifacts, and master context.
 
@@ -12,11 +12,11 @@ manual incorporation), any conflict resolution artifacts, and master context.
 |------|------:|
 | Bug fix | 6 |
 | New feature | 24 |
-| Enhancement | 19 |
+| Enhancement | 11 |
 | Compatibility | 9 |
 | RFC | 1 |
 | Documentation | 2 |
-| **Total** | **61** |
+| **Total** | **53** |
 
 ---
 
@@ -53,8 +53,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-07-0031](evaluation/2025-07-0031.txt) | New feature | +1031 -311 lines | [2025-07-0029](series/2025-07-0029) | Adjust import script, definitions and API users for libgcrypt 1.11 |
 | [2025-07-0032](evaluation/2025-07-0032.txt) | New feature | +247 -5 lines | [2025-07-0029](series/2025-07-0029) | Add DSA and RSA SEXP tests |
 | [2025-07-0033](evaluation/2025-07-0033.txt) | New feature | (see file) | [2025-07-0029](series/2025-07-0029) | Import libgcrypt 1.11 |
-| [2025-07-0035](evaluation/2025-07-0035.txt) | Enhancement | +4 -5 lines | [2025-07-0029](series/2025-07-0029) | Remove now unneeded gcrypt compilation flag |
-| [2025-07-0037](evaluation/2025-07-0037.txt) | Enhancement | +10 -12 lines | [2025-07-0029](series/2025-07-0029) | gcry: Ignore sign-compare warnings |
 | [2025-07-0038](evaluation/2025-07-0038.txt) | Compatibility | +6 -8 lines | [2025-07-0029](series/2025-07-0029) | import_gcry: Make compatible with python 3.4 |
 | [2025-07-0039](evaluation/2025-07-0039.txt) | Bug fix | +16 -3 lines | [2025-07-0029](series/2025-07-0029) | libgcrypt: Fix a memory leak |
 | [2025-07-0040](evaluation/2025-07-0040.txt) | New feature | +121 -12 lines | [2025-07-0029](series/2025-07-0029) | libgcrypt: Import blake family of hashes |
@@ -70,9 +68,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-10-0189](evaluation/2025-10-0189.txt) | Enhancement | +43 -14 lines | standalone | commands/hashsum: Allow to store hash in variable |
 | [2025-10-0294](evaluation/2025-10-0294.txt) | New feature | +171 -3 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: add fs_envblk open helper |
 | [2025-10-0296](evaluation/2025-10-0296.txt) | New feature | +38 -4 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: add fs_envblk write helper |
-| [2025-10-0297](evaluation/2025-10-0297.txt) | Enhancement | +57 -5 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: wire set_variables to optional fs_envblk |
-| [2025-10-0299](evaluation/2025-10-0299.txt) | Enhancement | +15 -3 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: wire unset_variables to optional fs_envblk |
-| [2025-11-0027](evaluation/2025-11-0027.txt) | Enhancement | +27 -7 lines | standalone | util/grub.d/00_header.in: Disable loading all_video for EFI |
 | [2025-11-0238](evaluation/2025-11-0238.txt) | New feature | +299 -6 lines | standalone | tests: add functional tests for ECB mode using various ciphers |
 | [2025-12-0072](evaluation/2025-12-0072.txt) | Documentation | +0 | standalone | INSTALL: Add new requirement for configure |
 | [2026-01-0019](evaluation/2026-01-0019.txt) | RFC | +20 -3 lines | standalone | Feature proposal: EFI variable check to enter grub menu |
@@ -82,6 +77,3 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2026-02-0101](evaluation/2026-02-0101.txt) | Compatibility | +2 -3 lines | standalone | powerpc_ieee1275: Excluding the PKS for grub-emu on 32-bit PowerPC |
 | [2026-03-0010](evaluation/2026-03-0010.txt) | Compatibility | +4 -21 lines | [2026-03-0010](series/2026-03-0010) | Revert "configure: Check linker for --image-base support" |
 | [2026-03-0012](evaluation/2026-03-0012.txt) | Compatibility | +59 -25 lines | [2026-03-0010](series/2026-03-0010) | configure: drop -Ttext checks for i386-pc |
-| [2026-03-0014](evaluation/2026-03-0014.txt) | Enhancement | +5 -7 lines | [2026-03-0010](series/2026-03-0010) | i386-cygwin-img-ld.sc -> i386-cygwin-img.lds |
-| [2026-03-0015](evaluation/2026-03-0015.txt) | Enhancement | +4 -5 lines | [2026-03-0010](series/2026-03-0010) | conf/i386-cygwin-img.lds: Update to use _grub_text_base symbol |
-| [2026-03-0017](evaluation/2026-03-0017.txt) | Enhancement | +4 -4 lines | [2026-03-0010](series/2026-03-0010) | Improve ld.lld-21+ compatibility when building i386-pc target |

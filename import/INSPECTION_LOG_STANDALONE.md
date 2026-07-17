@@ -905,14 +905,6 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Change**: Add `!(GRUB_MACHINE_EMU)` guard to PKS include.
 **Evidence**: master platform_keystore.h has no emu exclude guard.
 
-## 2026-03-0017 — KEEP
-
-**Subject**: Re: Improve ld.lld-21+ compatibility when building (v4 0/9)
-**Author**: Daniel Kiper | **fp=1 code=0**
-**Target**: `configure.ac`
-**Change**: Part of ld.lld compatibility series 2026-03-0010 (KEEP).
-**Evidence**: master configure.ac still has `--image-base` check.
-
 ## 2026-03-0020 — DROP
 
 **Subject**: Re: SECURITY: Update security team members names/fingerprints
@@ -1122,13 +1114,6 @@ Clean applies = master tip. ALREADY_APPLIED.
 **Subject**: Adding a grub_malloc failure check in mmap.c
 **Author**: Avnish Chouhan | **fp=1 code=1**
 **Evidence**: master mmap.c:245 `if (n == NULL)`.
-
-## 2025-11-0027 — KEEP
-
-**Subject**: util/grub.d/00_header.in: Disable loading all_video on EFI (v2)
-**Author**: Andrew Hamilton | **fp=1 code=3**
-**Change**: Same `GRUB_FORCE_EFI_ALL_VIDEO` feature as series 2025-11-0014.
-**Evidence**: not on master (confirmed in series inspection).
 
 ## 2025-11-0055 — DROP
 
@@ -1395,3 +1380,44 @@ in-depth evaluation double-check — earlier inspection checked for the patch fi
 implementation (inline check vs wrapper function), same protection. Found during
 evaluation double-check — earlier inspection checked for the wrapper function name
 which doesn't exist, missing the inline version check.
+
+## 2025-07-0035 — DROP (series context)
+
+**Subject**: Remove now unneeded gcrypt compilation flag
+**Evidence**: master Makefile.core.def no longer has `HAVE_STRTOUL` flag. Already removed.
+
+## 2025-07-0037 — DROP (series context)
+
+**Subject**: gcry: Ignore sign-compare warnings
+**Evidence**: master Makefile.core.def no longer has `sign-compare` pragma. Already applied.
+
+## 2026-03-0014 — DROP (series context)
+
+**Subject**: i386-cygwin-img-ld.sc -> i386-cygwin-img.lds rename
+**Evidence**: master has `.lds` (58L), `.sc` gone (0L), configure.ac references `.lds`. Already upstream.
+
+## 2026-03-0015 — DROP (series context)
+
+**Subject**: conf/i386-cygwin-img.lds: Update to use _grub_text_base symbol
+**Evidence**: master `.lds` already has `_grub_text_base` at line 5. Already upstream.
+
+## 2026-03-0017 — DROP (series context)
+
+**Subject**: Re: Improve ld.lld-21+ compatibility (cover letter)
+**Evidence**: master configure.ac:1492 already has `--defsym=_grub_text_base` with `=` separator.
+
+## 2025-11-0027 — DROP
+
+**Subject**: util/grub.d/00_header.in: Disable loading all_video for EFI (v2)
+**Evidence**: master 00_header.in lines 175-187 have `GRUB_FORCE_EFI_ALL_VIDEO`.
+Commit `ea0b76dc4`. Found during evaluation double-check.
+
+## 2025-10-0297 — DROP (series context)
+
+**Subject**: util/grub-editenv: wire set_variables to optional fs_envblk
+**Evidence**: master `set_variables()` already has 3 `fs_envblk` references.
+
+## 2025-10-0299 — DROP (series context)
+
+**Subject**: util/grub-editenv: wire unset_variables to optional fs_envblk
+**Evidence**: master `unset_variables()` already has 3 `fs_envblk` references.

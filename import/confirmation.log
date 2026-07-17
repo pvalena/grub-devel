@@ -780,3 +780,230 @@ Patch removes -Ttext. Master still has it:         [TARGET_IMG_BASE_LDOPT="-Wl,-
  * 2. Redistributions in binary form must reproduce the above copyright
  * notice, this list of conditions and the following disclaimer in the
  * documentation and/or other materials provided with the distribution.
+=== BATCH 1: tiny enhancements ===
+--- 2025-04-0048 ---
+  Patch: -       call    EXT_C(grub_main)
+-       /* Doesn't return.  */
+  Master startup.S: 	call	EXT_C(grub_main)
+
+--- 2025-09-0238 ---
+  Patch: -  grub_error (GRUB_ERR_BAD_OS, "not xen image");
++  grub_error (GRUB_ERR_BAD_OS, "not xen image (or image is
+  Master xen error: master:grub-core/loader/i386/xen_file.c:92:  grub_error (GRUB_ERR_BAD_OS, "not xen image");
+
+--- 2025-07-0035 ---
+  Patch: -CPPFLAGS_GCRY = -I$(top_srcdir)/grub-core/lib/libgcrypt_wrap $(CPPFLAGS_POSIX) -D_GCRYPT_IN_LIBGCRYPT=1 -D_GCRYPT_CONFIG_H_INCLUDED=1 -DHAVE_STRTOUL=1 -I$(top_srcdir)/include/grub/gcrypt
++CPPFLAGS_GCRY = -I$(top_srcdir)/grub-core/lib/libgcrypt_wrap $(CPPFLAGS_POSIX) -D_GCRYPT_IN_LIBGCRYPT=1 -D_GCRYPT_CONFIG_H_INCLUDED=1 -I$(top_srcdir)/include/grub/gcrypt
+  Master gcrypt compilation flag: 0
+
+--- 2025-07-0037 ---
+  Patch: -CFLAGS_GCRY = -Wno-error=sign-compare -Wno-missing-field-initializers -Wno-redundant-decls -Wno-undef $(CFLAGS_POSIX)
++CFLAGS_GCRY = -Wno-sign-compare -Wno-missing-field-initializers -Wno-redundant-decls -Wno-undef $(CFLAGS_POSIX)
+  Master sign-compare pragmas: 0
+
+--- 2026-03-0014 ---
+  Patch: -EXTRA_DIST += conf/i386-cygwin-img-ld.sc
++EXTRA_DIST += conf/i386-cygwin-img.lds
+  Master i386-cygwin-img-ld.sc exists: 0
+  Master i386-cygwin-img.lds exists: 58
+
+--- 2026-03-0015 ---
+  Patch: +  . = _grub_text_base;
+-  TARGET_IMG_BASE_LDOPT=
+  Master .lds has _grub_text_base: 1
+
+--- 2026-03-0017 ---
+  Patch: -  TARGET_IMG_BASE_LDOPT="-Wl,--defsym,_grub_text_base"
+-  TARGET_IMG_BASE_LDOPT_ARG_SEP=","
+  Master has --image-base (this reverts it): 2
+
+=== 2025-07-0035: check HAVE_STRTOUL on master ===
+(empty = not there = already removed)
+
+=== 2025-07-0037: check sign-compare flag on master ===
+
+=== 2026-03-0014: check .sc and .lds ===
+Master configure.ac references .sc: 0
+Master configure.ac references .lds: 2
+
+=== 2026-03-0015: check _grub_text_base in .lds ===
+/* Linker script to create grub .img files on Cygwin.  */
+
+SECTIONS
+{
+  . = _grub_text_base;
+  .text :
+  {
+    start = . ;
+    _start = . ;
+    __start = . ;
+    *(.text)
+    etext = . ;
+  }
+  .data :
+  {
+    __data_start__ = . ;
+    *(.data)
+    /* Do not discard this section. */
+    . = . ;
+    __data_end__ = . ;
+    __rdata_start__ = . ;
+    *(.rdata)
+    __rdata_end__ = . ;
+    *(.pdata)
+    edata = . ;
+    _edata = . ;
+    __edata = . ;
+  }
+  .bss :
+  {
+    __bss_start__ = . ;
+    *(.bss)
+    __common_start__ = . ;
+    *(COMMON)
+    __bss_end__ = . ;
+  }
+  .edata :
+  {
+    *(.edata)
+    /* Do not discard this section. */
+    . = . ;
+    end = . ;
+    _end = . ;
+    __end = . ;
+  }
+  .stab :
+  {
+    *(.stab)
+  }
+  .stabstr :
+  {
+    *(.stabstr)
+  }
+}
+
+ASSERT("__rdata_end__"=="edata", ".pdata not empty")
+ASSERT("__bss_end__"  =="end"  , ".edata not empty")
+
+
+=== 2026-03-0017: check TARGET_IMG_BASE_LDOPT on master ===
+   TARGET_IMG_BASE_LDOPT="-Wl,-image_base"
+   TARGET_IMG_BASE_LDOPT_ARG_SEP=","
+  TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
+=== 2026-03-0017 FAILED.patch ===
+-  TARGET_IMG_BASE_LDOPT="-Wl,--defsym,_grub_text_base"
+-  TARGET_IMG_BASE_LDOPT_ARG_SEP=","
++  TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
++  TARGET_IMG_BASE_LDOPT_ARG_SEP="="
+-    TARGET_IMG_BASE_LDOPT="-Wl,--defsym,_grub_text_base"
++    TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
+
+=== Master TARGET_IMG_BASE_LDOPT full context ===
+1483:   TARGET_IMG_BASE_LDOPT="-Wl,-image_base"
+1484:   TARGET_IMG_BASE_LDOPT_ARG_SEP=","
+1485-   TARGET_LDFLAGS_OLDMAGIC=""
+--
+1492:  TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
+1493:  TARGET_IMG_BASE_LDOPT_ARG_SEP="="
+1494-  TARGET_IMG_CFLAGS=
+--
+1503:        [TARGET_IMG_BASE_LDOPT="-Wl,--image-base,0 -Wl,-Ttext"],
+1504:        [TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"],
+=== BATCH 2: remaining enhancements ===
+--- 2025-03-0186 ---
+  pkcs1_v15.c on master: 0
+--- 2025-03-0226 ---
+  qemu_mips in configure.ac: 9
+--- 2025-04-0142 ---
+  DEBUG_WITH_TIMESTAMPS: 0
+--- 2025-05-0076 ---
+  chainloader hex status: 0
+--- 2025-05-0077 ---
+  linux hex status: 0
+--- 2025-05-0201 ---
+  grub_env_set_export_mode: 0
+--- 2025-07-0042 ---
+  import_gcry.py f-strings: 4
+--- 2025-07-0050 ---
+  xen LoadFile2: 0
+--- 2025-10-0189 ---
+  hashsum grub_env_set: 0
+--- 2025-10-0297 ---
+  editenv set_variables wiring: 3
+--- 2025-10-0299 ---
+  editenv unset_variables wiring: 0
+--- 2025-11-0027 ---
+  GRUB_FORCE_EFI_ALL_VIDEO: 4
+=== 2025-10-0297: editenv set wiring ===
+251:  offset = fs_envblk->spec->offset;
+284:  offset = fs_envblk->spec->offset;
+413:  offset = fs_envblk->spec->offset;
+
+=== 2025-11-0027: GRUB_FORCE_EFI ===
+175:# GRUB Bochs/Cirrus and native EFI drivers. If GRUB_FORCE_EFI_ALL_VIDEO is
+177:if [ "${GRUB_FORCE_EFI_ALL_VIDEO}" = "1" ]; then
+181:else # GRUB_FORCE_EFI_ALL_VIDEO is not set true
+187:fi # end GRUB_FORCE_EFI_ALL_VIDEO
+=== 2025-10-0297: check specific wiring ===
+  Master set_variables calls fs_envblk: 454:set_variables (const char *name, int argc, char *argv[])
+518:unset_variables (const char *name, int argc, char *argv[])
+695:    set_variables (filename, argc - curindex, argv + curindex);
+697:    unset_variables (filename, argc - curindex, argv + curindex);
+
+=== 2025-11-0027: ALREADY UPSTREAM ===
+  Master 00_header.in lines 175-187 have GRUB_FORCE_EFI_ALL_VIDEO.
+# GRUB Bochs/Cirrus and native EFI drivers. If GRUB_FORCE_EFI_ALL_VIDEO is
+# set/true then defer back to all_video even for EFI.
+if [ "${GRUB_FORCE_EFI_ALL_VIDEO}" = "1" ]; then
+    cat <<EOF
+  if [ x\$feature_all_video_module = xy ]; then
+EOF
+else # GRUB_FORCE_EFI_ALL_VIDEO is not set true
+    cat <<EOF
+  if [ x\$grub_platform = xefi ]; then
+    insmod efi_gop
+  elif [ x\$feature_all_video_module = xy ]; then
+EOF
+fi # end GRUB_FORCE_EFI_ALL_VIDEO
+
+=== When was it merged? ===
+129588e49 util/grub.d/00_header.in: Load efi_uga only on x86 EFI platforms
+ea0b76dc4 util/grub.d/00_header.in: Disable loading all_video for EFI
+=== 2025-10-0297: does set_variables call fs_envblk_write? ===
+3
+(count of fs_envblk refs inside set_variables function)
+
+=== Full set_variables function on master ===
+set_variables (const char *name, int argc, char *argv[])
+{
+  grub_envblk_t envblk;
+  grub_envblk_t envblk_on_block = NULL;
+
+  envblk = open_envblk_file (name);
+  if (fs_envblk != NULL)
+    envblk_on_block = fs_envblk->ops->open (envblk);
+  else
+    grub_envblk_delete (envblk, "env_block");
+
+  while (argc)
+    {
+      char *p;
+
+      p = strchr (argv[0], '=');
+      if (! p)
+        grub_util_error (_("invalid parameter %s"), argv[0]);
+
+      *(p++) = 0;
+
+      if ((strcmp (argv[0], "next_entry") == 0) && envblk_on_block != NULL)
+	{
+	  if (grub_envblk_set (envblk_on_block, argv[0], p) == 0)
+	    grub_util_error ("%s", _("environment block too small"));
+	  goto next;
+	}
+
+      if (strcmp (argv[0], "env_block") == 0)
+	{
+=== 2025-10-0299: unset_variables fs_envblk ===
+3
+(count of fs_envblk refs inside unset_variables)

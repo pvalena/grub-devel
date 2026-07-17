@@ -1,1 +1,2 @@
- - analysis doc should not contain duplicate entries
+  - analysis doc should not contain duplicate entries
+  - fix url: https://github.com/pvalena/grub-devel/blob/main/reviews/ (note smwhr)
