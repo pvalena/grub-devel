@@ -9,9 +9,9 @@
 
 | Category | Count | Files |
 |----------|------:|-------|
-| **DROP** (already upstream or superseded) | 295 | `drop_new.txt` |
-| **KEEP standalone** | 26 | `standalone.txt` |
-| **KEEP series** | 39 members in 9 series | `series/*` |
+| **DROP** (already upstream or superseded) | 316 | `drop_new.txt` |
+| **KEEP standalone** | 25 | `standalone.txt` |
+| **KEEP series** | 21 members in 7 series | `series/*` |
 | **Total** | 362 | |
 
 Note: the 362 total exceeds the 315 starting point because 47 branches originally

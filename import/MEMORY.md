@@ -14,12 +14,12 @@ worthwhile.
 | Metric | Count |
 |--------|------:|
 | Total branches analyzed | 1302 |
-| Dropped (upstream/superseded) | 295 |
+| Dropped (upstream/superseded) | 316 |
 | Dropped (earlier dedup phase) | 987 |
-| **KEEP standalone** | **28** |
-| **KEEP series** | **39 members in 9 series** |
-| **Total KEEP** | **67** |
-| Evaluated in-depth | 6 (bug fixes done) |
+| **KEEP standalone** | **25** |
+| **KEEP series** | **21 members in 7 series** |
+| **Total KEEP** | **46** |
+| Evaluated in-depth | 46 (all categories complete) |
 
 ## Pipeline (as refined through iterations)
 
