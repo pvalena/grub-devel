@@ -1,6 +1,6 @@
 # Failed Patches: Code Inspection Final Report
 
-**Date**: 2026-07-17
+**Date**: 2026-07-18
 **Scope**: 315 branches remaining after deduplication (from original 1302)
 
 ---
@@ -15,14 +15,15 @@
 | **Total** | 362 | |
 
 Note: the 362 total exceeds the 315 starting point because 47 branches originally
-classified as KEEP during deduplication were reclassified as DROP during code inspection
-(found upstream on re-examination, or superseded by a later version within KEEP series).
+classified as KEEP during deduplication were reclassified as DROP during code
+inspection and evaluation (found upstream via semantic equivalence checks, or
+superseded by later versions within the KEEP set).
 
 ---
 
 ## Method
 
-### Inspection
+### Inspection (Phase 3)
 
 Every branch was inspected against `grub/master` using `inspect.sh` (series) or
 `inspect-standalone.sh` (standalone). For each branch:
@@ -40,26 +41,39 @@ Every branch was inspected against `grub/master` using `inspect.sh` (series) or
 | ALREADY_APPLIED | Branch tip = master tip commit, no FAILED.patch (empty branch) |
 | Superseded | Older version of a series; newer version touches same files and is upstream |
 | Wrong ML | Patch for another project (QEMU) sent to GRUB mailing list |
+| Semantic equivalent | Same fix on master under different name/approach/author |
 
-### Confirmation
+### Confirmation (Phase 4)
 
 Every DROP decision was confirmed in a second pass:
 
-- **Standalone drops** (158): each verified individually by re-checking the specific
+- **Standalone drops** (194): each verified individually by re-checking the specific
   evidence claim against master. Logged in `confirmation.log`. Results in `confirmed.txt`.
+- **Series drops** (33 series): each series verified by checking key features/symbols
+  against master. Series heads recorded in `confirmed_series.txt`.
 
-- **Series drops** (33 series, 122 branches): each series verified by checking key
-  features/symbols from the series against master. Logged in `confirmation.log`.
-  Series heads recorded in `confirmed_series.txt`.
+### Evaluation (Phase 6)
 
-### Consistency checks performed
+Every KEEP branch received an in-depth code review, categorized by type:
 
-- No branch exists in both DROP and KEEP lists
-- Every DROP has an entry in `INSPECTION_LOG.md` or `INSPECTION_LOG_STANDALONE.md`
-- Every KEEP has an entry in one of the same logs
-- Every standalone DROP is in `confirmed.txt`
-- Every series DROP's head is in `confirmed_series.txt`
-- No confirmed DROP is also a KEEP
+| Category | Reviews | Log file |
+|----------|--------:|----------|
+| Bug fix | 6 | [`EVALUATION_LOG_BUGFIX.md`](EVALUATION_LOG_BUGFIX.md) |
+| New feature | 17 | [`EVALUATION_LOG_NEWFEATURE.md`](EVALUATION_LOG_NEWFEATURE.md) |
+| Enhancement | 11 | [`EVALUATION_LOG_ENHANCEMENT.md`](EVALUATION_LOG_ENHANCEMENT.md) |
+| Compatibility | 9 | [`EVALUATION_LOG_COMPAT.md`](EVALUATION_LOG_COMPAT.md) |
+| RFC | 1 | [`EVALUATION_LOG_RFC_DOCS.md`](EVALUATION_LOG_RFC_DOCS.md) |
+| Documentation | 2 | [`EVALUATION_LOG_RFC_DOCS.md`](EVALUATION_LOG_RFC_DOCS.md) |
+
+Each review was followed by a re-verification pass against master, which found
+25 additional drops (~8% of the initial KEEP set). This step is documented in
+the `patch-evaluation` skill as mandatory.
+
+### Verification (Phase 7, continuous)
+
+Automated consistency checks run after every change:
+- `verify.sh` — no DROP/KEEP overlap, all decisions logged, all drops confirmed
+- `verify_unified.py` — bidirectional check of unified log vs data files
 
 ---
 
@@ -69,56 +83,87 @@ Every DROP decision was confirmed in a second pass:
 
 | File | Content |
 |------|---------|
-| `drop_new.txt` | 280 branches to drop (all confirmed upstream/superseded) |
-| `standalone.txt` | 36 standalone branches to keep (not upstream) |
-| `series/*` | 13 series files with 44 branches to keep |
-| `SERIES.md` | Series overview with links to series files |
+| `drop_new.txt` | 316 branches to drop (all confirmed upstream/superseded) |
+| `standalone.txt` | 25 standalone branches to keep (not upstream) |
+| `series/*` | 7 series files with 21 branches to keep |
+| [`SERIES.md`](SERIES.md) | Series overview with links to series files |
+
+### Evaluation files
+
+| File | Content |
+|------|---------|
+| `evaluation/*.txt` | 46 per-branch evaluation data files |
+| [`EVALUATION_OVERVIEW.md`](EVALUATION_OVERVIEW.md) | Summary table of all KEEP patches |
+| `EVALUATION_LOG_*.md` | 5 category-specific code review logs |
+| `evaluated.txt` | 46 branches with completed evaluation |
 
 ### Confirmation files
 
 | File | Content |
 |------|---------|
-| `confirmed.txt` | 158 standalone drops, individually verified |
-| `confirmed_series.txt` | 33 series heads, verified as series |
-| `confirmation.log` | Raw verification output (every check that was run) |
+| `confirmed.txt` | 194 standalone drops, individually verified |
+| `confirmed_series.txt` | 33 series drop heads, verified as series |
+| `confirmation.log` | Raw verification output |
 
 ### Inspection logs
 
 | File | Content |
 |------|---------|
-| `INSPECTION_LOG.md` | Series inspection: per-series and per-branch verdicts with evidence |
-| `INSPECTION_LOG_STANDALONE.md` | Standalone inspection: per-branch verdicts with evidence |
+| [`INSPECTION_LOG_UNIFIED.md`](INSPECTION_LOG_UNIFIED.md) | Unified view: every branch with decision + evidence |
+| `INSPECTION_LOG.md` | Source: series decisions |
+| `INSPECTION_LOG_STANDALONE.md` | Source: standalone decisions |
 
 ### Tools
 
 | File | Purpose |
 |------|---------|
-| `inspect.sh` | Inspect a series (takes series filename as arg) |
-| `inspect-standalone.sh` | Inspect standalone branches (takes one or more branch args) |
-| `add-drop-new.sh` | Add branches to `drop_new.txt` with dedup |
-| `add-confirmed.sh` | Add branches to `confirmed.txt` with dedup |
-| `add-confirmed-series.sh` | Add series heads to `confirmed_series.txt` with dedup |
+| `drop-and-clean.sh` | Complete drop workflow (add to drops, remove from keeps, fix logs) |
+| `remove-old-entry.sh` | Remove duplicate log entries |
+| `inspect.sh` / `inspect-standalone.sh` | Inspection data for series / standalone |
+| `generate_unified.py` | Regenerate unified log |
+| `generate_evaluation.sh` | Generate evaluation files |
+| `generate_evaluation_overview.py` | Regenerate evaluation overview |
+| `verify.sh` / `verify_unified.py` | Consistency verification |
+| `add-drop-new.sh` / `add-confirmed.sh` / `add-evaluated.sh` | Tracking file management |
 
 ---
 
 ## KEEP summary
 
-### 13 series (44 branches) — not upstream
+### 7 series (21 branches)
 
-Detailed per-branch verdicts in `INSPECTION_LOG.md`. Overview in `SERIES.md`.
+| Series | Patches | Topic | Effort |
+|--------|--------:|-------|--------|
+| [2025-04-0266](series/2025-04-0266) | 7 | AMD SKINIT Secure Launch (RFC v2) | Very High |
+| [2025-05-0076](series/2025-05-0076) | 2 | EFI chainloader/linux error messages | Low |
+| [2025-05-0201](series/2025-05-0201) | 2 | Env export/unexport with flags | Medium |
+| [2025-07-0038](series/2025-07-0038) | 3 | libgcrypt: sexp.c leak + compat + cleanup | Low |
+| [2025-07-0047](series/2025-07-0047) | 3 | kern/list append + Xen arm64 LoadFile2 (RFC) | High |
+| [2025-08-0012](series/2025-08-0012) | 2 | ZFS endianness rewrite + datto encryption | Very High |
+| [2026-03-0010](series/2026-03-0010) | 2 | ld.lld 21+ linker compatibility | Medium |
 
-Topics: AMD SKINIT Secure Launch (RFC), EFI error message enhancements,
-env variable export/unexport, libgcrypt sexp.c memory leak, kern/list append +
-xen LoadFile2, ZFS datto encryption, btrfs envblk documentation,
-GRUB_FORCE_EFI_ALLVIDEO, autoconf-archive INSTALL note, ld.lld linker compatibility.
+### 25 standalone branches
 
-### 36 standalone branches — not upstream
+Detailed per-branch evaluations in `evaluation/*.txt` and `EVALUATION_LOG_*.md`.
 
-Detailed per-branch verdicts in `INSPECTION_LOG_STANDALONE.md`.
+| Type | Count | Notable patches |
+|------|------:|-----------------|
+| Bug fix | 5 | affs double-free, xfs error propagation, tss2 retry, lsefi pool leak, ns8250 NULL |
+| New feature | 8 | systemd TPM2 key protector, TPCM module, Containerfiles, ECB tests, kernel size verify |
+| Enhancement | 7 | pgp rsa_pad refactor, qemu_mips removal, debug timestamps, hashsum --set, zstd hint |
+| Compatibility | 8 | ia64 float, test disable, python 3.4, bootstrap git, autoconf-archive, AROS, PKS emu |
+| RFC | 1 | EFI variable menu check |
+| Documentation | 1 | INSTALL autoconf-archive requirement |
 
-Topics include: ns8250 NULL check, tpm2 buffer offset restore, systemd TPM2 key
-protector, testpci module, EFI chainloader/linux error enhancements, affs double-free
-fix, TPCM module, debug timestamps, ET_DYN relocatable images, GCC-15 gnulib fix,
-lsefi memory leak (free_pool), xen zstd hint, EFI PCR banks reporting, hashsum
-variable storage, ECB cipher tests, EFI variable menu check, AROS compilation,
-kernel file size verification, PKS emu exclude, qemu_mips port removal.
+---
+
+## Key finding: evaluation-phase drops
+
+The in-depth evaluation phase (Phase 6) found 25 patches that earlier phases
+incorrectly classified as KEEP. These were semantically equivalent to upstream
+code but used different constant names, different fix approaches, different
+filenames, or different patch authors. The evaluation re-verification step
+catches these — skipping it means shipping redundant patches.
+
+See the [`patch-evaluation`](../../.claude/skills/patch-evaluation/SKILL.md) skill
+for the full methodology.
