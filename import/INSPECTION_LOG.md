@@ -457,7 +457,7 @@ linguas logic at lines 112-127.
 **Decision**: DROP.
 **Dropped branches**: 2025-11-0204, 2025-11-0205
 
-## Series: 2025-12-0028 (2, Glenn Washburn) — KEEP
+## Series: autoconf-archive-install (dissolved — 0028 superseded by 0072, 0029 upstream)
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|

@@ -1349,3 +1349,28 @@ is NOT upstream and remains in the series. This patch is fully redundant.
 **Change**: Comment out gfxterm_menu and cmdline_cat test modules (unifont workaround).
 **Evidence**: master Makefile.core.def:2388 still has tests enabled. Not upstream.
 **Context**: Was patch 1 of test/zfs series 2025-05-0032. Patch 2 (zfs leak) merged to master.
+
+## 2025-10-0305 — DROP
+
+**Subject**: btrfs: update doc link for bootloader support
+**Author**: Michael Chang | **fp=1 code=1**
+**Target**: `grub-core/fs/btrfs.c`
+**Change**: Update URL from btrfs.wiki.kernel.org to btrfs.readthedocs.io.
+**Evidence**: master btrfs.c:2337-2338 has the readthedocs URL. Already upstream.
+Removed from series 2025-10-0294 during evaluation.
+
+## 2025-12-0028 — DROP
+
+**Subject**: INSTALL: Add note that the GNU Autoconf Archive may be needed
+**Author**: Glenn Washburn | **fp=0 code=1** (clean apply)
+**Change**: Add `GNU Autoconf Archive (autoconf-archive on Debian)` to INSTALL.
+**Evidence**: Superseded by 2025-12-0072 (Dec 21 vs Dec 12, same topic, slightly
+different wording). Series dissolved, sibling 2025-12-0029 also upstream.
+
+## 2025-12-0029 — DROP
+
+**Subject**: tests/util/grub-fs-tester: Use CSMACINTOSH encoding
+**Author**: Glenn Washburn | **fp=1 code=1**
+**Change**: Replace `macroman` with `CSMACINTOSH` encoding in grub-fs-tester.
+**Evidence**: master grub-fs-tester.in:746-748 has CSMACINTOSH. Already upstream.
+Was in series 2025-12-0028, series dissolved.

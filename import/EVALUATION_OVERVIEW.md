@@ -1,6 +1,6 @@
 # Evaluation Overview
 
-67 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
+64 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
 Each file contains: commit message, FAILED.patch (the intended change that needs
 manual incorporation), any conflict resolution artifacts, and master context.
 
@@ -12,11 +12,11 @@ manual incorporation), any conflict resolution artifacts, and master context.
 |------|------:|
 | Bug fix | 6 |
 | New feature | 24 |
-| Enhancement | 20 |
+| Enhancement | 19 |
 | Compatibility | 11 |
 | RFC | 1 |
-| Documentation | 5 |
-| **Total** | **67** |
+| Documentation | 3 |
+| **Total** | **64** |
 
 ---
 
@@ -75,11 +75,8 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-10-0297](evaluation/2025-10-0297.txt) | Enhancement | +57 -5 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: wire set_variables to optional fs_envblk |
 | [2025-10-0299](evaluation/2025-10-0299.txt) | Enhancement | +15 -3 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: wire unset_variables to optional fs_envblk |
 | [2025-10-0304](evaluation/2025-10-0304.txt) | Documentation | +61 -3 lines | [2025-10-0294](series/2025-10-0294) | docs: add Btrfs env block and special env vars |
-| [2025-10-0305](evaluation/2025-10-0305.txt) | Documentation | +3 -4 lines | [2025-10-0294](series/2025-10-0294) | btrfs: update doc link for bootloader support |
 | [2025-11-0027](evaluation/2025-11-0027.txt) | Enhancement | +27 -7 lines | standalone | util/grub.d/00_header.in: Disable loading all_video for EFI |
 | [2025-11-0238](evaluation/2025-11-0238.txt) | New feature | +299 -6 lines | standalone | tests: add functional tests for ECB mode using various ciphers |
-| [2025-12-0028](evaluation/2025-12-0028.txt) | Documentation | +0 | [2025-12-0028](series/2025-12-0028) | INSTALL: Add note that the GNU Autoconf Archive may be needed |
-| [2025-12-0029](evaluation/2025-12-0029.txt) | Enhancement | +4 -4 lines | [2025-12-0028](series/2025-12-0028) | tests/util/grub-fs-tester: Use CSMACINTOSH encoding instead of macroman |
 | [2025-12-0072](evaluation/2025-12-0072.txt) | Documentation | +0 | standalone | INSTALL: Add new requirement for configure |
 | [2026-01-0019](evaluation/2026-01-0019.txt) | RFC | +20 -3 lines | standalone | Feature proposal: EFI variable check to enter grub menu |
 | [2026-01-0021](evaluation/2026-01-0021.txt) | Compatibility | +0 | standalone | configure: print a more helpful error if autoconf-archive is not installed |

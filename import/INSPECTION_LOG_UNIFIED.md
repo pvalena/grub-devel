@@ -7,7 +7,7 @@ Pipeline documentation: [FINAL_REPORT.md](FINAL_REPORT.md).
 
 ## KEEP — Series
 
-9 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
+8 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
 
 ## Series: [2025-04-0266](series/2025-04-0266) (7 of 7, Brown/Philipson/Żygowski) — KEEP
 
@@ -139,18 +139,6 @@ Code helpers (fs_envblk_open/write, set/unset/list wiring) on master. URL update
 (btrfs.readthedocs.io) on master. BUT btrfs environment block documentation in
 grub.texi (patch 11/12) is NOT on master.
 **Decision**: KEEP — docs not upstream.
-
-
-## Series: [2025-12-0028](series/2025-12-0028) (2, Glenn Washburn) — KEEP
-
-| Branch | Commit content | Verdict |
-|--------|---------------|---------|
-| 2025-12-0028 | CLEAN_APPLY: INSTALL: Add Autoconf Archive note | **NOT upstream** |
-| 2025-12-0029 | FAILED.patch + code: grub-fs-tester: Use CSMACINTOSH encoding | Already upstream |
-
-CSMACINTOSH encoding fix (patch 2) is upstream (grub-fs-tester.in:746-748).
-Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
-**Decision**: KEEP — autoconf-archive note not upstream.
 
 
 ## Series: [2026-03-0010](series/2026-03-0010) (5 of 9, Nicholas Vinson / Daniel Kiper) — KEEP
@@ -450,6 +438,7 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 **Change**: Comment out gfxterm_menu and cmdline_cat test modules (unifont workaround).
 **Evidence**: master Makefile.core.def:2388 still has tests enabled. Not upstream.
 **Context**: Was patch 1 of test/zfs series 2025-05-0032. Patch 2 (zfs leak) merged to master.
+
 
 ---
 
@@ -819,6 +808,17 @@ linguas logic at lines 112-127.
 **Decision**: DROP.
 **Dropped branches**: 2025-11-0204, 2025-11-0205
 
+## Series: autoconf-archive-install (dissolved — 0028 superseded by 0072, 0029 upstream)
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-12-0028 | CLEAN_APPLY: INSTALL: Add Autoconf Archive note | **NOT upstream** |
+| 2025-12-0029 | FAILED.patch + code: grub-fs-tester: Use CSMACINTOSH encoding | Already upstream |
+
+CSMACINTOSH encoding fix (patch 2) is upstream (grub-fs-tester.in:746-748).
+Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
+**Decision**: KEEP — autoconf-archive note not upstream.
+
 
 ## Series: 2026-02-0066 (3 of 6, Avnish Chouhan) — NVMeoFC v7
 
@@ -832,7 +832,7 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 
 ## DROP — Standalone
 
-155 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
+158 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
 All in [`drop_new.txt`](drop_new.txt).
 
 ## 2025-01-0094 — DROP
@@ -2019,3 +2019,30 @@ is NOT upstream and remains as standalone KEEP. This patch is fully redundant.
 **Context**: Was patch 7 of 11 in libgcrypt v14 series. Patch 11 (2025-07-0039, sexp.c leak)
 is NOT upstream and remains in the series. This patch is fully redundant.
 
+
+## 2025-10-0305 — DROP
+
+**Subject**: btrfs: update doc link for bootloader support
+**Author**: Michael Chang | **fp=1 code=1**
+**Target**: `grub-core/fs/btrfs.c`
+**Change**: Update URL from btrfs.wiki.kernel.org to btrfs.readthedocs.io.
+**Evidence**: master btrfs.c:2337-2338 has the readthedocs URL. Already upstream.
+Removed from series 2025-10-0294 during evaluation.
+
+
+## 2025-12-0028 — DROP
+
+**Subject**: INSTALL: Add note that the GNU Autoconf Archive may be needed
+**Author**: Glenn Washburn | **fp=0 code=1** (clean apply)
+**Change**: Add `GNU Autoconf Archive (autoconf-archive on Debian)` to INSTALL.
+**Evidence**: Superseded by 2025-12-0072 (Dec 21 vs Dec 12, same topic, slightly
+different wording). Series dissolved, sibling 2025-12-0029 also upstream.
+
+
+## 2025-12-0029 — DROP
+
+**Subject**: tests/util/grub-fs-tester: Use CSMACINTOSH encoding
+**Author**: Glenn Washburn | **fp=1 code=1**
+**Change**: Replace `macroman` with `CSMACINTOSH` encoding in grub-fs-tester.
+**Evidence**: master grub-fs-tester.in:746-748 has CSMACINTOSH. Already upstream.
+Was in series 2025-12-0028, series dissolved.
