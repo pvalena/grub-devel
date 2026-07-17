@@ -9,14 +9,14 @@
 
 | Category | Count | Files |
 |----------|------:|-------|
-| **DROP** (already upstream or superseded) | 280 | `drop_new.txt` |
-| **KEEP standalone** | 36 | `standalone.txt` |
-| **KEEP series** | 44 members in 13 series | `series/*` |
-| **Total** | 360 | |
+| **DROP** (already upstream or superseded) | 290 | `drop_new.txt` |
+| **KEEP standalone** | 28 | `standalone.txt` |
+| **KEEP series** | 44 members in 11 series | `series/*` |
+| **Total** | 362 | |
 
-Note: the 360 total exceeds the 315 starting point because 45 branches originally
+Note: the 362 total exceeds the 315 starting point because 47 branches originally
 classified as KEEP during deduplication were reclassified as DROP during code inspection
-(e.g., `2025-03-0191`, `2025-04-0125`, `2025-10-0187` — found upstream on re-examination).
+(found upstream on re-examination, or superseded by a later version within KEEP series).
 
 ---
 

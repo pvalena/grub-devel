@@ -7,7 +7,7 @@ Pipeline documentation: [FINAL_REPORT.md](FINAL_REPORT.md).
 
 ## KEEP — Series
 
-12 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
+11 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
 
 ## Series: [2025-01-0098](series/2025-01-0098) (2 patches, Egor Ignatov) — KEEP
 
@@ -155,17 +155,6 @@ Code helpers (fs_envblk_open/write, set/unset/list wiring) on master. URL update
 (btrfs.readthedocs.io) on master. BUT btrfs environment block documentation in
 grub.texi (patch 11/12) is NOT on master.
 **Decision**: KEEP — docs not upstream.
-
-
-## Series: [2025-11-0014](series/2025-11-0014) (2 of 3, Andrew Hamilton) — KEEP
-
-| Branch | Commit content | Verdict |
-|--------|---------------|---------|
-| 2025-11-0014 | FAILED.patch + code: add `GRUB_FORCE_EFI_ALLVIDEO` to grub-mkconfig | Not upstream |
-| 2025-11-0015 | FAILED.patch + code: docs for new `GRUB_FORCE_EFI_ALLVIDEO` variable | Not upstream |
-
-`GRUB_FORCE_EFI_ALLVIDEO` env var not on master. New feature.
-**Decision**: KEEP.
 
 
 ## Series: [2025-12-0028](series/2025-12-0028) (2, Glenn Washburn) — KEEP
@@ -478,7 +467,7 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 
 ## DROP — Series
 
-33 series. Confirmed: [`confirmed_series.txt`](confirmed_series.txt).
+34 series. Confirmed: [`confirmed_series.txt`](confirmed_series.txt).
 All dropped branches in [`drop_new.txt`](drop_new.txt).
 
 ## Series: 2025-01-0018 (2 patches, Glenn Washburn)
@@ -774,6 +763,19 @@ All upstream. `hwfeatures-gcry.c` (52L), `cpuid.h`, `x86_64/efi/hwfeatures-gcry.
 (256L), libgcrypt patches 13-15 present.
 **Decision**: DROP — already upstream.
 **Dropped branches**: 2025-10-0329, 2025-10-0331, 2025-10-0332, 2025-10-0333, 2025-10-0335, 2025-10-0336, 2025-10-0337
+
+
+## Series: 2025-11-0014 (dissolved — superseded by v2 standalone)
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-11-0014 | FAILED.patch + code: add `GRUB_FORCE_EFI_ALLVIDEO` to grub-mkconfig | Superseded |
+| 2025-11-0015 | FAILED.patch + code: docs for new `GRUB_FORCE_EFI_ALLVIDEO` variable | Superseded |
+
+Superseded by v2 standalone `2025-11-0027` which is more complete (touches
+`grub-mkconfig.in` + `00_header.in` + docs in a single patch).
+**Decision**: DROP — superseded by v2.
+**Dropped branches**: 2025-11-0014, 2025-11-0015
 
 
 ## Series: 2025-11-0097 (2 of 4, Glenn Washburn) — erofs test v3

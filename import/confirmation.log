@@ -653,3 +653,28 @@ Master bootstrap.conf linguas: 3
 Master fcp-targets: 2
 Master nvme-discovery-controllers: 2
 Master add_multiple_nvme_bootdevices: 3
+=== Confirming 8 new drops from grouping pass ===
+--- 2025-05-0082 (TPCM v1, superseded by v3 2025-07-0004) ---
+v1 files: grub-core/Makefile.core.def grub-core/commands/efi/tpcm.c 
+v3 same files: grub-core/commands/efi/tpcm.c include/grub/efi/tpcm.h 
+--- 2025-06-0188 (TPCM v2, superseded by v3) ---
+v2 files: grub-core/commands/efi/tpcm.c include/grub/efi/tpcm.h 
+--- 2025-04-0029 (chainloader errors, superseded by v3 series 0076) ---
+Patch file: grub-core/loader/efi/chainloader.c
+v3 same file: grub-core/loader/efi/chainloader.c
+--- 2025-04-0054 (chainloader RESEND, superseded by v3) ---
+Same file as 0029: grub-core/loader/efi/chainloader.c
+--- 2025-04-0254 (chainloader v1, superseded by v3) ---
+Same file: grub-core/loader/efi/chainloader.c
+--- 2025-04-0108 (test disable, superseded by 2025-05-0032) ---
+Patch file: grub-core/Makefile.core.def
+0032 same file: grub-core/Makefile.core.def
+--- 2025-05-0037 (linux errors v2, superseded by v3 0077) ---
+Patch: grub-core/loader/efi/linux.c
+v3: grub-core/loader/efi/linux.c
+--- 2025-11-0166 (linker v2, superseded by v4 series 2026-03-0010) ---
+Patch files: acinclude.m4 configure.ac 
+v4 same files: acinclude.m4 configure.ac 
+
+--- 2025-11-0014/0015 (GRUB_FORCE_EFI superseded by v2 2025-11-0027) ---
+Series touches: util/grub-mkconfig.in. v2 touches: grub-mkconfig.in + 00_header.in + docs. v2 is more complete, supersedes.

@@ -412,15 +412,17 @@ All upstream. `hwfeatures-gcry.c` (52L), `cpuid.h`, `x86_64/efi/hwfeatures-gcry.
 **Decision**: DROP — already upstream.
 **Dropped branches**: 2025-10-0329, 2025-10-0331, 2025-10-0332, 2025-10-0333, 2025-10-0335, 2025-10-0336, 2025-10-0337
 
-## Series: 2025-11-0014 (2 of 3, Andrew Hamilton) — KEEP
+## Series: 2025-11-0014 (dissolved — superseded by v2 standalone)
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
-| 2025-11-0014 | FAILED.patch + code: add `GRUB_FORCE_EFI_ALLVIDEO` to grub-mkconfig | Not upstream |
-| 2025-11-0015 | FAILED.patch + code: docs for new `GRUB_FORCE_EFI_ALLVIDEO` variable | Not upstream |
+| 2025-11-0014 | FAILED.patch + code: add `GRUB_FORCE_EFI_ALLVIDEO` to grub-mkconfig | Superseded |
+| 2025-11-0015 | FAILED.patch + code: docs for new `GRUB_FORCE_EFI_ALLVIDEO` variable | Superseded |
 
-`GRUB_FORCE_EFI_ALLVIDEO` env var not on master. New feature.
-**Decision**: KEEP.
+Superseded by v2 standalone `2025-11-0027` which is more complete (touches
+`grub-mkconfig.in` + `00_header.in` + docs in a single patch).
+**Decision**: DROP — superseded by v2.
+**Dropped branches**: 2025-11-0014, 2025-11-0015
 
 ## Series: 2025-11-0097 (2 of 4, Glenn Washburn) — erofs test v3
 
