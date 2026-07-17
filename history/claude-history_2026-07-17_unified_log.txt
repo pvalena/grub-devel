@@ -1,0 +1,143 @@
+     python3 << 'PYEOF'
+      import re
+
+      def parse_entries(filename):
+          entries = []
+          current_heading = None
+          lines = []
+          for line in open(filename):
+              if line.startswith('## ') and re.search(r'20\d{2}-\d{2}-\d{4}', line):
+                  if current_heading:
+                      entries.append((current_heading, '\n'.join(lines)))
+                  current_heading = line.strip()
+                  lines = []
+              elif line.startswith('# ') and not line.startswith('## '):
+                  if current_heading:
+                      entries.append((current_heading, '\n'.join(lines)))
+                      current_heading = None
+                      lines = []
+              elif current_heading:
+                  lines.append(line.rstrip())
+          if current_heading:
+              entries.append((current_heading, '\n'.join(lines)))
+          return entries
+
+      def classify(heading, body):
+          if 'KEEP' in heading:
+              return 'KEEP'
+          if 'DROP' in heading or 'dissolved' in heading.lower():
+              return 'DROP'
+          for line in body.split('\n'):
+              if 'Decision' in line:
+                  if 'DROP' in line: return 'DROP'
+                  if 'KEEP' in line: return 'KEEP'
+          if '**Dropped branches**' in body and 'KEEP' not in heading:
+              return 'DROP'
+          if 'Already upstream' in body and 'Not upstream' not in body:
+              return 'DROP'
+          return 'UNKNOWN'
+
+      seen = set()
+      def dedup(entries):
+          result = []
+          for h, b in entries:
+              branches = re.findall(r'(20\d{2}-\d{2}-\d{4})', h)
+              if any(br not in seen for br in branches):
+                  for br in branches:
+                      seen.add(br)
+                  result.append((h, b))
+          return result
+
+      series_entries = parse_entries('import/INSPECTION_LOG.md')
+      standalone_entries = parse_entries('import/INSPECTION_LOG_STANDALONE.md')
+
+      series_keep = dedup([(h,b) for h,b in series_entries if classify(h,b) == 'KEEP'])
+      series_drop = dedup([(h,b) for h,b in series_entries if classify(h,b) == 'DROP'])
+      standalone_keep = dedup([(h,b) for h,b in standalone_entries if classify(h,b) == 'KEEP'])
+      standalone_drop = dedup([(h,b) for h,b in standalone_entries if classify(h,b) == 'DROP'])
+
+      out = []
+      out.append('# Patch Inspection — Unified Log')
+      out.append('')
+      out.append('Record of every inspected branch with decision and evidence.')
+      out.append('Pipeline documentation: [FINAL_REPORT.md](FINAL_REPORT.md).')
+      out.append('')
+      out.append('---')
+      out.append('')
+   out.append('')
+   for h, b in series_keep:
+       out.append(h)
+       out.append(b)
+       out.append('')
+   out.append('---')
+   out.append('')
+   out.append('## KEEP — Standalone')
+   out.append('')
+   out.append(f'{len(standalone_keep)} entries. Full list: [`standalone.txt`](standalone.txt).')
+   out.append('')
+   for h, b in standalone_keep:
+       out.append(h)
+       out.append(b)
+       out.append('')
+   out.append('---')
+   out.append('')
+   out.append('## DROP — Series')
+   out.append('')
+   out.append(f'{len(series_drop)} series. Confirmed: [`confirmed_series.txt`](confirmed_series.txt).')
+   out.append('All dropped branches in [`drop_new.txt`](drop_new.txt).')
+   out.append('')
+   for h, b in series_drop:
+       out.append(h)
+       out.append(b)
+       out.append('')
+   out.append('---')
+   out.append('')
+   out.append('## DROP — Standalone')
+   out.append('')
+   out.append(f'{len(standalone_drop)} entries. Confirmed: [`confirmed.txt`](confirmed.txt).')
+   out.append('All in [`drop_new.txt`](drop_new.txt).')
+   out.append('')
+   for h, b in standalone_drop:
+       out.append(h)
+       out.append(b)
+       out.append('')
+
+   with open('import/INSPECTION_LOG_UNIFIED.md', 'w') as f:
+       f.write('\n'.join(out))
+
+   # Final verification
+   unified_text = '\n'.join(out)
+   import os
+   standalone_keep_set = set(l.strip() for l in open('import/standalone.txt'))
+   series_heads_set = set(os.listdir('import/series'))
+   drops_set = set(l.strip() for l in open('import/drop_new.txt'))
+
+   missing_sa = [b for b in sorted(standalone_keep_set) if b not in unified_text]
+   missing_sh = [b for b in sorted(series_heads_set) if b not in unified_text]
+   missing_dr = [b for b in sorted(drops_set) if b not in unified_text]
+
+   print(f"Series KEEP: {len(series_keep)}, DROP: {len(series_drop)}")
+   print(f"Standalone KEEP: {len(standalone_keep)}, DROP: {len(standalone_drop)}")
+   print(f"Missing standalone KEEPs: {len(missing_sa)}")
+   print(f"Missing series heads: {len(missing_sh)}")
+   print(f"Missing drops: {len(missing_dr)}")
+   print(f"Lines: {len(out)}")
+
+   if not missing_sa and not missing_sh and not missing_dr:
+       print("\nALL BRANCHES PRESENT.")
+   else:
+       for b in missing_sa: print(f"  missing SA KEEP: {b}")
+       for b in missing_sh: print(f"  missing series: {b}")
+       for b in missing_dr: print(f"  missing drop: {b}")
+   PYEOF
+
+   This runs an inline Python script that parses two inspection log files (`INSPECTION_LOG.md` and `INSPECTION_LOG_STANDALONE.md`), classifies each entry
+   as KEEP or DROP based on heading/body keywords, deduplicates them, then generates a unified markdown file (`INSPECTION_LOG_UNIFIED.md`) organized
+   into four sections (KEEP Series, KEEP Standalone, DROP Series, DROP Standalone). It then cross-references the unified output against three
+   authoritative lists (`standalone.txt`, `series/` directory, `drop_new.txt`) to verify that every tracked branch appears in the unified log.
+
+   I need to regenerate the unified inspection log file from the two source logs and verify that no branches are missing from the output. This is a
+   completeness check to ensure the merge of series and standalone inspection records into one document didn't lose any entries.
+
+   Med risk: Overwrites existing INSPECTION_LOG_UNIFIED.md; regex may misclassify entries.
+
