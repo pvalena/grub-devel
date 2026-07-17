@@ -1,0 +1,109 @@
+================================================================================
+EVALUATION: 2025-12-0029
+================================================================================
+
+Mailing list subject: [PATCH grub] tests/util/grub-fs-tester: Use CSMACINTOSH encoding
+Commit subject:       tests/util/grub-fs-tester: Use CSMACINTOSH encoding instead of macroman
+Author:               Glenn Washburn <development@efficientek.com>
+Date:                 2025-12-12
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-12-0028 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+>From Debian 12 to 13, recode had a major overhaul and now does not support
+the macroman encoding. Its unclear if this is a bug or intentional.
+Regardless, use the CSMACINTOSH encoding instead as MacRoman and it are
+aliases and CSMACINTOSH is supported on both Debian 12 and 13.
+
+Signed-off-by: Glenn Washburn <development@efficientek.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                 | 24 ++++++++++++++++++++++++
+ tests/util/grub-fs-tester.in |  4 ++++
+ 2 files changed, 28 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ tests/util/grub-fs-tester.in | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/tests/util/grub-fs-tester.in b/tests/util/grub-fs-tester.in
+index 7199322c61d5..1f80e8203ffa 100644
+--- a/tests/util/grub-fs-tester.in
++++ b/tests/util/grub-fs-tester.in
+@@ -743,7 +743,9 @@ for LOGSECSIZE in $(range "$MINLOGSECSIZE" "$MAXLOGSECSIZE" 1); do
+ 		    dd if=/dev/urandom of="${MOUNTDEVICE}" bs=1 seek=$((0x468)) conv=notrunc count=8
+ 		    MOUNTFS="hfsplus";;
+ 		x"hfs")
+-		    "mkfs.hfs" -b $BLKSIZE -v "`echo $FSLABEL |recode utf8..macroman`" -h "${MOUNTDEVICE}"
++		    # CSMACINTOSH is an alias for MacRoman which is the
++		    # encoding used on HFS
++		    "mkfs.hfs" -b $BLKSIZE -v "`echo $FSLABEL | recode utf8..CSMACINTOSH`" -h "${MOUNTDEVICE}"
+ 		    dd if=/dev/urandom of="${MOUNTDEVICE}" bs=1 seek=$((0x474)) conv=notrunc count=8
+ 		    MOUNTOPTS="iocharset=utf8,codepage=macroman,"
+ 		    ;;
+-- 
+2.34.1
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 568947345e520f24c6b6c33a767fc8da87dae872
+Author: Glenn Washburn <development@efficientek.com>
+Date:   Fri Dec 12 00:23:49 2025 -0600
+
+    tests/util/grub-fs-tester: Use CSMACINTOSH encoding instead of macroman
+    
+    >From Debian 12 to 13, recode had a major overhaul and now does not support
+    the macroman encoding. Its unclear if this is a bug or intentional.
+    Regardless, use the CSMACINTOSH encoding instead as MacRoman and it are
+    aliases and CSMACINTOSH is supported on both Debian 12 and 13.
+    
+    Signed-off-by: Glenn Washburn <development@efficientek.com>
+
+diff --git a/tests/util/grub-fs-tester.in b/tests/util/grub-fs-tester.in
+index b07de2f89..c6765b793 100644
+--- a/tests/util/grub-fs-tester.in
++++ b/tests/util/grub-fs-tester.in
+@@ -744,7 +744,11 @@ for LOGSECSIZE in $(range "$MINLOGSECSIZE" "$MAXLOGSECSIZE" 1); do
+ 		    MOUNTFS="hfsplus";;
+ 		x"hfs")
+ 		    # CSMACINTOSH is an alias for MacRoman which is the
++<<<<<<< HEAD
+ 		    # encoding used on HFS.
++=======
++		    # encoding used on HFS
++>>>>>>> tests/util/grub-fs-tester: Use CSMACINTOSH encoding instead of macroman
+ 		    "mkfs.hfs" -b $BLKSIZE -v "`echo $FSLABEL | recode utf8..CSMACINTOSH`" -h "${MOUNTDEVICE}"
+ 		    dd if=/dev/urandom of="${MOUNTDEVICE}" bs=1 seek=$((0x474)) conv=notrunc count=8
+ 		    MOUNTOPTS="iocharset=utf8,codepage=macroman,"
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  tests/util/grub-fs-tester.in: EXISTS (1745 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +4 -4 lines
+
+================================================================================

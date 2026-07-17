@@ -1,0 +1,167 @@
+================================================================================
+EVALUATION: 2025-06-0117
+================================================================================
+
+Mailing list subject: [PATCH v2 1/2] gnulib: Add patch to allow GRUB w/GCC-15 compile
+Commit subject:       gnulib: Add patch to allow GRUB w/GCC-15 compile
+Author:               Andrew Hamilton <adhamilt@gmail.com>
+Date:                 2025-06-17
+Has FAILED.patch:     1
+Code files changed:   2
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Pull in gnulib fix to allow base64.c to compile using GCC 15 or newer.
+
+Pulled from: GNULIB commit 25df6dc4253480a343dde3376ce6fd99c316a532
+
+GCC 15 adds a new compiler warning "-Wunterminated-string-initialization"
+that will trigger what is considered a false-positive in base64.c as this
+array is not treated as a string but an array of characters so the lack
+of NULL string terminator is expected.
+
+GCC team has added ability to flag such instances of arrays that the
+compiler may think are strings as "nonstring" arrays to avoid this
+warning: _attribute_((nonstring)).
+
+Fixes: https://savannah.gnu.org/bugs/?66470
+
+Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                                       | 42 ++++++++++++++++++++++
+ bootstrap.conf                                     |  4 +++
+ .../lib/gnulib-patches/gcc-15-compile-fix.patch    | 11 ++++++
+ 3 files changed, 57 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ bootstrap.conf                                        |  3 ++-
+ grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch | 11 +++++++++++
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+ create mode 100644 grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch
+
+diff --git a/bootstrap.conf b/bootstrap.conf
+index 7cd375ba9..4655c2128 100644
+--- a/bootstrap.conf
++++ b/bootstrap.conf
+@@ -86,7 +86,8 @@ bootstrap_post_import_hook () {
+   # add new patches here.
+   for patchname in fix-width \
+       fix-regcomp-resource-leak \
+-      fix-regexec-resource-leak; do
++      fix-regexec-resource-leak \
++      gcc-15-compile-fix; do
+     patch -d grub-core/lib/gnulib -p2 \
+        < "grub-core/lib/gnulib-patches/$patchname.patch"
+   done
+diff --git a/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch b/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch
+new file mode 100644
+index 000000000..287332ea0
+--- /dev/null
++++ b/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch
+@@ -0,0 +1,11 @@
++--- a/lib/base64.c
+++++ b/lib/base64.c
++@@ -61,7 +61,7 @@
++   return ch;
++ }
++
++-static const char b64c[64] =
+++static const char b64c[64] _GL_ATTRIBUTE_NONSTRING =
++   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
++
++ /* Base64 encode IN array of size INLEN into OUT array. OUT needs
+-- 
+2.39.5
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 451215e20fcc409d32f6ebf935550405a9bd9d5b
+Author: Andrew Hamilton <adhamilt@gmail.com>
+Date:   Tue Jun 17 20:58:25 2025 -0500
+
+    gnulib: Add patch to allow GRUB w/GCC-15 compile
+    
+    Pull in gnulib fix to allow base64.c to compile using GCC 15 or newer.
+    
+    Pulled from: GNULIB commit 25df6dc4253480a343dde3376ce6fd99c316a532
+    
+    GCC 15 adds a new compiler warning "-Wunterminated-string-initialization"
+    that will trigger what is considered a false-positive in base64.c as this
+    array is not treated as a string but an array of characters so the lack
+    of NULL string terminator is expected.
+    
+    GCC team has added ability to flag such instances of arrays that the
+    compiler may think are strings as "nonstring" arrays to avoid this
+    warning: _attribute_((nonstring)).
+    
+    Fixes: https://savannah.gnu.org/bugs/?66470
+    
+    Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+diff --git a/bootstrap.conf b/bootstrap.conf
+index 2e207dd37..f6d636659 100644
+--- a/bootstrap.conf
++++ b/bootstrap.conf
+@@ -86,8 +86,12 @@ bootstrap_post_import_hook () {
+   for patchname in fix-width \
+       fix-regcomp-resource-leak \
+       fix-regexec-resource-leak \
++<<<<<<< HEAD
+       fix-gcc-15-compile \
+       fix-unused-value; do
++=======
++      gcc-15-compile-fix; do
++>>>>>>> gnulib: Add patch to allow GRUB w/GCC-15 compile
+     patch -d grub-core/lib/gnulib -p2 \
+        < "grub-core/lib/gnulib-patches/$patchname.patch"
+   done
+diff --git a/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch b/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch
+new file mode 100644
+index 000000000..287332ea0
+--- /dev/null
++++ b/grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch
+@@ -0,0 +1,11 @@
++--- a/lib/base64.c
+++++ b/lib/base64.c
++@@ -61,7 +61,7 @@
++   return ch;
++ }
++
++-static const char b64c[64] =
+++static const char b64c[64] _GL_ATTRIBUTE_NONSTRING =
++   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
++
++ /* Base64 encode IN array of size INLEN into OUT array. OUT needs
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  bootstrap.conf: EXISTS (129 lines)
+  grub-core/lib/gnulib-patches/gcc-15-compile-fix.patch: MISSING on master
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       NEW FEATURE (target files missing on master)
+Complexity: 2 code file(s) + FAILED.patch
+Patch size: +15 -5 lines
+
+================================================================================

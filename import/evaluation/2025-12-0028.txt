@@ -1,0 +1,78 @@
+================================================================================
+EVALUATION: 2025-12-0028
+================================================================================
+
+Mailing list subject: [PATCH grub] INSTALL: Add note that the GNU Autoconf Archive may be
+Commit subject:       INSTALL: Add note that the GNU Autoconf Archive may be needed
+Author:               Glenn Washburn <development@efficientek.com>
+Date:                 2025-12-12
+Has FAILED.patch:     0
+Code files changed:   1
+Series:               2025-12-0028 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+As of 1a5417f39a0c (configure: Check linker for --image-base support),
+the GNU Autoconf Archive is now required to bootstrap GRUB.
+
+Signed-off-by: Glenn Washburn <development@efficientek.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ INSTALL | 1 +
+ 1 file changed, 1 insertion(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+(no FAILED.patch)
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 5932615fba29acd7a7c726264e93cee47f84b8b4
+Author: Glenn Washburn <development@efficientek.com>
+Date:   Fri Dec 12 00:21:59 2025 -0600
+
+    INSTALL: Add note that the GNU Autoconf Archive may be needed
+    
+    As of 1a5417f39a0c (configure: Check linker for --image-base support),
+    the GNU Autoconf Archive is now required to bootstrap GRUB.
+    
+    Signed-off-by: Glenn Washburn <development@efficientek.com>
+
+diff --git a/INSTALL b/INSTALL
+index 7e5397f58..7ac1c7cc8 100644
+--- a/INSTALL
++++ b/INSTALL
+@@ -56,6 +56,7 @@ need the following.
+ * Python 3 (NOTE: python 2.6 should still work, but it's not tested)
+ * Autoconf 2.64 or later
+ * Automake 1.14 or later
++* GNU Autoconf Archive (autoconf-archive on Debian)
+ 
+ Your distro may package cross-compiling toolchains such as the following
+ incomplete list on Debian: gcc-aarch64-linux-gnu, gcc-arm-linux-gnueabihf,
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +0
+0 -0
+0 lines
+
+================================================================================

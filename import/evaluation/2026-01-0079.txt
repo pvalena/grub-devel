@@ -1,0 +1,148 @@
+================================================================================
+EVALUATION: 2026-01-0079
+================================================================================
+
+Mailing list subject: [PATCH] commands/linux: verify kernel file size
+Commit subject:       commands/linux: verify kernel file size
+Author:               jinkangkang <jinkkang@foxmail.com>
+Date:                 2026-01-29
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+we encountered some issues with grub boot failure on Linux systems. Upon
+investigation, it was found that the ext4 fs of the system was abnormal,
+causing the ext2 module of GRUB to read empty file contents. Therefore,
+a verification of file size was added
+'''
+error: ../../grub-core/loader/i386/pc/linux.c:170:invalid magic number.
+error :
+../../grub-core/loader/i386/pc/linux.c:418:you need to load the kernel
+first
+
+grub> hexdump /boot/vmlinuz-5.10.134-17.2.a18.x86_64
+grub>
+grub> cat /boot/vmlinuz-5.10.134-17.2 a18 x86_64
+grub>
+'''
+Verifying the file size in advance may make it easier to identify
+the true cause of the problem
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 84 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 84 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/loader/efi/linux.c      | 7 +++++++
+ grub-core/loader/i386/efi/linux.c | 7 ++++++-
+ grub-core/loader/i386/linux.c     | 8 ++++++++
+ grub-core/loader/i386/pc/linux.c  | 6 ++++++
+ 4 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/grub-core/loader/efi/linux.c b/grub-core/loader/efi/linux.c
+index 111edf0e1..23f802044 100644
+--- a/grub-core/loader/efi/linux.c
++++ b/grub-core/loader/efi/linux.c
+@@ -834,6 +834,13 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+     goto fail;
+ 
+   filelen = grub_file_size (file);
++  if (filelen < (grub_off_t) sizeof (lh))
++    {
++      grub_error (GRUB_ERR_BAD_OS, N_("kernel %s size = %x is too small"),
++                  argv[0], (unsigned) filelen);
++      goto fail;
++    }
++
+   kernel = grub_malloc(filelen);
+   if (!kernel)
+     {
+diff --git a/grub-core/loader/i386/efi/linux.c b/grub-core/loader/i386/efi/linux.c
+index 6c310d987..a578da896 100644
+--- a/grub-core/loader/i386/efi/linux.c
++++ b/grub-core/loader/i386/efi/linux.c
+@@ -358,7 +358,12 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+     goto fail;
+ 
+   filelen = grub_file_size (file);
+-
++  if (filelen < (grub_ssize_t) sizeof (lh))
++    {
++      grub_error (GRUB_ERR_BAD_OS, N_("kernel %s size = %x is too small"),
++                  argv[0], (unsigned) filelen);
++      goto fail;
++    }
+   kernel = grub_malloc(filelen);
+   if (!kernel)
+     {
+diff --git a/grub-core/loader/i386/linux.c b/grub-core/loader/i386/linux.c
+index 33a852197..68957f1dd 100644
+--- a/grub-core/loader/i386/linux.c
++++ b/grub-core/loader/i386/linux.c
+@@ -685,6 +685,14 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+     goto fail;
+ 
+   len = grub_file_size (file);
++
++  if (len < (grub_ssize_t) sizeof (lh))
++    {
++      grub_error (GRUB_ERR_BAD_OS, N_("kernel %s size = %x is too small"),
++                  argv[0], (unsigned) len);
++      goto fail;
++    }
++
+   kernel = grub_malloc (len);
+   if (!kernel)
+     {
+diff --git a/grub-core/loader/i386/pc/linux.c b/grub-core/loader/i386/pc/linux.c
+index 54a76504a..c9811afea 100644
+--- a/grub-core/loader/i386/pc/linux.c
++++ b/grub-core/loader/i386/pc/linux.c
+@@ -147,6 +147,12 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+     goto fail;
+ 
+   len = grub_file_size (file);
++  if (len < (grub_ssize_t) sizeof (lh))
++    {
++      grub_error (GRUB_ERR_BAD_OS, N_("kernel %s size = %x is too small"),
++                  argv[0], (unsigned) len);
++      goto fail;
++    }
+   kernel = grub_malloc (len);
+   if (!kernel)
+     {
+-- 
+2.50.1.windows.1
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/loader/efi/linux.c: EXISTS (614 lines)
+  grub-core/loader/i386/efi/linux.c: MISSING on master
+  grub-core/loader/i386/linux.c: EXISTS (1190 lines)
+  grub-core/loader/i386/pc/linux.c: EXISTS (494 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +31 -7 lines
+
+================================================================================

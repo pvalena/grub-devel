@@ -1,0 +1,167 @@
+================================================================================
+EVALUATION: 2025-07-0034
+================================================================================
+
+Mailing list subject: [PATCH v14 07/15] libgcrypt: Fix coverity warnings
+Commit subject:       libgcrypt: Fix coverity warnings
+Author:               Vladimir Serbinenko <phcoder@gmail.com>
+Date:                 2025-07-07
+Has FAILED.patch:     1
+Code files changed:   2
+Series:               2025-07-0029 (11 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                                       | 81 ++++++++++++++++++++++
+ .../lib/libgcrypt-patches/03_mpiutil_alloc.patch   |  6 ++
+ grub-core/lib/libgcrypt-patches/03_sexp_free.patch |  5 ++
+ 3 files changed, 92 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ .../libgcrypt-patches/03_mpiutil_alloc.patch  | 20 ++++++++++
+ .../lib/libgcrypt-patches/03_sexp_free.patch  | 37 +++++++++++++++++++
+ 2 files changed, 57 insertions(+)
+ create mode 100644 grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch
+ create mode 100644 grub-core/lib/libgcrypt-patches/03_sexp_free.patch
+
+diff --git a/grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch b/grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch
+new file mode 100644
+index 000000000..7014f827d
+--- /dev/null
++++ b/grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch
+@@ -0,0 +1,20 @@
++Fix NULL pointer dereference in case of failed alloc
++
++CID# 369001
++
++Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
++
++diff --git a/grub-core/lib/libgcrypt/mpi/mpiutil.c b/grub-core/lib/libgcrypt/mpi/mpiutil.c
++index 3a372374f..dc53db09d 100644
++--- a/grub-core/lib/libgcrypt-grub/mpi/mpiutil.c
+++++ b/grub-core/lib/libgcrypt-grub/mpi/mpiutil.c
++@@ -432,6 +432,9 @@ _gcry_mpi_alloc_like( gcry_mpi_t a )
++ 	int n = (a->sign+7)/8;
++ 	void *p = _gcry_is_secure(a->d)? xtrymalloc_secure (n)
++                                        : xtrymalloc (n);
+++	if ( !p ) {
+++            _gcry_fatal_error (GPG_ERR_ENOMEM, NULL);
+++	}
++ 	memcpy( p, a->d, n );
++ 	b = mpi_set_opaque( NULL, p, a->sign );
++     }
+diff --git a/grub-core/lib/libgcrypt-patches/03_sexp_free.patch b/grub-core/lib/libgcrypt-patches/03_sexp_free.patch
+new file mode 100644
+index 000000000..33552ef54
+--- /dev/null
++++ b/grub-core/lib/libgcrypt-patches/03_sexp_free.patch
+@@ -0,0 +1,37 @@
++sexp: Add missing free on error path
++
++CID# 541475
++
++Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
++
++diff --git a/grub-core/lib/libgcrypt/src/sexp.c b/grub-core/lib/libgcrypt/src/sexp.c
++index d15f1a790..250559f75 100644
++--- a/grub-core/lib/libgcrypt-grub/src/sexp.c
+++++ b/grub-core/lib/libgcrypt-grub/src/sexp.c
++@@ -1157,6 +1157,17 @@ do_vsexp_sscan (gcry_sexp_t *retsexp, size_t *erroff,
++                               }                                            \
++                        } while (0)
++ 
+++#define MAKE_SPACE_EXTRA_CLEANUP(n, cleanup)  do {				\
+++                            gpg_err_code_t _ms_err = make_space (&c, (n)); \
+++                            if (_ms_err)                                   \
+++                              {                                            \
+++                                err = _ms_err;                             \
+++                                *erroff = p - buffer;                      \
+++				cleanup;				   \
+++                                goto leave;                                \
+++                              }                                            \
+++                       } while (0)
+++
++   /* The STORE_LEN macro is used to store the length N at buffer P. */
++ #define STORE_LEN(p,n) do {						   \
++ 			    DATALEN ashort = (n);			   \
++@@ -1368,7 +1379,7 @@ do_vsexp_sscan (gcry_sexp_t *retsexp, size_t *erroff,
++                   goto leave;
++                 }
++ 
++-              MAKE_SPACE (datalen);
+++              MAKE_SPACE_EXTRA_CLEANUP (datalen, xfree (b64buf));
++               *c.pos++ = ST_DATA;
++               STORE_LEN (c.pos, datalen);
++               for (i = 0; i < datalen; i++)
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit d251327dd0df9cb6ba286d6cfce69f3f304df127
+Author: Vladimir Serbinenko <phcoder@gmail.com>
+Date:   Mon Jul 7 14:52:13 2025 +0000
+
+    libgcrypt: Fix coverity warnings
+    
+    Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+diff --git a/grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch b/grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch
+index 42c6b2bd7..1f052e904 100644
+--- a/grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch
++++ b/grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch
+@@ -1,4 +1,10 @@
++<<<<<<< HEAD
+ mpiutil: Fix NULL pointer dereference in case of failed alloc
++=======
++Fix NULL pointer dereference in case of failed alloc
++
++CID# 369001
++>>>>>>> libgcrypt: Fix coverity warnings
+ 
+ Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+ 
+diff --git a/grub-core/lib/libgcrypt-patches/03_sexp_free.patch b/grub-core/lib/libgcrypt-patches/03_sexp_free.patch
+index 1c0ffd644..7bdea5b71 100644
+--- a/grub-core/lib/libgcrypt-patches/03_sexp_free.patch
++++ b/grub-core/lib/libgcrypt-patches/03_sexp_free.patch
+@@ -1,5 +1,10 @@
+ sexp: Add missing free on error path
+ 
++<<<<<<< HEAD
++=======
++CID# 541475
++
++>>>>>>> libgcrypt: Fix coverity warnings
+ Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+ 
+ diff --git a/grub-core/lib/libgcrypt/src/sexp.c b/grub-core/lib/libgcrypt/src/sexp.c
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/lib/libgcrypt-patches/03_mpiutil_alloc.patch: EXISTS (18 lines)
+  grub-core/lib/libgcrypt-patches/03_sexp_free.patch: EXISTS (35 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+

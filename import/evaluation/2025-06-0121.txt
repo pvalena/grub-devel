@@ -1,0 +1,303 @@
+================================================================================
+EVALUATION: 2025-06-0121
+================================================================================
+
+Mailing list subject: Re: [PATCH] Create a Containerfile with required grub packages for
+Commit subject:       Create a Containerfile with required grub packages for development
+Author:               Andrew Hamilton <adhamilt@gmail.com>
+Date:                 2025-06-18
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+If it’d help I can take a crack at making a second container file for a
+different distribution to cover more users- maybe Debian?
+
+Thanks,
+Andrew
+
+On Mon, Jun 16, 2025 at 11:35 AM Leo Sandoval via Grub-devel <
+grub-devel@gnu.org> wrote:
+
+>
+>
+> On Sat, Jun 14, 2025 at 3:38 AM Vladimir 'phcoder' Serbinenko <
+> phcoder@gmail.com> wrote:
+>
+>> I'm unsure about favouring one distro over the other on this.
+>> Another thing: it misses arm and riscv efis in its package list
+>>
+>
+> you mean creating a distroless container?
+>
+> Although not explicitly indicated, this image is intended for x64 archs
+> and this is why I did not include non-x64 packages but I can include them
+> for completeness..
+>
+>>
+>> Regards
+>> Vladimir 'phcoder' Serbinenko
+>>
+>> Le lun. 9 juin 2025, 22:22, Leo Sandoval via Grub-devel <
+>> grub-devel@gnu.org> a écrit :
+>>
+>>> Containers bring the ability to have ready-to-use environments and in
+>>> this case a complete Fedora container file is described containing
+>>> all required packages for building and testing grub2.
+>>>
+>>> Once users manually build it, they can run the container jump into a
+>>> setup ready for development. On the other hand, if users
+>>> prefer to use bare metal instead of a containerized environment, it is
+>>> still useful to have a file explicitly indicating the required packages.
+>>> ---
+>>>  container/Containerfile | 54 +++++++++++++++++++++++++++++++++++++++++
+>>>  container/README        | 14 +++++++++++
+>>>  2 files changed, 68 insertions(+)
+>>>  create mode 100644 container/Containerfile
+>>>  create mode 100644 container/README
+>>>
+>>> diff --git a/container/Containerfile b/container/Containerfile
+>>> new file mode 100644
+>>> index 0000000000..dd066a2ce1
+>>> --- /dev/null
+>>> +++ b/container/Containerfile
+>>> @@ -0,0 +1,54 @@
+>>> +FROM registry.fedoraproject.org/fedora
+>>> +
+>>> +# Install required packages
+>>> +RUN dnf update -y && \
+>>> +    dnf install -y \
+>>> +        attr \
+>>> +        autoconf \
+>>> +        automake \
+>>> +        autopoint \
+>>> +        bison \
+>>> +        btrfs-progs \
+>>> +        cpio \
+>>> +        cryptsetup \
+>>> +        dosfstools \
+>>> +        e2fsprogs \
+>>> +        edk2-ovmf \
+>>> +        edk2-ovmf-ia32 \
+>>> +        erofs-utils \
+>>> +        exfatprogs \
+>>> +        f2fs-tools \
+>>> +        flex \
+>>> +        gawk \
+>>> +        gettext \
+>>> +        genromfs \
+>>> +        git \
+>>> +        hfsplus-tools \
+>>> +        jfsutils \
+>>> +        libtool \
+>>> +        lzop \
+>>> +        make \
+>>> +        mtools \
+>>> +        nilfs-utils \
+>>> +        ntfsprogs \
+>>> +        parted \
+>>> +        patch \
+>>> +        pkg-config \
+>>> +        python3 \
+>>> +        qemu-system-x86 \
+>>> +        squashfs-tools \
+>>> +        swtpm-tools \
+>>> +        tpm2-tools \
+>>> +        udftools \
+>>> +        unifont \
+>>> +        unifont-fonts \
+>>> +        which \
+>>> +        words \
+>>> +        xfsprogs \
+>>> +        xorriso \
+>>> +        zfs-fuse
+>>> +
+>>> +# clone tip of grub repository
+>>> +RUN git clone --depth 1 https://https.git.savannah.gnu.org/git/grub.git
+>>> /grub
+>>> +
+>>> +WORKDIR /grub
+>>> \ No newline at end of file
+>>> diff --git a/container/README b/container/README
+>>> new file mode 100644
+>>> index 0000000000..788992abb9
+>>> --- /dev/null
+>>> +++ b/container/README
+>>> @@ -0,0 +1,14 @@
+>>> +install `podman` on your favorite distro then build it with
+>>> +
+>>> +$ podman build --tag grub .
+>>> +
+>>> +once built, you can run/launch it
+>>> +
+>>> +$ podman run -it grub
+>>> +
+>>> +and execute the standard build/test commands inside it
+>>> +
+>>> +# ./bootstrap
+>>> +# ./configure
+>>> +# ./make
+>>> +# ./make check
+>>> \ No newline at end of file
+>>> --
+>>> 2.48.1
+>>>
+>>>
+>>> _______________________________________________
+>>> Grub-devel mailing list
+>>> Grub-devel@gnu.org
+>>> https://lists.gnu.org/mailman/listinfo/grub-devel
+>>>
+>> _______________________________________________
+> Grub-devel mailing list
+> Grub-devel@gnu.org
+> https://lists.gnu.org/mailman/listinfo/grub-devel
+>
+
+<div dir="auto">If it’d help I can take a crack at making a second container file for a different distribution to cover more users- maybe Debian?</div><div dir="auto"><br></div><div dir="auto">Thanks,</div><div dir="auto">Andrew</div><div><br><div class="gmail_quote gmail_quote_container"><div dir="ltr" class="gmail_attr">On Mon, Jun 16, 2025 at 11:35 AM Leo Sandoval via Grub-devel &lt;<a href="mailto:grub-devel@gnu.org">grub-devel@gnu.org</a>&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex"><div dir="ltr"><div dir="ltr"><br></div><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Sat, Jun 14, 2025 at 3:38 AM Vladimir &#39;phcoder&#39; Serbinenko &lt;<a href="mailto:phcoder@gmail.com" target="_blank">phcoder@gmail.com</a>&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex"><div dir="auto"><div><div>I&#39;m unsure about favouring one distro over the other on this. </div><div dir="auto">Another thing: it misses arm and riscv efis in its package list</div></div></div></blockquote><div><br></div><div>you mean creating a distroless container? </div><div><br></div><div>Although not explicitly indicated, this image is intended for x64 archs and this is why I did not include non-x64 packages but I can include them for completeness.. </div></div></div><div dir="ltr"><div class="gmail_quote"><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex"><div dir="auto"><div><div><br></div><div>Regards<br>Vladimir &#39;phcoder&#39; Serbinenko<br></div><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">Le lun. 9 juin 2025, 22:22, Leo Sandoval via Grub-devel &lt;<a href="mailto:grub-devel@gnu.org" target="_blank">grub-devel@gnu.org</a>&gt; a écrit :<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">Containers bring the ability to have ready-to-use environments and in<br>
+this case a complete Fedora container file is described containing<br>
+all required packages for building and testing grub2.<br>
+<br>
+Once users manually build it, they can run the container jump into a<br>
+setup ready for development. On the other hand, if users<br>
+prefer to use bare metal instead of a containerized environment, it is<br>
+still useful to have a file explicitly indicating the required packages.<br>
+---<br>
+ container/Containerfile | 54 +++++++++++++++++++++++++++++++++++++++++<br>
+ container/README        | 14 +++++++++++<br>
+ 2 files changed, 68 insertions(+)<br>
+ create mode 100644 container/Containerfile<br>
+ create mode 100644 container/README<br>
+<br>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 99 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 99 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+diff --git a/container/Containerfile b/container/Containerfile<br>
+new file mode 100644<br>
+index 0000000000..dd066a2ce1<br>
+--- /dev/null<br>
++++ b/container/Containerfile<br>
+@@ -0,0 +1,54 @@<br>
++FROM <a href="http://registry.fedoraproject.org/fedora" rel="noreferrer noreferrer" target="_blank">registry.fedoraproject.org/fedora</a><br>
++<br>
++# Install required packages<br>
++RUN dnf update -y &amp;&amp; \<br>
++    dnf install -y \<br>
++        attr \<br>
++        autoconf \<br>
++        automake \<br>
++        autopoint \<br>
++        bison \<br>
++        btrfs-progs \<br>
++        cpio \<br>
++        cryptsetup \<br>
++        dosfstools \<br>
++        e2fsprogs \<br>
++        edk2-ovmf \<br>
++        edk2-ovmf-ia32 \<br>
++        erofs-utils \<br>
++        exfatprogs \<br>
++        f2fs-tools \<br>
++        flex \<br>
++        gawk \<br>
++        gettext \<br>
++        genromfs \<br>
++        git \<br>
++        hfsplus-tools \<br>
++        jfsutils \<br>
++        libtool \<br>
++        lzop \<br>
++        make \<br>
++        mtools \<br>
++        nilfs-utils \<br>
++        ntfsprogs \<br>
++        parted \<br>
++        patch \<br>
++        pkg-config \<br>
++        python3 \<br>
++        qemu-system-x86 \<br>
++        squashfs-tools \<br>
++        swtpm-tools \<br>
++        tpm2-tools \<br>
++        udftools \<br>
++        unifont \<br>
++        unifont-fonts \<br>
++        which \<br>
++        words \<br>
++        xfsprogs \<br>
++        xorriso \<br>
++        zfs-fuse<br>
++<br>
++# clone tip of grub repository<br>
++RUN git clone --depth 1 <a href="https://https.git.savannah.gnu.org/git/grub.git" rel="noreferrer noreferrer" target="_blank">https://https.git.savannah.gnu.org/git/grub.git</a> /grub<br>
++<br>
++WORKDIR /grub<br>
+\ No newline at end of file<br>
+diff --git a/container/README b/container/README<br>
+new file mode 100644<br>
+index 0000000000..788992abb9<br>
+--- /dev/null<br>
++++ b/container/README<br>
+@@ -0,0 +1,14 @@<br>
++install `podman` on your favorite distro then build it with<br>
++<br>
++$ podman build --tag grub .<br>
++<br>
++once built, you can run/launch it<br>
++<br>
++$ podman run -it grub<br>
++<br>
++and execute the standard build/test commands inside it<br>
++<br>
++# ./bootstrap<br>
++# ./configure<br>
++# ./make<br>
++# ./make check<br>
+\ No newline at end of file<br>
+-- <br>
+2.48.1<br>
+<br>
+<br>
+_______________________________________________<br>
+Grub-devel mailing list<br>
+<a href="mailto:Grub-devel@gnu.org" rel="noreferrer" target="_blank">Grub-devel@gnu.org</a><br>
+<a href="https://lists.gnu.org/mailman/listinfo/grub-devel" rel="noreferrer noreferrer" target="_blank">https://lists.gnu.org/mailman/listinfo/grub-devel</a><br>
+</blockquote></div></div></div>
+</blockquote></div></div>
+_______________________________________________<br>
+Grub-devel mailing list<br>
+<a href="mailto:Grub-devel@gnu.org" target="_blank">Grub-devel@gnu.org</a><br>
+<a href="https://lists.gnu.org/mailman/listinfo/grub-devel" rel="noreferrer" target="_blank">https://lists.gnu.org/mailman/listinfo/grub-devel</a><br>
+</blockquote></div></div>
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  container/Containerfile: MISSING on master
+  container/README: MISSING on master
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       NEW FEATURE (target files missing on master)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +70 -3 lines
+
+================================================================================

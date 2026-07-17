@@ -1,0 +1,85 @@
+================================================================================
+EVALUATION: 2026-03-0015
+================================================================================
+
+Mailing list subject: [PATCH v4 9/9] conf/i386-cygwin-img.lds: Update to use
+Commit subject:       conf/i386-cygwin-img.lds: Update to use _grub_text_base symbol
+Author:               Nicholas Vinson <nvinson234@gmail.com>
+Date:                 2026-03-03
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2026-03-0010 (5 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+This patch updates conf/i386-cygwin-img.lds to use the _grub_text_base
+symbol just like conf/i386-pc-kernel.lds. It also updates configure.ac
+to account for this change.
+
+Signed-off-by: Nicholas Vinson <nvinson234@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ conf/i386-cygwin-img.lds | 1 +
+ configure.ac             | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/conf/i386-cygwin-img.lds b/conf/i386-cygwin-img.lds
+index 578da91b0..e7ed1c523 100644
+--- a/conf/i386-cygwin-img.lds
++++ b/conf/i386-cygwin-img.lds
+@@ -2,6 +2,7 @@
+ 
+ SECTIONS
+ {
++  . = _grub_text_base;
+   .text :
+   {
+     start = . ;
+diff --git a/configure.ac b/configure.ac
+index 94218e014..560c8a320 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1462,7 +1462,7 @@ elif test x$grub_cv_target_cc_link_format = x-mi386pe || test x$grub_cv_target_c
+   TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-cygwin-img.lds"
+   TARGET_IMG_LDFLAGS="-Wl,-T${TARGET_IMG_LDSCRIPT}"
+   TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-cygwin-img.lds"
+-  TARGET_IMG_BASE_LDOPT=
++  TARGET_IMG_BASE_LDOPT="-Wl,--defsym,_grub_text_base"
+   TARGET_IMG_BASE_LDOPT_ARG_SEP=","
+   TARGET_IMG_CFLAGS=
+ else
+-- 
+2.53.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  conf/i386-cygwin-img.lds: EXISTS (58 lines)
+  configure.ac: EXISTS (2703 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +4 -5 lines
+
+================================================================================

@@ -1,0 +1,117 @@
+================================================================================
+EVALUATION: 2026-01-0019
+================================================================================
+
+Mailing list subject: [RFC] Feature proposal: EFI variable check to enter grub menu
+Commit subject:       Feature proposal: EFI variable check to enter grub menu
+Author:               Mitchell Augustin <mitchell.augustin@canonical.com>
+Date:                 2026-01-12
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Hi all!
+
+We're interested in implementing a small feature that would drop into
+the grub menu (same as when we press shift or f4) if some new EFI
+variable is set by the firmware. The motivation here is to enable
+firmware vendors to add menu entries that will set this new EFI
+variable before booting into the device with GRUB, enabling another
+method through which we can access the grub menu on systems where it
+is hidden / skipped by default.
+
+I have not previously done any upstream grub development, so I'm
+interested in hearing whether this is something the grub team would
+consider, or if there are any technical concerns.
+
+My thought is that this could be implemented within normal/menu.c if
+you'd be willing to add EFI-specific code there, perhaps along these
+lines (just an example, haven't been able to test yet since no
+firmware implements this feature):
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 55 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 55 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+diff --git a/grub-core/normal/menu.c b/grub-core/normal/menu.c
+index b946c834d..7f46d7514 100644
+--- a/grub-core/normal/menu.c
++++ b/grub-core/normal/menu.c
+@@ -33,6 +33,9 @@
+ #include <grub/gfxterm.h>
+ #include <grub/dl.h>
+ #include <grub/safemath.h>
++#ifdef GRUB_MACHINE_EFI
++#include <grub/efi/efi.h>
++#endif
+
+ /* Time to delay after displaying an error message about a default/fallback
+    entry failing to boot.  */
+@@ -615,6 +618,14 @@ run_menu (grub_menu_t menu, int nested, int
+*auto_boot, int *notify_boot)
+       /* Enter interruptible sleep until Escape or a menu hotkey is pressed,
+          or the timeout expires.  */
+       saved_time = grub_get_time_ms ();
++#ifdef GRUB_MACHINE_EFI
++      static grub_guid_t efi_variable_guid = GRUB_EFI_GLOBAL_VARIABLE_GUID;
++      grub_size_t size = 0;
++      grub_efi_status_t status;
++      grub_uint8_t *enter_grub_menu = NULL;
++      status = grub_efi_get_variable ("EnterGrubMenu", &efi_variable_guid,
++                                  &size, (void **) &enter_grub_menu);
++#endif
+       while (1)
+  {
+    int key;
+@@ -632,6 +643,14 @@ run_menu (grub_menu_t menu, int nested, int
+*auto_boot, int *notify_boot)
+        break;
+      }
+
++#ifdef GRUB_MACHINE_EFI
++   if (enter_grub_menu)
++     {
++       timeout = -1;
++       break;
++     }
++#endif
++
+    if (timeout > 0 && has_second_elapsed (&saved_time))
+      {
+        timeout--;
+-- 
+2.43.0
+
+Thanks in advance for your comments,
+-- 
+Mitchell Augustin
+Software Engineer - Ubuntu Partner Engineering
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/normal/menu.c: EXISTS (931 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +20 -3 lines
+
+================================================================================

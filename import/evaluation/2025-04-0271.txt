@@ -1,0 +1,949 @@
+================================================================================
+EVALUATION: 2025-04-0271
+================================================================================
+
+Mailing list subject: [RFC PATCH v2 5/7] slaunch/skinit: AMD SKINIT Secure Launch core
+Commit subject:       slaunch/skinit: AMD SKINIT Secure Launch core implementation
+Author:               Ross Philipson <ross.philipson@oracle.com>
+Date:                 2025-05-01
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2025-04-0266 (7 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Add core implementation for AMD SKINIT Secure Launch in GRUB based on
+Linux legacy boot protocol.
+
+Signed-off-by: Ross Philipson <ross.philipson@oracle.com>
+Signed-off-by: Sergii Dmytruk <sergii.dmytruk@3mdeb.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 890 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 890 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/Makefile.core.def           |   2 +
+ grub-core/lib/i386/relocator32.S      |   6 +
+ grub-core/loader/i386/linux.c         |  39 ++++-
+ grub-core/loader/slaunch/i386_linux.c |  42 +++++
+ grub-core/loader/slaunch/skinit.c     | 184 +++++++++++++++++++++
+ grub-core/loader/slaunch/skl.c        | 223 ++++++++++++++++++++++++++
+ grub-core/loader/slaunch/slaunch.c    |  24 ++-
+ grub-core/loader/slaunch/x86_dlstub.c |  56 ++++++-
+ include/grub/i386/skinit.h            |  69 ++++++++
+ include/grub/slaunch.h                |   6 +
+ include/grub/slr_table.h              |  16 ++
+ 11 files changed, 654 insertions(+), 13 deletions(-)
+ create mode 100644 grub-core/loader/slaunch/skinit.c
+ create mode 100644 grub-core/loader/slaunch/skl.c
+ create mode 100644 include/grub/i386/skinit.h
+
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 97fc762f8..7b63095ce 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -1884,6 +1884,8 @@ module = {
+   x86 = loader/slaunch/verify.c;
+   x86 = loader/slaunch/i386_linux.c;
+   x86 = loader/slaunch/psp.c;
++  x86 = loader/slaunch/skinit.c;
++  x86 = loader/slaunch/skl.c;
+   x86 = loader/slaunch/x86_dlstub.c;
+   x86 = loader/slaunch/x86_dltrampoline.S;
+   i386_efi = loader/slaunch/x86_efi.c;
+diff --git a/grub-core/lib/i386/relocator32.S b/grub-core/lib/i386/relocator32.S
+index 25f162b0e..837d2e70f 100644
+--- a/grub-core/lib/i386/relocator32.S
++++ b/grub-core/lib/i386/relocator32.S
+@@ -115,6 +115,9 @@ VARIABLE(grub_relocator32_edx)
+ 	cmpl	$SLP_INTEL_TXT, %edi
+ 	je	LOCAL(intel_txt)
+ 
++	cmpl	$SLP_AMD_SKINIT, %edi
++	je	LOCAL(amd_skinit)
++
+ 	.byte	0xea
+ VARIABLE(grub_relocator32_eip)
+ 	.long	0
+@@ -123,6 +126,9 @@ VARIABLE(grub_relocator32_eip)
+ LOCAL(intel_txt):
+ 	getsec
+ 
++LOCAL(amd_skinit):
++	skinit
++
+ 	/* GDT. Copied from loader/i386/linux.c. */
+ 	.p2align	4
+ LOCAL(gdt):
+diff --git a/grub-core/loader/i386/linux.c b/grub-core/loader/i386/linux.c
+index e7c61dfbc..eb854374d 100644
+--- a/grub-core/loader/i386/linux.c
++++ b/grub-core/loader/i386/linux.c
+@@ -38,6 +38,7 @@
+ #include <grub/lib/cmdline.h>
+ #include <grub/i386/mmio.h>
+ #include <grub/i386/txt.h>
++#include <grub/i386/skinit.h>
+ #include <grub/linux.h>
+ #include <grub/machine/kernel.h>
+ #include <grub/safemath.h>
+@@ -227,6 +228,13 @@ allocate_pages (grub_size_t prot_size, grub_size_t *align,
+       if (err)
+         goto fail;
+     }
++  else if (grub_slaunch_platform_type () == SLP_AMD_SKINIT)
++    {
++      err = grub_sl_skinit_setup_linux (&slparams, relocator, total_size, prot_file_size,
++                                        prot_mode_mem, prot_mode_target);
++      if (err)
++        goto fail;
++    }
+ 
+   grub_dprintf ("linux", "prot_mode_mem = %p, prot_mode_target = %lx, prot_size = %x\n",
+                 prot_mode_mem, (unsigned long) prot_mode_target,
+@@ -659,16 +667,39 @@ grub_linux_boot (void)
+   }
+ #endif
+ 
+-  if (grub_slaunch_platform_type () == SLP_INTEL_TXT)
++  if (grub_slaunch_platform_type () == SLP_AMD_SKINIT)
++    {
++      /*
++       * AMD SKL final setup may relocate the SKL module. It is also what sets the SLRT and DCE
++       * values in slparams so this must be done before final setup and launch below.
++       */
++      err = grub_skl_setup_module (&slparams);
++      if (err != GRUB_ERR_NONE)
++        return err;
++    }
++
++  if (grub_slaunch_platform_type () != SLP_NONE)
+     {
+       struct grub_slr_table *slrt = (struct grub_slr_table *)slparams.slr_table_mem;
+       struct grub_slr_entry_dl_info *dlinfo;
+ 
++      slparams.efi_memmap_mem = efi_mmap_buf;
+       slparams.platform_type = grub_slaunch_platform_type();
+ 
+-      err = grub_txt_boot_prepare (&slparams);
+-      if (err != GRUB_ERR_NONE)
+-        return err;
++      if (grub_slaunch_platform_type () == SLP_INTEL_TXT)
++        {
++          err = grub_txt_boot_prepare (&slparams);
++          if (err != GRUB_ERR_NONE)
++	    return err;
++        }
++      else if (grub_slaunch_platform_type () == SLP_AMD_SKINIT)
++        {
++          err = grub_skl_prepare_bootloader_data (&slparams);
++          if (err != GRUB_ERR_NONE)
++            return err;
++        }
++      else
++        return GRUB_ERR_BAD_DEVICE;
+ 
+       dlinfo = grub_slr_next_entry_by_tag (slrt, NULL, GRUB_SLR_ENTRY_DL_INFO);
+       dl_entry ((grub_uint64_t)(grub_addr_t)&dlinfo->bl_context);
+diff --git a/grub-core/loader/slaunch/i386_linux.c b/grub-core/loader/slaunch/i386_linux.c
+index a8a4a9422..26d788099 100644
+--- a/grub-core/loader/slaunch/i386_linux.c
++++ b/grub-core/loader/slaunch/i386_linux.c
+@@ -239,3 +239,45 @@ grub_sl_txt_setup_linux (struct grub_slaunch_params *slparams, struct grub_reloc
+ fail:
+   return grub_errno;
+ }
++
++grub_err_t
++grub_sl_skinit_setup_linux (struct grub_slaunch_params *slparams, struct grub_relocator *relocator,
++                            grub_size_t total_size, grub_size_t prot_file_size,
++                            void *prot_mode_mem, grub_addr_t prot_mode_target)
++{
++  grub_relocator_chunk_t ch;
++
++  slparams->boot_type = GRUB_SL_BOOT_TYPE_LINUX;
++  slparams->relocator = relocator;
++
++  /* Zero out memory to get stable MLE measurements. */
++  grub_memset (prot_mode_mem, 0, total_size);
++
++  slparams->mle_mem = prot_mode_mem;
++  slparams->mle_start = prot_mode_target;
++  slparams->mle_size = prot_file_size;
++
++  /* Less to do on AMD. Just need to setup an event log buffer and some values */
++  if (grub_relocator_alloc_chunk_align (relocator, &ch, 0x1000000,
++                                        0xffffffff - GRUB_SLAUNCH_TPM_EVT_LOG_SIZE,
++                                        GRUB_SLAUNCH_TPM_EVT_LOG_SIZE, GRUB_PAGE_SIZE,
++                                        GRUB_RELOCATOR_PREFERENCE_NONE, 1))
++    goto fail;
++
++  slparams->tpm_evt_log_base = get_physical_target_address (ch);
++  slparams->tpm_evt_log_size = GRUB_SLAUNCH_TPM_EVT_LOG_SIZE;
++  /* It's OK to call this for AMD SKINIT because SKL erases the log before use. */
++  grub_txt_init_tpm_event_log (get_virtual_current_address (ch),
++                               slparams->tpm_evt_log_size);
++
++  grub_dprintf ("linux", "tpm_evt_log_base = %lx, tpm_evt_log_size = %x\n",
++                (unsigned long) slparams->tpm_evt_log_base,
++                (unsigned) slparams->tpm_evt_log_size);
++
++  /* The SLRT is located in the SKL image and the wake block is not needed on AMD */
++
++  return GRUB_ERR_NONE;
++
++fail:
++  return grub_errno;
++}
+diff --git a/grub-core/loader/slaunch/skinit.c b/grub-core/loader/slaunch/skinit.c
+new file mode 100644
+index 000000000..05539518d
+--- /dev/null
++++ b/grub-core/loader/slaunch/skinit.c
+@@ -0,0 +1,184 @@
++/*
++ * Copyright (c) 2024, Oracle and/or its affiliates.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above
++ *     copyright notice, this list of conditions and the following
++ *     disclaimer in the documentation and/or other materials provided
++ *     with the distribution.
++ *   * Neither the name of the Intel Corporation nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
++ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
++ * OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++#include <grub/loader.h>
++#include <grub/memory.h>
++#include <grub/normal.h>
++#include <grub/err.h>
++#include <grub/misc.h>
++#include <grub/time.h>
++#include <grub/types.h>
++#include <grub/dl.h>
++#include <grub/slr_table.h>
++#include <grub/slaunch.h>
++#include <grub/efi/efi.h>
++#include <grub/i386/msr.h>
++#include <grub/i386/mmio.h>
++#include <grub/i386/crfr.h>
++#include <grub/i386/linux.h>
++#include <grub/i386/psp.h>
++#include <grub/i386/skinit.h>
++
++grub_err_t
++grub_skinit_is_supported (void)
++{
++  grub_uint32_t eax, ebx, ecx, edx;
++
++  grub_cpuid (GRUB_AMD_CPUID_FEATURES, eax, ebx, ecx, edx);
++
++  if (ecx & GRUB_SKINIT_CPUID_FEATURE)
++    {
++      grub_dprintf ("slaunch", "SKINIT CPU and all needed capabilities present\n");
++      return GRUB_ERR_NONE;
++    }
++  return grub_error (GRUB_ERR_BAD_DEVICE, N_("CPU does not support SKINIT"));
++}
++
++grub_err_t
++grub_skinit_prepare_cpu (void)
++{
++  unsigned long eflags, cr0;
++  grub_uint64_t mcg_cap, mcg_stat;
++  grub_uint32_t i;
++
++  cr0 = grub_read_control_register (GRUB_CR0);
++
++  /* Cache must be enabled (CR0.CD = CR0.NW = 0). */
++  if (!(cr0 & GRUB_CR0_X86_CD))
++    cr0 &= ~GRUB_CR0_X86_CD;
++  if (cr0 & GRUB_CR0_X86_NW)
++    cr0 &= ~GRUB_CR0_X86_NW;
++
++  /*
++   * Native FPU error reporting must be enable for proper
++   * iteraction behavior
++   */
++  if (!(cr0 & GRUB_CR0_X86_NE))
++    cr0 |= GRUB_CR0_X86_NE;
++
++  grub_write_control_register (GRUB_CR0, cr0);
++
++  /* Cannot be in virtual-8086 mode (EFLAGS.VM=0) */
++  eflags = grub_read_flags_register ();
++  if (eflags & GRUB_EFLAGS_X86_VM)
++    grub_write_flags_register (eflags & ~GRUB_EFLAGS_X86_VM);
++
++  /*
++   * Verify all machine check status registers are clear (unless
++   * support preserving them)
++   */
++
++  /* No machine check in progress (IA32_MCG_STATUS.MCIP=1) */
++  mcg_stat = grub_rdmsr (GRUB_MSR_X86_MCG_STATUS);
++  if (mcg_stat & 0x04)
++    return -1;
++
++  /* Check if all machine check regs are clear */
++  mcg_cap = grub_rdmsr (GRUB_MSR_X86_MCG_CAP);
++  for (i = 0; i < (mcg_cap & GRUB_MSR_MCG_BANKCNT_MASK); i++)
++    {
++      mcg_stat = grub_rdmsr (GRUB_MSR_X86_MC0_STATUS + i * 4);
++      if (mcg_stat & (1ULL << 63))
++        return grub_error (GRUB_ERR_BAD_DEVICE, N_("secure launch MCG[%u] = %llx ERROR"),
++                           i, (unsigned long long)mcg_stat);
++    }
++
++  return GRUB_ERR_NONE;
++}
++
++grub_err_t
++grub_skinit_psp_memory_protect (struct grub_slaunch_params *slparams)
++{
++  struct linux_kernel_params *boot_params = slparams->boot_params;
++  grub_efi_memory_descriptor_t *memory_map_end;
++  grub_efi_memory_descriptor_t *desc;
++  struct grub_efi_info *efi_info;
++  grub_uint64_t efi_memmap, tmr_end = 0;
++  grub_err_t err;
++
++  /* A bit of work to extract the v2.08 EFI info from the linux params */
++  efi_info = (struct grub_efi_info *)((grub_uint8_t *)&(boot_params->efi_info.v0208)
++                                      + 2*sizeof(grub_uint32_t));
++
++  /*
++   * On legacy Linux boots, the relocator is used to map the EFI memory map buffer
++   * and return a virtual address to use. This virtual address is stashed in slparams.
++   */
++  efi_memmap = (grub_uint64_t)(grub_addr_t)slparams->efi_memmap_mem;
++
++  desc = (grub_efi_memory_descriptor_t *)(grub_addr_t) efi_memmap;
++  memory_map_end = (grub_efi_memory_descriptor_t *)(grub_addr_t) (efi_memmap + efi_info->efi_mmap_size);
++  for (; desc < memory_map_end; desc = (grub_efi_memory_descriptor_t *) ((char *) desc + efi_info->efi_mem_desc_size))
++    {
++      tmr_end = desc->physical_start + (desc->num_pages << 12);
++    }
++
++  grub_drtm_kick_psp ();
++
++  err = grub_drtm_get_capability ();
++  if (err != GRUB_ERR_NONE)
++    return err;
++
++  err = grub_drtm_setup_tmrs (tmr_end);
++  if ( err != GRUB_ERR_NONE)
++    return err;
++
++  return GRUB_ERR_NONE;
++}
++
++/* Broadcast INIT to all APs except self */
++void
++grub_skinit_send_init_ipi_shorthand (void)
++{
++  grub_addr_t icr_reg;
++  grub_uint32_t apic_base = (grub_uint32_t) grub_rdmsr (GRUB_MSR_X86_APICBASE);
++
++  /* accessing the ICR depends on the APIC mode */
++  if (apic_base & GRUB_MSR_X86_X2APICBASE_ENABLE)
++    {
++      grub_mb ();
++
++      /* access ICR through MSR */
++      grub_wrmsr (GRUB_MSR_X86_X2APICBASE_ICR, (GRUB_MSR_X86_ICR_DELIVER_EXCL_SELF|GRUB_MSR_X86_ICR_MODE_INIT));
++    }
++  else
++    {
++      /* mask off low order bits to get base address */
++      apic_base &= GRUB_MSR_X86_APICBASE_BASE;
++      /* access ICR through MMIO */
++      icr_reg = apic_base + GRUB_MSR_X86_LAPIC_ICR_LO;
++
++      grub_write32 ((GRUB_MSR_X86_ICR_DELIVER_EXCL_SELF|GRUB_MSR_X86_ICR_MODE_INIT), icr_reg);
++    }
++
++  grub_millisleep (1000);
++}
+diff --git a/grub-core/loader/slaunch/skl.c b/grub-core/loader/slaunch/skl.c
+new file mode 100644
+index 000000000..4f374ff62
+--- /dev/null
++++ b/grub-core/loader/slaunch/skl.c
+@@ -0,0 +1,223 @@
++/*
++ * Copyright (c) 2024, Oracle and/or its affiliates.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above
++ *     copyright notice, this list of conditions and the following
++ *     disclaimer in the documentation and/or other materials provided
++ *     with the distribution.
++ *   * Neither the name of the Intel Corporation nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
++ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
++ * OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++#include <grub/types.h>
++#include <grub/err.h>
++#include <grub/loader.h>
++#include <grub/relocator.h>
++#include <grub/slaunch.h>
++#include <grub/slr_table.h>
++#include <grub/i386/memory.h>
++#include <grub/i386/linux.h>
++#include <grub/i386/psp.h>
++#include <grub/i386/skinit.h>
++
++#define SLRT_SIZE GRUB_PAGE_SIZE
++
++#define SLB_MIN_ALIGNMENT 0x10000
++#define SLB_SIZE          0x10000
++
++static struct grub_skl_info skl_info = {
++  .uuid = {
++    0x78, 0xf1, 0x26, 0x8e, 0x04, 0x92, 0x11, 0xe9,
++    0x83, 0x2a, 0xc8, 0x5b, 0x76, 0xc4, 0xcc, 0x02,
++  },
++  .version = GRUB_SKL_VERSION,
++  .msb_key_algo = 0x14,
++  .msb_key_hash = { 0 },
++};
++
++static struct grub_sl_header *skl_module = NULL;
++static grub_uint32_t skl_size = 0;
++
++int
++grub_skl_set_module (const void *skl_base, grub_uint32_t size)
++{
++  struct grub_skl_info *info;
++  struct grub_sl_header *module = (struct grub_sl_header *) skl_base;
++
++  /* We need unused space after the module to fit SLRT there. */
++  const grub_uint32_t max_size = SLB_SIZE - SLRT_SIZE;
++
++  if (size > max_size)
++    {
++      grub_dprintf ("slaunch", "Possible SKL module is too large: %u > %u\n",
++                    size, max_size);
++      return 0;
++    }
++
++  if (module->length > size)
++    {
++      grub_dprintf ("slaunch",
++                    "Possible SKL module has wrong measured size: %u > %u\n",
++                    module->length, size);
++      return 0;
++    }
++
++  if (module->skl_entry_point >= module->length)
++    {
++      grub_dprintf ("slaunch",
++                    "Possible SKL module doesn't measure its entry: %u >= %u\n",
++                    module->skl_entry_point, module->length);
++      return 0;
++    }
++
++  if (module->skl_info_offset > module->length - sizeof (info->uuid))
++    {
++      grub_dprintf ("slaunch",
++                    "Possible SKL module doesn't measure info: %u > %lu\n",
++                    module->skl_info_offset,
++                    (unsigned long)(module->length - sizeof (info->uuid)));
++      return 0;
++    }
++
++  if ((unsigned)SLB_SIZE - module->bootloader_data_offset < SLRT_SIZE)
++    {
++      grub_dprintf ("slaunch",
++                    "Possible SKL module has not enough space for SLRT: %u < %lu\n",
++                    SLB_SIZE - module->bootloader_data_offset, SLRT_SIZE);
++      return 0;
++    }
++
++  if (module->length > module->bootloader_data_offset)
++    {
++      grub_dprintf ("slaunch",
++                    "Possible SKL module measures bootloader data: %u (measured prefix) > %u (data offset)\n",
++                    module->length, module->bootloader_data_offset);
++      return 0;
++    }
++
++  info = (struct grub_skl_info *) ((grub_uint8_t *) module + module->skl_info_offset);
++  if (info->version != GRUB_SKL_VERSION)
++    {
++      grub_dprintf ("slaunch", "Possible SKL module has unexpected version\n");
++      return 0;
++    }
++
++  if (grub_memcmp (info->uuid, skl_info.uuid, 16))
++    {
++      grub_dprintf ("slaunch", "Possible SKL module has unexpected UUID\n");
++      return 0;
++    }
++
++  skl_module = module;
++  skl_size = size;
++  return 1;
++}
++
++grub_err_t
++grub_skl_setup_module (struct grub_slaunch_params *slparams)
++{
++  grub_relocator_chunk_t ch;
++  grub_phys_addr_t p_addr;
++  grub_uint8_t *v_addr;
++  grub_err_t err;
++
++  err = grub_relocator_alloc_chunk_align (slparams->relocator, &ch,
++					  0, UP_TO_TOP32(SLB_SIZE), SLB_SIZE,
++					  SLB_MIN_ALIGNMENT,
++					  GRUB_RELOCATOR_PREFERENCE_HIGH,
++					  1);
++
++  if (err != GRUB_ERR_NONE)
++    return grub_error (err, N_("failed to allocate SLB"));
++
++  v_addr = get_virtual_current_address (ch);
++  p_addr = get_physical_target_address (ch);
++
++  grub_memcpy (v_addr, skl_module, skl_size);
++  skl_module = (struct grub_sl_header *) v_addr;
++
++  /* Once relocated, setup the DCE info in slparams */
++  slparams->dce_size = skl_size;
++  slparams->dce_base = (grub_uint64_t)p_addr;
++
++  /* The SLRT resides in the relocated SKL bootloader_data section, set the values here */
++  slparams->slr_table_base = (grub_uint64_t)p_addr + skl_module->bootloader_data_offset;
++  slparams->slr_table_size = SLB_SIZE - skl_module->bootloader_data_offset;
++  slparams->slr_table_mem = v_addr + skl_module->bootloader_data_offset;
++
++  return GRUB_ERR_NONE;
++}
++
++void
++grub_skl_link_amd_info (struct grub_slaunch_params *slparams)
++{
++  struct grub_slr_entry_amd_info *amd_info;
++
++  amd_info = grub_slr_next_entry_by_tag ((struct grub_slr_table *)(grub_addr_t) slparams->slr_table_base,
++                                         NULL,
++                                         GRUB_SLR_ENTRY_AMD_INFO);
++
++  amd_info->next = slparams->boot_params->hdr.setup_data;
++  slparams->boot_params->hdr.setup_data = (grub_uint64_t)(grub_addr_t)amd_info + sizeof (struct grub_slr_entry_hdr);
++}
++
++grub_err_t
++grub_skl_prepare_bootloader_data (struct grub_slaunch_params *slparams)
++{
++  struct grub_slr_table *slrt = (struct grub_slr_table *)slparams->slr_table_mem;
++  struct grub_slr_entry_amd_info slr_amd_info_staging = {0};
++  grub_err_t err;
++
++  /* Setup the staging for AMD platform specific entry */
++  slr_amd_info_staging.hdr.tag = GRUB_SLR_ENTRY_AMD_INFO;
++  slr_amd_info_staging.hdr.size = sizeof (struct grub_slr_entry_amd_info);
++  slr_amd_info_staging.type = GRUB_SETUP_SECURE_LAUNCH;
++  slr_amd_info_staging.len = sizeof (struct grub_slr_entry_amd_info);
++  slr_amd_info_staging.slrt_size = slparams->slr_table_size;
++  slr_amd_info_staging.slrt_base = slparams->slr_table_base;
++  slr_amd_info_staging.boot_params_base = slparams->boot_params_base;
++  slr_amd_info_staging.psp_version = grub_psp_version();
++
++  /* Setup the generic bits of the SLRT */
++  grub_slr_init_table (slrt, GRUB_SLR_AMD_SKINIT, slparams->slr_table_size);
++
++  /* Prepare SLR table staging area */
++  grub_init_slrt_storage ();
++
++  /* Create the SLR security policy */
++  err = grub_setup_slrt_policy (slparams, NULL);
++  if (err != GRUB_ERR_NONE)
++    return grub_error (err, N_("failed to build SLR policy"));
++
++  /* Setup DL entry point, DCE and DLME information */
++  grub_setup_slrt_dl_info (slparams);
++
++  /* Setup the DRTM log info */
++  grub_setup_slrt_log_info (slparams);
++
++  /* Final move of staging information into the actual SLRT */
++  grub_setup_slr_table (slparams, (struct grub_slr_entry_hdr *)&slr_amd_info_staging);
++
++  return GRUB_ERR_NONE;
++}
+diff --git a/grub-core/loader/slaunch/slaunch.c b/grub-core/loader/slaunch/slaunch.c
+index 8079bae7a..15a2b5a09 100644
+--- a/grub-core/loader/slaunch/slaunch.c
++++ b/grub-core/loader/slaunch/slaunch.c
+@@ -28,6 +28,7 @@
+ #include <grub/i386/msr.h>
+ #include <grub/i386/mmio.h>
+ #include <grub/i386/txt.h>
++#include <grub/i386/skinit.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -75,6 +76,15 @@ grub_cmd_slaunch (grub_command_t cmd __attribute__ ((unused)),
+ 
+       slp = SLP_INTEL_TXT;
+     }
++  else if (!grub_memcmp (manufacturer, "AuthenticAMD", 12))
++    {
++      err = grub_skinit_is_supported ();
++
++      if (err != GRUB_ERR_NONE)
++	return err;
++
++      slp = SLP_AMD_SKINIT;
++    }
+   else
+     return grub_error (GRUB_ERR_UNKNOWN_DEVICE, N_("CPU is unsupported"));
+ 
+@@ -95,7 +105,7 @@ grub_cmd_slaunch_module (grub_command_t cmd __attribute__ ((unused)),
+   if (slp == SLP_NONE)
+     return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("secure launch not enabled"));
+ 
+-  if (slp > SLP_INTEL_TXT)
++  if (slp > SLP_AMD_SKINIT)
+     return grub_error (GRUB_ERR_BAD_ARGUMENT,
+ 		       N_("unknown secure launch platform type: %d"), slp);
+ 
+@@ -141,6 +151,14 @@ grub_cmd_slaunch_module (grub_command_t cmd __attribute__ ((unused)),
+ 	  goto fail;
+ 	}
+     }
++  else if (slp == SLP_AMD_SKINIT)
++    {
++      if (!grub_skl_set_module (new_module, size))
++	{
++	  grub_error (GRUB_ERR_BAD_FILE_TYPE, N_("SKL module isn't correct"));
++	  goto fail;
++	}
++    }
+ 
+   grub_file_close (file);
+ 
+@@ -172,6 +190,10 @@ grub_cmd_slaunch_state (grub_command_t cmd __attribute__ ((unused)),
+       grub_printf ("Secure launcher: Intel TXT\n");
+       grub_txt_state_show ();
+     }
++  else if (slp == SLP_AMD_SKINIT)
++    {
++      grub_printf ("Secure launcher: AMD SKINIT\n");
++    }
+ 
+   return GRUB_ERR_NONE;
+ }
+diff --git a/grub-core/loader/slaunch/x86_dlstub.c b/grub-core/loader/slaunch/x86_dlstub.c
+index 2cdbdd886..fc1afed33 100644
+--- a/grub-core/loader/slaunch/x86_dlstub.c
++++ b/grub-core/loader/slaunch/x86_dlstub.c
+@@ -22,12 +22,16 @@
+ #include <grub/misc.h>
+ #include <grub/types.h>
+ #include <grub/dl.h>
++#include <grub/time.h>
+ #include <grub/slr_table.h>
+ #include <grub/slaunch.h>
+ #include <grub/cpu/relocator.h>
+ #include <grub/i386/msr.h>
+ #include <grub/i386/mmio.h>
++#include <grub/i386/psp.h>
++#include <grub/i386/tpm.h>
+ #include <grub/i386/txt.h>
++#include <grub/i386/skinit.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -42,11 +46,12 @@ void dl_entry (grub_uint64_t dl_ctx)
+ 
+   state.edi = slparams->platform_type;
+ 
++  /* This is done on both Intel and AMD platforms */
++  if (slparams->boot_type == GRUB_SL_BOOT_TYPE_EFI)
++    grub_update_slrt_policy (slparams);
++
+   if (slparams->platform_type == SLP_INTEL_TXT)
+     {
+-      if (slparams->boot_type == GRUB_SL_BOOT_TYPE_EFI)
+-        grub_update_slrt_policy (slparams);
+-
+       err = grub_set_mtrrs_for_acmod ((void *)(grub_addr_t)slparams->dce_base);
+       if (err)
+         {
+@@ -61,6 +66,33 @@ void dl_entry (grub_uint64_t dl_ctx)
+           return;
+         }
+     }
++  else if (slparams->platform_type == SLP_AMD_SKINIT)
++    {
++      grub_skl_link_amd_info (slparams);
++
++      err = grub_psp_discover ();
++      if (err == GRUB_ERR_NONE)
++        {
++          err = grub_skinit_psp_memory_protect (slparams);
++          if (err != GRUB_ERR_NONE)
++            {
++              grub_error (GRUB_ERR_BAD_DEVICE, N_("setup PSP TMR memory protection failed"));
++              return;
++            }
++        }
++      else
++        grub_tpm_relinquish_locality (0);
++
++      err = grub_skinit_prepare_cpu ();
++      if ( err )
++        {
++          grub_error (GRUB_ERR_BAD_DEVICE, N_("setup CPU for SKINIT failed"));
++          return;
++        }
++
++      /* Have to do this after EBS or things blow up */
++      grub_skinit_send_init_ipi_shorthand ();
++    }
+   else
+     {
+       grub_error (GRUB_ERR_BUG, N_("unknown dynamic launch platform: %d"), slparams->platform_type);
+@@ -75,11 +107,19 @@ void dl_entry (grub_uint64_t dl_ctx)
+ 
+   if (slparams->boot_type == GRUB_SL_BOOT_TYPE_LINUX || slparams->boot_type == GRUB_SL_BOOT_TYPE_MB2)
+     {
+-      /* Configure relocator GETSEC[SENTER] call. */
+-      state.eax = GRUB_SMX_LEAF_SENTER;
+-      state.ebx = slparams->dce_base;
+-      state.ecx = slparams->dce_size;
+-      state.edx = 0;
++      if (slparams->platform_type == SLP_INTEL_TXT)
++        {
++          /* Configure relocator GETSEC[SENTER] call. */
++          state.eax = GRUB_SMX_LEAF_SENTER;
++          state.ebx = slparams->dce_base;
++          state.ecx = slparams->dce_size;
++          state.edx = 0;
++        }
++      else if (slparams->platform_type == SLP_AMD_SKINIT)
++        {
++          state.eax = slparams->dce_base;
++        }
++
+       grub_relocator32_boot (slparams->relocator, state, 0);
+     }
+   else if (slparams->boot_type == GRUB_SL_BOOT_TYPE_EFI)
+diff --git a/include/grub/i386/skinit.h b/include/grub/i386/skinit.h
+new file mode 100644
+index 000000000..bcad5e902
+--- /dev/null
++++ b/include/grub/i386/skinit.h
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (c) 2024, Oracle and/or its affiliates.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above
++ *     copyright notice, this list of conditions and the following
++ *     disclaimer in the documentation and/or other materials provided
++ *     with the distribution.
++ *   * Neither the name of the Intel Corporation nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
++ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
++ * OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++#ifndef __SKINIT_H__
++#define __SKINIT_H__
++
++#define GRUB_SKL_VERSION 0
++
++/* This is the setup_data type reserved for Secure Launch defined in bootparams */
++#define GRUB_SETUP_SECURE_LAUNCH 10
++
++/* The AMD defined structure layout for the SLB. The last two fields are SL specific */
++struct grub_sl_header
++{
++  grub_uint16_t skl_entry_point;
++  grub_uint16_t length;
++  grub_uint8_t reserved[62];
++  grub_uint16_t skl_info_offset;
++  grub_uint16_t bootloader_data_offset;
++} GRUB_PACKED;
++
++struct grub_skl_info
++{
++  grub_uint8_t  uuid[16]; /* 78 f1 26 8e 04 92 11 e9  83 2a c8 5b 76 c4 cc 02 */
++  grub_uint32_t version;
++  grub_uint16_t msb_key_algo;
++  grub_uint8_t  msb_key_hash[64]; /* Support up to SHA512 */
++} GRUB_PACKED;
++
++extern int grub_skl_set_module (const void *skl_base, grub_uint32_t size);
++extern grub_err_t grub_skl_setup_module (struct grub_slaunch_params *slparams);
++extern grub_err_t grub_skl_prepare_bootloader_data (struct grub_slaunch_params *slparams);
++extern void grub_skl_link_amd_info (struct grub_slaunch_params *slparams);
++
++extern grub_err_t grub_skinit_is_supported (void);
++extern grub_err_t grub_skinit_psp_memory_protect (struct grub_slaunch_params *slparams);
++extern grub_err_t grub_skinit_prepare_cpu (void);
++extern void grub_skinit_send_init_ipi_shorthand (void);
++
++#endif /* __SKINIT_H__ */
+diff --git a/include/grub/slaunch.h b/include/grub/slaunch.h
+index d48c09434..70c94b3e7 100644
+--- a/include/grub/slaunch.h
++++ b/include/grub/slaunch.h
+@@ -24,6 +24,7 @@
+ /* Secure launch platform types. */
+ #define SLP_NONE	0
+ #define SLP_INTEL_TXT	1
++#define SLP_AMD_SKINIT	2
+ 
+ #define GRUB_SLAUNCH_TPM_EVT_LOG_SIZE	(8 * GRUB_PAGE_SIZE)
+ 
+@@ -72,6 +73,7 @@ struct grub_slaunch_params
+   grub_uint32_t platform_type;
+   struct linux_kernel_params *boot_params;
+   grub_uint64_t boot_params_base;
++  void *efi_memmap_mem;
+   struct grub_relocator *relocator;
+   grub_uint64_t slr_table_base;
+   grub_uint32_t slr_table_size;
+@@ -141,6 +143,10 @@ grub_err_t grub_sl_txt_setup_linux (struct grub_slaunch_params *slparams,
+                                     struct grub_relocator *relocator,
+                                     grub_size_t total_size, grub_size_t prot_size,
+                                     void **prot_mode_mem, grub_addr_t *prot_mode_target);
++grub_err_t grub_sl_skinit_setup_linux (struct grub_slaunch_params *slparams,
++                                       struct grub_relocator *relocator,
++                                       grub_size_t total_size, grub_size_t prot_file_size,
++                                       void *prot_mode_mem, grub_addr_t prot_mode_target);
+ 
+ /* EFI functions */
+ grub_err_t grub_sl_efi_txt_setup (struct grub_slaunch_params *slparams, void *kernel_addr,
+diff --git a/include/grub/slr_table.h b/include/grub/slr_table.h
+index 7d2751c33..117018d67 100644
+--- a/include/grub/slr_table.h
++++ b/include/grub/slr_table.h
+@@ -195,6 +195,22 @@ struct grub_slr_entry_intel_info
+   struct grub_slr_txt_mtrr_state saved_bsp_mtrrs;
+ } GRUB_PACKED;
+ 
++/*
++ * AMD SKINIT Info table
++ */
++struct grub_slr_entry_amd_info
++{
++  struct grub_slr_entry_hdr hdr;
++  grub_uint64_t next;
++  grub_uint32_t type;
++  grub_uint32_t len;
++  grub_uint64_t slrt_size;
++  grub_uint64_t slrt_base;
++  grub_uint64_t boot_params_base;
++  grub_uint16_t psp_version;
++  grub_uint16_t reserved[3];
++} GRUB_PACKED;
++
+ /*
+  * UEFI config measurement entry
+  */
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/Makefile.core.def: EXISTS (2829 lines)
+  grub-core/lib/i386/relocator32.S: EXISTS (140 lines)
+  grub-core/loader/i386/linux.c: EXISTS (1190 lines)
+  grub-core/loader/slaunch/i386_linux.c: MISSING on master
+  grub-core/loader/slaunch/skinit.c: MISSING on master
+  grub-core/loader/slaunch/skl.c: MISSING on master
+  grub-core/loader/slaunch/slaunch.c: MISSING on master
+  grub-core/loader/slaunch/x86_dlstub.c: MISSING on master
+  include/grub/i386/skinit.h: MISSING on master
+  include/grub/slaunch.h: MISSING on master
+  include/grub/slr_table.h: MISSING on master
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       NEW FEATURE (target files missing on master)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +665 -26 lines
+
+================================================================================

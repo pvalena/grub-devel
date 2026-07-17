@@ -1,0 +1,108 @@
+================================================================================
+EVALUATION: 2025-10-0305
+================================================================================
+
+Mailing list subject: [PATCH v6 12/12] btrfs: update doc link for bootloader support
+Commit subject:       btrfs: update doc link for bootloader support
+Author:               Michael Chang <mchang@suse.com>
+Date:                 2025-10-17
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-10-0294 (6 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+The old wiki link is obsolete and no longer updated, change it to the
+current documentation.
+
+Signed-off-by: Michael Chang <mchang@suse.com>
+Reviewed-by: Neal Gompa <ngompa13@gmail.com>
+Reviewed-by: Daniel Kiper <daniel.kiper@oracle.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch         | 23 +++++++++++++++++++++++
+ grub-core/fs/btrfs.c |  4 ++++
+ 2 files changed, 27 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/fs/btrfs.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/grub-core/fs/btrfs.c b/grub-core/fs/btrfs.c
+index fa5d860eb..8929320a3 100644
+--- a/grub-core/fs/btrfs.c
++++ b/grub-core/fs/btrfs.c
+@@ -2334,7 +2334,8 @@ struct embed_region {
+ };
+ 
+ /*
+- * https://btrfs.wiki.kernel.org/index.php/Manpage/btrfs(5)#BOOTLOADER_SUPPORT
++ * https://btrfs.readthedocs.io/en/latest/btrfs-man5.html#man-btrfs5-bootloader-support
++ * or invoke "man 5 btrfs" and visit the "bootloader support" subsection.
+  * The first 1 MiB on each device is unused with the exception of primary
+  * superblock that is on the offset 64 KiB and spans 4 KiB.
+  *
+-- 
+2.51.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 99150ea15864df0c776fbfa5b7275d29a895ac7a
+Author: Michael Chang <mchang@suse.com>
+Date:   Fri Oct 17 17:01:43 2025 +0800
+
+    btrfs: update doc link for bootloader support
+    
+    The old wiki link is obsolete and no longer updated, change it to the
+    current documentation.
+    
+    Signed-off-by: Michael Chang <mchang@suse.com>
+    Reviewed-by: Neal Gompa <ngompa13@gmail.com>
+    Reviewed-by: Daniel Kiper <daniel.kiper@oracle.com>
+
+diff --git a/grub-core/fs/btrfs.c b/grub-core/fs/btrfs.c
+index 61dd1676a..a823351f1 100644
+--- a/grub-core/fs/btrfs.c
++++ b/grub-core/fs/btrfs.c
+@@ -2335,7 +2335,11 @@ struct embed_region {
+ 
+ /*
+  * https://btrfs.readthedocs.io/en/latest/btrfs-man5.html#man-btrfs5-bootloader-support
++<<<<<<< HEAD
+  * or invoke "man 5 btrfs" and visit the "BOOTLOADER SUPPORT" subsection.
++=======
++ * or invoke "man 5 btrfs" and visit the "bootloader support" subsection.
++>>>>>>> btrfs: update doc link for bootloader support
+  * The first 1 MiB on each device is unused with the exception of primary
+  * superblock that is on the offset 64 KiB and spans 4 KiB.
+  *
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/fs/btrfs.c: EXISTS (2458 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +3 -4 lines
+
+================================================================================

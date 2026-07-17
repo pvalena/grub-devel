@@ -1,0 +1,111 @@
+================================================================================
+EVALUATION: 2025-04-0273
+================================================================================
+
+Mailing list subject: [RFC PATCH v2 7/7] multiboot2: Support SKINIT Secure Launch
+Commit subject:       multiboot2: Support SKINIT Secure Launch
+Author:               Michał Żygowski <michal.zygowski@3mdeb.com>
+Date:                 2025-05-01
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2025-04-0266 (7 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Signed-off-by: Michał Żygowski <michal.zygowski@3mdeb.com>
+Signed-off-by: Tomasz Żyjewski <tomasz.zyjewski@3mdeb.com>
+Signed-off-by: Krystian Hebel <krystian.hebel@3mdeb.com>
+Signed-off-by: Sergii Dmytruk <sergii.dmytruk@3mdeb.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 62 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 62 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/loader/multiboot_mbi2.c | 14 +++++++++++++-
+ grub-core/loader/slaunch/skl.c    |  2 +-
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/grub-core/loader/multiboot_mbi2.c b/grub-core/loader/multiboot_mbi2.c
+index e71b4d59f..9bd48bf30 100644
+--- a/grub-core/loader/multiboot_mbi2.c
++++ b/grub-core/loader/multiboot_mbi2.c
+@@ -37,6 +37,7 @@
+ #include <grub/net.h>
+ #include <grub/lib/cmdline.h>
+ #include <grub/i386/memory.h>
++#include <grub/i386/skinit.h>
+ #include <grub/i386/txt.h>
+ #include <grub/slaunch.h>
+ #include <grub/slr_table.h>
+@@ -430,7 +431,8 @@ grub_multiboot2_load (grub_file_t file, const char *filename)
+       slparams->tpm_evt_log_base = get_physical_target_address (ch);
+       slparams->tpm_evt_log_size = GRUB_SLAUNCH_TPM_EVT_LOG_SIZE;
+ 
+-      if (slparams->platform_type == SLP_INTEL_TXT)
++      /* It's OK to call this for AMD SKINIT because SKL erases the log before use. */
++      if (slparams->platform_type == SLP_INTEL_TXT || slparams->platform_type == SLP_AMD_SKINIT)
+         grub_txt_init_tpm_event_log (get_virtual_current_address (ch),
+                                      slparams->tpm_evt_log_size);
+ 
+@@ -1257,6 +1259,16 @@ grub_multiboot2_perform_slaunch (grub_uint32_t mbi_target,
+                    slparams->slr_table_mem,
+                    slparams->slr_table_size);
+     }
++  else if (slparams->platform_type == SLP_AMD_SKINIT)
++    {
++      err = grub_skl_setup_module (slparams);
++      if (err != GRUB_ERR_NONE)
++        return grub_error (err, "Failed to setup SKL for Multiboot2");
++
++      err = grub_skl_prepare_bootloader_data (slparams);
++      if (err != GRUB_ERR_NONE)
++        return grub_error (err, "SKL preparations have failed");
++    }
+   else
+     return grub_error (GRUB_ERR_BAD_DEVICE,
+                        N_("Unknown secure launcher platform type: %d\n"), slparams->platform_type);
+diff --git a/grub-core/loader/slaunch/skl.c b/grub-core/loader/slaunch/skl.c
+index cbabc6854..34a800596 100644
+--- a/grub-core/loader/slaunch/skl.c
++++ b/grub-core/loader/slaunch/skl.c
+@@ -149,7 +149,7 @@ grub_skl_setup_module (struct grub_slaunch_params *slparams)
+   grub_addr_t max_addr;
+ #endif
+ 
+-  if (slparams->boot_type == GRUB_SL_BOOT_TYPE_LINUX)
++  if (slparams->boot_type == GRUB_SL_BOOT_TYPE_LINUX || slparams->boot_type == GRUB_SL_BOOT_TYPE_MB2)
+     {
+       err = grub_relocator_alloc_chunk_align (slparams->relocator, &ch,
+                                               0, UP_TO_TOP32(SLB_SIZE), SLB_SIZE,
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/loader/multiboot_mbi2.c: EXISTS (1128 lines)
+  grub-core/loader/slaunch/skl.c: MISSING on master
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       NEW FEATURE (target files missing on master)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +16 -6 lines
+
+================================================================================

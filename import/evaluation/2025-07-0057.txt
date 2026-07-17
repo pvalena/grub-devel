@@ -1,0 +1,98 @@
+================================================================================
+EVALUATION: 2025-07-0057
+================================================================================
+
+Mailing list subject: [RFC PATCH 2/5] kern/list: Add a grub_list_append function
+Commit subject:       kern/list: Add a grub_list_append function
+Author:               Frediano Ziglio <frediano.ziglio@cloud.com>
+Date:                 2025-07-08
+Has FAILED.patch:     0
+Code files changed:   2
+Series:               2025-07-0047 (3 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Add an element at the end of a list.
+
+Signed-off-by: Frediano Ziglio <frediano.ziglio@cloud.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ grub-core/kern/list.c | 10 ++++++++++
+ include/grub/list.h   |  1 +
+ 2 files changed, 11 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+(no FAILED.patch)
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 1e21d7e70a38d431e1d560e8a1441d6f89fb112f
+Author: Frediano Ziglio <frediano.ziglio@cloud.com>
+Date:   Tue Jul 8 11:43:34 2025 +0100
+
+    kern/list: Add a grub_list_append function
+    
+    Add an element at the end of a list.
+    
+    Signed-off-by: Frediano Ziglio <frediano.ziglio@cloud.com>
+
+diff --git a/grub-core/kern/list.c b/grub-core/kern/list.c
+index 09761b0e5..c5bdaf94b 100644
+--- a/grub-core/kern/list.c
++++ b/grub-core/kern/list.c
+@@ -43,6 +43,16 @@ grub_list_push (grub_list_t *head, grub_list_t item)
+   *head = item;
+ }
+ 
++void
++grub_list_append (grub_list_t *head, grub_list_t item)
++{
++  while (*head)
++    head = &(*head)->next;
++  item->prev = head;
++  item->next = NULL;
++  *head = item;
++}
++
+ void
+ grub_list_remove (grub_list_t item)
+ {
+diff --git a/include/grub/list.h b/include/grub/list.h
+index 094eaf9cd..c11c180a7 100644
+--- a/include/grub/list.h
++++ b/include/grub/list.h
+@@ -33,6 +33,7 @@ struct grub_list
+ typedef struct grub_list *grub_list_t;
+ 
+ void EXPORT_FUNC(grub_list_push) (grub_list_t *head, grub_list_t item);
++void EXPORT_FUNC(grub_list_append) (grub_list_t *head, grub_list_t item);
+ void EXPORT_FUNC(grub_list_remove) (grub_list_t item);
+ grub_size_t EXPORT_FUNC(grub_list_length) (grub_list_t head);
+ 
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 2 code file(s) + FAILED.patch
+Patch size: +0
+0 -0
+0 lines
+
+================================================================================

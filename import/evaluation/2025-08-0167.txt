@@ -1,0 +1,246 @@
+================================================================================
+EVALUATION: 2025-08-0167
+================================================================================
+
+Mailing list subject: [PATCH 1/1] bootstrap: Ensure shallow GNULIB clone Works on Newer GIT
+Commit subject:       bootstrap: Ensure shallow GNULIB clone Works on Newer GIT
+Author:               Andrew Hamilton <adhamilt@gmail.com>
+Date:                 2025-08-23
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Update the bootstrap script to be compatible with newer versions
+of GIT that changed the git clone -h output from containing:
+"--depth"
+to:
+"--[no-]depth"
+Use a regular expression that will support either.
+In the future, when GNULIB version is bumped, this bootstrap
+change can be replaced by the latest GNULIB bootstrap script
+as it appears GNULIB bootstrap now assumes GIT supports the
+depth option. This change avoids a full clone on GNULIB, saving
+something like 50 MB.
+
+Fixes: https://savannah.gnu.org/bugs/?66357
+
+Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch |  27 ++++++++++++++
+ bootstrap    | 116 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 143 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ bootstrap | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/bootstrap b/bootstrap
+index dc2238f4a..be8d3582e 100755
+--- a/bootstrap
++++ b/bootstrap
+@@ -762,11 +762,11 @@ if $use_gnulib; then
+ 
+       shallow=
+       if test -z "$GNULIB_REVISION"; then
+-        git clone -h 2>&1 | grep -- --depth > /dev/null && shallow='--depth 2'
++        git clone -h 2>&1 | grep -E -- '--(\[no-\])?depth' > /dev/null && shallow='--depth 2'
+         git clone $shallow ${GNULIB_URL:-$default_gnulib_url} "$gnulib_path" \
+           || cleanup_gnulib
+       else
+-        git fetch -h 2>&1 | grep -- --depth > /dev/null && shallow='--depth 2'
++        git fetch -h 2>&1 | grep -E -- '--(\[no-\])?depth' > /dev/null && shallow='--depth 2'
+         mkdir -p "$gnulib_path"
+         # Only want a shallow checkout of $GNULIB_REVISION, but git does not
+         # support cloning by commit hash. So attempt a shallow fetch by commit
+-- 
+2.47.2
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit e71ab45b172454801b0ec108ed746e3588823a8e
+Author: Andrew Hamilton <adhamilt@gmail.com>
+Date:   Sat Aug 23 16:22:21 2025 -0500
+
+    bootstrap: Ensure shallow GNULIB clone Works on Newer GIT
+    
+    Update the bootstrap script to be compatible with newer versions
+    of GIT that changed the git clone -h output from containing:
+    "--depth"
+    to:
+    "--[no-]depth"
+    Use a regular expression that will support either.
+    In the future, when GNULIB version is bumped, this bootstrap
+    change can be replaced by the latest GNULIB bootstrap script
+    as it appears GNULIB bootstrap now assumes GIT supports the
+    depth option. This change avoids a full clone on GNULIB, saving
+    something like 50 MB.
+    
+    Fixes: https://savannah.gnu.org/bugs/?66357
+    
+    Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+diff --git a/bootstrap b/bootstrap
+index dc9fb4383..2b125562b 100755
+--- a/bootstrap
++++ b/bootstrap
+@@ -1612,11 +1612,127 @@ if $pull && { $use_git || test -z "$SKIP_PO"; }; then
+     || die "could not fetch auxiliary files"
+ fi
+ 
++<<<<<<< HEAD
+ if $gen; then
+   autogen \
+       `if $copy; then echo ' --copy'; fi` \
+       `if test -z "$checkout_only_file"; then echo ' --force'; fi` \
+     || die "could not generate auxiliary files"
++=======
++
++cleanup_gnulib() {
++  status=$?
++  rm -fr "$gnulib_path"
++  exit $status
++}
++
++git_modules_config () {
++  test -f .gitmodules && git config --file .gitmodules "$@"
++}
++
++if $use_gnulib; then
++  if $use_git; then
++    gnulib_path=$(git_modules_config submodule.gnulib.path)
++    test -z "$gnulib_path" && gnulib_path=gnulib
++  fi
++
++  # Get gnulib files.  Populate $GNULIB_SRCDIR, possibly updating a
++  # submodule, for use in the rest of the script.
++
++  case ${GNULIB_SRCDIR--} in
++  -)
++    # Note that $use_git is necessarily true in this case.
++    if git_modules_config submodule.gnulib.url >/dev/null; then
++      echo "$0: getting gnulib files..."
++      git submodule init -- "$gnulib_path" || exit $?
++      git submodule update -- "$gnulib_path" || exit $?
++
++    elif [ ! -d "$gnulib_path" ]; then
++      echo "$0: getting gnulib files..."
++
++      trap cleanup_gnulib 1 2 13 15
++
++      shallow=
++      if test -z "$GNULIB_REVISION"; then
++        git clone -h 2>&1 | grep -E -- '--(\[no-\])?depth' > /dev/null && shallow='--depth 2'
++        git clone $shallow ${GNULIB_URL:-$default_gnulib_url} "$gnulib_path" \
++          || cleanup_gnulib
++      else
++        git fetch -h 2>&1 | grep -E -- '--(\[no-\])?depth' > /dev/null && shallow='--depth 2'
++        mkdir -p "$gnulib_path"
++        # Only want a shallow checkout of $GNULIB_REVISION, but git does not
++        # support cloning by commit hash. So attempt a shallow fetch by commit
++        # hash to minimize the amount of data downloaded and changes needed to
++        # be processed, which can drastically reduce download and processing
++        # time for checkout. If the fetch by commit fails, a shallow fetch can
++        # not be performed because we do not know what the depth of the commit
++        # is without fetching all commits. So fallback to fetching all commits.
++        git -C "$gnulib_path" init
++        git -C "$gnulib_path" remote add origin ${GNULIB_URL:-$default_gnulib_url}
++        git -C "$gnulib_path" fetch $shallow origin "$GNULIB_REVISION" \
++          || git -C "$gnulib_path" fetch origin \
++          || cleanup_gnulib
++        git -C "$gnulib_path" reset --hard FETCH_HEAD
++      fi
++
++      trap - 1 2 13 15
++    fi
++    GNULIB_SRCDIR=$gnulib_path
++    ;;
++  *)
++    # Use GNULIB_SRCDIR directly or as a reference.
++    if $use_git && test -d "$GNULIB_SRCDIR"/.git && \
++          git_modules_config submodule.gnulib.url >/dev/null; then
++      echo "$0: getting gnulib files..."
++      if git submodule -h|grep -- --reference > /dev/null; then
++        # Prefer the one-liner available in git 1.6.4 or newer.
++        git submodule update --init --reference "$GNULIB_SRCDIR" \
++          "$gnulib_path" || exit $?
++      else
++        # This fallback allows at least git 1.5.5.
++        if test -f "$gnulib_path"/gnulib-tool; then
++          # Since file already exists, assume submodule init already complete.
++          git submodule update -- "$gnulib_path" || exit $?
++        else
++          # Older git can't clone into an empty directory.
++          rmdir "$gnulib_path" 2>/dev/null
++          git clone --reference "$GNULIB_SRCDIR" \
++            "$(git_modules_config submodule.gnulib.url)" "$gnulib_path" \
++            && git submodule init -- "$gnulib_path" \
++            && git submodule update -- "$gnulib_path" \
++            || exit $?
++        fi
++      fi
++      GNULIB_SRCDIR=$gnulib_path
++    fi
++    ;;
++  esac
++
++  if test -d "$GNULIB_SRCDIR"/.git && test -n "$GNULIB_REVISION" \
++     && ! git_modules_config submodule.gnulib.url >/dev/null; then
++    (cd "$GNULIB_SRCDIR" && git checkout "$GNULIB_REVISION") || cleanup_gnulib
++  fi
++
++  # $GNULIB_SRCDIR now points to the version of gnulib to use, and
++  # we no longer need to use git or $gnulib_path below here.
++
++  if $bootstrap_sync; then
++    cmp -s "$0" "$GNULIB_SRCDIR/build-aux/bootstrap" || {
++      echo "$0: updating bootstrap and restarting..."
++      case $(sh -c 'echo "$1"' -- a) in
++        a) ignored=--;;
++        *) ignored=ignored;;
++      esac
++      exec sh -c \
++        'cp "$1" "$2" && shift && exec "${CONFIG_SHELL-/bin/sh}" "$@"' \
++        $ignored "$GNULIB_SRCDIR/build-aux/bootstrap" \
++        "$0" "$@" --no-bootstrap-sync
++    }
++  fi
++
++  gnulib_tool=$GNULIB_SRCDIR/gnulib-tool
++  <$gnulib_tool || exit $?
++>>>>>>> bootstrap: Ensure shallow GNULIB clone Works on Newer GIT
+ fi
+ 
+ # ----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  bootstrap: EXISTS (1630 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +3 -5 lines
+
+================================================================================

@@ -1,0 +1,138 @@
+================================================================================
+EVALUATION: 2025-06-0011
+================================================================================
+
+Mailing list subject: [PATCH] unix/hostdisk: Fix signed integer overflow
+Commit subject:       unix/hostdisk: Fix signed integer overflow
+Author:               Lidong Chen <lidong.chen@oracle.com>
+Date:                 2025-06-05
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+The potential overflow issue arises at "size += ret;" because 'size'
+is of type ssize_t (signed) while 'len' is size_t (unsigned). Repeatedly
+adding read sizes ('ret') to 'size' can potentially exceed the maximum
+value of ssize_t, causing it to overflow into a negative or incorrect value.
+The fix is to ensure 'len' is within the range of GRUB_SSIZE_MAX.
+
+Fixes: CID 473850
+Fixes: CID 473863
+
+Signed-off-by: Lidong Chen <lidong.chen@oracle.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                    | 33 +++++++++++++++++++++++++++++++++
+ grub-core/osdep/unix/hostdisk.c |  8 ++++++++
+ 2 files changed, 41 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/osdep/unix/hostdisk.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/grub-core/osdep/unix/hostdisk.c b/grub-core/osdep/unix/hostdisk.c
+index 3a00d7451..613406770 100644
+--- a/grub-core/osdep/unix/hostdisk.c
++++ b/grub-core/osdep/unix/hostdisk.c
+@@ -101,6 +101,9 @@ grub_util_fd_read (grub_util_fd_t fd, char *buf, size_t len)
+ {
+   ssize_t size = 0;
+ 
++  if (len > GRUB_SSIZE_MAX)
++    return -1;
++
+   while (len)
+     {
+       ssize_t ret = read (fd, buf, len);
+@@ -131,6 +134,9 @@ grub_util_fd_write (grub_util_fd_t fd, const char *buf, size_t len)
+ {
+   ssize_t size = 0;
+ 
++  if (len > GRUB_SSIZE_MAX)
++    return -1;
++
+   while (len)
+     {
+       ssize_t ret = write (fd, buf, len);
+-- 
+2.34.1
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit c5fe5e20d25235a2c487cb7b6b5023b3b28fb4a1
+Author: Lidong Chen <lidong.chen@oracle.com>
+Date:   Thu Jun 5 05:03:19 2025 +0000
+
+    unix/hostdisk: Fix signed integer overflow
+    
+    The potential overflow issue arises at "size += ret;" because 'size'
+    is of type ssize_t (signed) while 'len' is size_t (unsigned). Repeatedly
+    adding read sizes ('ret') to 'size' can potentially exceed the maximum
+    value of ssize_t, causing it to overflow into a negative or incorrect value.
+    The fix is to ensure 'len' is within the range of GRUB_SSIZE_MAX.
+    
+    Fixes: CID 473850
+    Fixes: CID 473863
+    
+    Signed-off-by: Lidong Chen <lidong.chen@oracle.com>
+
+diff --git a/grub-core/osdep/unix/hostdisk.c b/grub-core/osdep/unix/hostdisk.c
+index 353db01f6..49966192e 100644
+--- a/grub-core/osdep/unix/hostdisk.c
++++ b/grub-core/osdep/unix/hostdisk.c
+@@ -101,7 +101,11 @@ grub_util_fd_read (grub_util_fd_t fd, char *buf, size_t len)
+ {
+   ssize_t size = 0;
+ 
++<<<<<<< HEAD
+   if (len > SSIZE_MAX)
++=======
++  if (len > GRUB_SSIZE_MAX)
++>>>>>>> unix/hostdisk: Fix signed integer overflow
+     return -1;
+ 
+   while (len)
+@@ -134,7 +138,11 @@ grub_util_fd_write (grub_util_fd_t fd, const char *buf, size_t len)
+ {
+   ssize_t size = 0;
+ 
++<<<<<<< HEAD
+   if (len > SSIZE_MAX)
++=======
++  if (len > GRUB_SSIZE_MAX)
++>>>>>>> unix/hostdisk: Fix signed integer overflow
+     return -1;
+ 
+   while (len)
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/osdep/unix/hostdisk.c: EXISTS (325 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +7 -3 lines
+
+================================================================================

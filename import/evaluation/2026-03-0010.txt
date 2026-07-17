@@ -1,0 +1,166 @@
+================================================================================
+EVALUATION: 2026-03-0010
+================================================================================
+
+Mailing list subject: [PATCH v4 4/9] Revert "configure: Check linker for --image-base
+Commit subject:       Revert "configure: Check linker for --image-base support"
+Author:               Nicholas Vinson <nvinson234@gmail.com>
+Date:                 2026-03-03
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2026-03-0010 (5 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+This reverts commit 1a5417f39a0ccefcdd5440f2a67f84d2d2e26960.
+
+Signed-off-by: Nicholas Vinson <nvinson234@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 65 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ configure.ac |  9 +++++++++
+ 2 files changed, 74 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ acinclude.m4 |  5 -----
+ configure.ac | 14 ++------------
+ 2 files changed, 2 insertions(+), 17 deletions(-)
+
+diff --git a/acinclude.m4 b/acinclude.m4
+index 70c1912f8..fa7840f09 100644
+--- a/acinclude.m4
++++ b/acinclude.m4
+@@ -79,11 +79,6 @@ AC_DEFUN([grub_PROG_OBJCOPY_ABSOLUTE],
+ [AC_MSG_CHECKING([whether ${TARGET_OBJCOPY} works for absolute addresses])
+ AC_CACHE_VAL(grub_cv_prog_objcopy_absolute,
+ [cat > conftest.c <<\EOF
+-asm (
+-    ".globl start, _start, __start\n"
+-    ".ifdef cmain; .set start = _start = __start = cmain\n.endif\n"
+-    ".ifdef _cmain; .set start = _start = __start = _cmain\n.endif\n"
+-);
+ void cmain (void);
+ void
+ cmain (void)
+diff --git a/configure.ac b/configure.ac
+index 45f19f188..209c0fb11 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1461,6 +1461,7 @@ elif test x$grub_cv_target_cc_link_format = x-mi386pe || test x$grub_cv_target_c
+   TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-cygwin-img-ld.sc"
+   TARGET_IMG_LDFLAGS="-Wl,-T${TARGET_IMG_LDSCRIPT}"
+   TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-cygwin-img-ld.sc"
++  TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"
+   TARGET_IMG_CFLAGS=
+ else
+   TARGET_APPLE_LINKER=0
+@@ -1468,6 +1469,7 @@ else
+   TARGET_IMG_LDSCRIPT=
+   TARGET_IMG_LDFLAGS='-Wl,-N'
+   TARGET_IMG_LDFLAGS_AC='-Wl,-N'
++  TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"
+   TARGET_IMG_CFLAGS=
+ fi
+ 
+@@ -1793,18 +1795,6 @@ LIBS=""
+ grub_ASM_USCORE
+ grub_PROG_TARGET_CC
+ if test "x$TARGET_APPLE_LINKER" != x1 ; then
+-AX_CHECK_LINK_FLAG([-Wl,--image-base,0x400000],
+-    [TARGET_IMG_BASE_LDOPT="-Wl,--image-base"],
+-    [TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"],
+-    [],
+-    [AC_LANG_SOURCE([
+-asm (".globl start; start:");
+-asm (".globl _start; _start:");
+-asm (".globl __start; __start:");
+-void __main (void);
+-void __main (void) {}
+-int main (void);
+-    ])])
+ grub_PROG_OBJCOPY_ABSOLUTE
+ fi
+ grub_PROG_LD_BUILD_ID_NONE
+-- 
+2.53.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit aff9bbf37acc04eb09df1b6382f98d053d94de6e
+Author: Nicholas Vinson <nvinson234@gmail.com>
+Date:   Tue Mar 3 21:41:16 2026 -0500
+
+    Revert "configure: Check linker for --image-base support"
+    
+    This reverts commit 1a5417f39a0ccefcdd5440f2a67f84d2d2e26960.
+    
+    Signed-off-by: Nicholas Vinson <nvinson234@gmail.com>
+
+diff --git a/configure.ac b/configure.ac
+index 5354dc72f..ec60fce61 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1488,9 +1488,14 @@ elif test x$grub_cv_target_cc_link_format = x-mi386pe || test x$grub_cv_target_c
+   TARGET_LDFLAGS_OLDMAGIC="-Wl,-N"
+   TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-cygwin-img.lds"
+   TARGET_IMG_LDFLAGS="-Wl,-T${TARGET_IMG_LDSCRIPT}"
++<<<<<<< HEAD
+   TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-cygwin-img.lds"
+   TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
+   TARGET_IMG_BASE_LDOPT_ARG_SEP="="
++=======
++  TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-cygwin-img-ld.sc"
++  TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"
++>>>>>>> Revert "configure: Check linker for --image-base support"
+   TARGET_IMG_CFLAGS=
+ else
+   TARGET_APPLE_LINKER=0
+@@ -1498,6 +1503,7 @@ else
+   TARGET_IMG_LDSCRIPT=
+   TARGET_IMG_LDFLAGS='-Wl,-N'
+   TARGET_IMG_LDFLAGS_AC='-Wl,-N'
++<<<<<<< HEAD
+   if test "x$target_cpu-$platform" != "xi386-pc"; then
+     AX_CHECK_LINK_FLAG([-Wl,--image-base,0],
+         [TARGET_IMG_BASE_LDOPT="-Wl,--image-base,0 -Wl,-Ttext"],
+@@ -1519,6 +1525,9 @@ else
+     TARGET_IMG_LDFLAGS="${TARGET_IMG_LDFLAGS} -Wl,-T${TARGET_IMG_LDSCRIPT}"
+     TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-pc-kernel.lds"
+   fi
++=======
++  TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"
++>>>>>>> Revert "configure: Check linker for --image-base support"
+   TARGET_IMG_CFLAGS=
+ fi
+ 
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  acinclude.m4: EXISTS (522 lines)
+  configure.ac: EXISTS (2703 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +4 -21 lines
+
+================================================================================

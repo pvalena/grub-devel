@@ -1,0 +1,248 @@
+================================================================================
+EVALUATION: 2025-07-0033
+================================================================================
+
+Mailing list subject: [PATCH v14 01/15] Import libgcrypt 1.11
+Commit subject:       Import libgcrypt 1.11
+Author:               Vladimir Serbinenko <phcoder@gmail.com>
+Date:                 2025-07-07
+Series:               2025-07-0029 (11 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+We currently use an old version of libcrypt which
+results in us having fewer ciphers and missing on many
+other improvements.
+
+Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                                | 261695 +++++++++++++++++++++++++
+ grub-core/lib/libgcrypt/cipher/kem.c        |      4 +
+ grub-core/lib/libgcrypt/mpi/alpha/distfiles |      8 +
+ grub-core/lib/libgcrypt/src/gcrypt-int.h    |     54 +
+ 4 files changed, 261761 insertions(+)
+  ... (hundreds of files — full libgcrypt 1.11 import)
+
+--------------------------------------------------------------------------------
+FAILED.patch (first 200 lines — full patch is ~260K lines)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/lib/libgcrypt/AUTHORS               |   274 +
+ grub-core/lib/libgcrypt/COPYING               |   339 +
+ grub-core/lib/libgcrypt/COPYING.LIB           |   502 +
+ grub-core/lib/libgcrypt/LICENSES              |   319 +
+ grub-core/lib/libgcrypt/README                |   278 +
+ grub-core/lib/libgcrypt/README.GIT            |    49 +
+ grub-core/lib/libgcrypt/THANKS                |   168 +
+ grub-core/lib/libgcrypt/VERSION               |     1 +
+ grub-core/lib/libgcrypt/cipher/ChangeLog      |  3990 ---
+ grub-core/lib/libgcrypt/cipher/ChangeLog-2011 |    40 +-
+ grub-core/lib/libgcrypt/cipher/Makefile.am    |   330 +-
+ grub-core/lib/libgcrypt/cipher/Manifest       |    73 -
+ grub-core/lib/libgcrypt/cipher/ac.c           |  3301 --
+ .../lib/libgcrypt/cipher/arcfour-amd64.S      |   108 +
+ grub-core/lib/libgcrypt/cipher/arcfour.c      |    93 +-
+ .../libgcrypt/cipher/aria-aesni-avx-amd64.S   |  1440 +
+ .../libgcrypt/cipher/aria-aesni-avx2-amd64.S  |  1830 ++
+ .../libgcrypt/cipher/aria-gfni-avx512-amd64.S |  1010 +
+ grub-core/lib/libgcrypt/cipher/aria.c         |  1768 ++
+ .../lib/libgcrypt/cipher/asm-common-aarch64.h |   132 +
+ .../lib/libgcrypt/cipher/asm-common-amd64.h   |   213 +
+ .../lib/libgcrypt/cipher/asm-common-i386.h    |   161 +
+ .../lib/libgcrypt/cipher/asm-common-s390x.h   |    90 +
+ .../lib/libgcrypt/cipher/asm-inline-s390x.h   |   205 +
+ .../libgcrypt/cipher/asm-poly1305-aarch64.h   |   245 +
+ .../lib/libgcrypt/cipher/asm-poly1305-amd64.h |   171 +
+ .../lib/libgcrypt/cipher/asm-poly1305-s390x.h |   140 +
+ grub-core/lib/libgcrypt/cipher/bithelp.h      |   111 +-
+ grub-core/lib/libgcrypt/cipher/blake2.c       |  1086 +
+ .../lib/libgcrypt/cipher/blake2b-amd64-avx2.S |   301 +
+ .../libgcrypt/cipher/blake2b-amd64-avx512.S   |   429 +
+ .../lib/libgcrypt/cipher/blake2s-amd64-avx.S  |   281 +
+ .../libgcrypt/cipher/blake2s-amd64-avx512.S   |   397 +
+ .../lib/libgcrypt/cipher/blowfish-amd64.S     |   601 +
+ grub-core/lib/libgcrypt/cipher/blowfish-arm.S |   743 +
+ grub-core/lib/libgcrypt/cipher/blowfish.c     |   802 +-
+ grub-core/lib/libgcrypt/cipher/bufhelp.h      |   458 +-
+ grub-core/lib/libgcrypt/cipher/bulkhelp.h     |   493 +
+ .../libgcrypt/cipher/camellia-aarch64-ce.c    |    42 +
+ .../lib/libgcrypt/cipher/camellia-aarch64.S   |   585 +
+ .../cipher/camellia-aesni-avx-amd64.S         |  2802 ++
+ .../cipher/camellia-aesni-avx2-amd64.S        |    34 +
+ .../cipher/camellia-aesni-avx2-amd64.h        |  2327 ++
+ grub-core/lib/libgcrypt/cipher/camellia-arm.S |   626 +
+ .../cipher/camellia-gfni-avx2-amd64.S         |    34 +
+ .../cipher/camellia-gfni-avx512-amd64.S       |  1634 +
+ .../lib/libgcrypt/cipher/camellia-glue.c      |  1670 +-
+ .../lib/libgcrypt/cipher/camellia-ppc8le.c    |    47 +
+ .../lib/libgcrypt/cipher/camellia-ppc9le.c    |    47 +
+ .../lib/libgcrypt/cipher/camellia-simd128.h   |  2235 ++
+ .../cipher/camellia-vaes-avx2-amd64.S         |    35 +
+ grub-core/lib/libgcrypt/cipher/camellia.c     |   172 +-
+ grub-core/lib/libgcrypt/cipher/camellia.h     |    34 +-
+ grub-core/lib/libgcrypt/cipher/cast5-amd64.S  |   663 +
+ grub-core/lib/libgcrypt/cipher/cast5-arm.S    |   728 +
+ grub-core/lib/libgcrypt/cipher/cast5.c        |   775 +-
+ .../lib/libgcrypt/cipher/chacha20-aarch64.S   |   650 +
+ .../libgcrypt/cipher/chacha20-amd64-avx2.S    |   604 +
+ .../libgcrypt/cipher/chacha20-amd64-avx512.S  |   736 +
+ .../libgcrypt/cipher/chacha20-amd64-ssse3.S   |  1015 +
+ .../libgcrypt/cipher/chacha20-armv7-neon.S    |   393 +
+ .../lib/libgcrypt/cipher/chacha20-p10le-8x.s  |   864 +
+ grub-core/lib/libgcrypt/cipher/chacha20-ppc.c |   750 +
+ .../lib/libgcrypt/cipher/chacha20-s390x.S     |  1566 +
+ grub-core/lib/libgcrypt/cipher/chacha20.c     |  1450 +
+ .../lib/libgcrypt/cipher/cipher-aeswrap.c     |   380 +
+ grub-core/lib/libgcrypt/cipher/cipher-cbc.c   |   292 +
+ grub-core/lib/libgcrypt/cipher/cipher-ccm.c   |   419 +
+ grub-core/lib/libgcrypt/cipher/cipher-cfb.c   |   317 +
+ grub-core/lib/libgcrypt/cipher/cipher-cmac.c  |   292 +
+ grub-core/lib/libgcrypt/cipher/cipher-ctr.c   |   131 +
+ grub-core/lib/libgcrypt/cipher/cipher-eax.c   |   293 +
+ .../libgcrypt/cipher/cipher-gcm-armv7-neon.S  |   341 +
+ .../cipher/cipher-gcm-armv8-aarch32-ce.S      |   588 +
+ .../cipher/cipher-gcm-armv8-aarch64-ce.S      |   633 +
+ .../cipher/cipher-gcm-intel-pclmul.c          |  2025 ++
+ .../lib/libgcrypt/cipher/cipher-gcm-ppc.c     |   548 +
+ .../lib/libgcrypt/cipher/cipher-gcm-siv.c     |   664 +
+ grub-core/lib/libgcrypt/cipher/cipher-gcm.c   |  1260 +
+ .../lib/libgcrypt/cipher/cipher-internal.h    |   975 +
+ grub-core/lib/libgcrypt/cipher/cipher-ocb.c   |   763 +
+ grub-core/lib/libgcrypt/cipher/cipher-ofb.c   |   108 +
+ .../lib/libgcrypt/cipher/cipher-poly1305.c    |   383 +
+ grub-core/lib/libgcrypt/cipher/cipher-siv.c   |   375 +
+ grub-core/lib/libgcrypt/cipher/cipher-xts.c   |   189 +
+ grub-core/lib/libgcrypt/cipher/cipher.c       |  2702 +-
+ .../libgcrypt/cipher/crc-armv8-aarch64-ce.S   |   500 +
+ grub-core/lib/libgcrypt/cipher/crc-armv8-ce.c |   229 +
+ .../lib/libgcrypt/cipher/crc-intel-pclmul.c   |   939 +
+ grub-core/lib/libgcrypt/cipher/crc-ppc.c      |   656 +
+ grub-core/lib/libgcrypt/cipher/crc.c          |   192 +-
+ grub-core/lib/libgcrypt/cipher/des-amd64.S    |  1116 +
+ grub-core/lib/libgcrypt/cipher/des.c          |   301 +-
+ grub-core/lib/libgcrypt/cipher/dsa-common.c   |   473 +
+ grub-core/lib/libgcrypt/cipher/dsa.c          |  1207 +-
+ grub-core/lib/libgcrypt/cipher/ecc-common.h   |   143 +
+ grub-core/lib/libgcrypt/cipher/ecc-curves.c   |  1587 +
+ grub-core/lib/libgcrypt/cipher/ecc-ecdh.c     |   357 +
+ grub-core/lib/libgcrypt/cipher/ecc-ecdsa.c    |   305 +
+ grub-core/lib/libgcrypt/cipher/ecc-eddsa.c    |  1079 +
+ grub-core/lib/libgcrypt/cipher/ecc-gost.c     |   218 +
+ grub-core/lib/libgcrypt/cipher/ecc-misc.c     |   469 +
+ grub-core/lib/libgcrypt/cipher/ecc-sm2.c      |   569 +
+ grub-core/lib/libgcrypt/cipher/ecc.c          |  3242 +-
+ grub-core/lib/libgcrypt/cipher/elgamal.c      |   829 +-
+ grub-core/lib/libgcrypt/cipher/gost-s-box.c   |   266 +
+ grub-core/lib/libgcrypt/cipher/gost-sb.h      |  2128 ++
+ grub-core/lib/libgcrypt/cipher/gost.h         |    34 +
+ grub-core/lib/libgcrypt/cipher/gost28147.c    |   553 +
+ grub-core/lib/libgcrypt/cipher/gostr3411-94.c |   383 +
+ grub-core/lib/libgcrypt/cipher/hash-common.c  |   110 +-
+ grub-core/lib/libgcrypt/cipher/hash-common.h  |    35 +-
+ grub-core/lib/libgcrypt/cipher/hmac-tests.c   |   732 -
+ grub-core/lib/libgcrypt/cipher/idea.c         |    24 +-
+ grub-core/lib/libgcrypt/cipher/kdf-internal.h |    39 +
+ grub-core/lib/libgcrypt/cipher/kdf.c          |  2239 +-
+ .../libgcrypt/cipher/keccak-amd64-avx512.S    |   587 +
+ .../lib/libgcrypt/cipher/keccak-armv7-neon.S  |   945 +
+ grub-core/lib/libgcrypt/cipher/keccak.c       |  1904 ++
+ .../lib/libgcrypt/cipher/keccak_permute_32.h  |   536 +
+ .../lib/libgcrypt/cipher/keccak_permute_64.h  |   385 +
+ grub-core/lib/libgcrypt/cipher/kem-ecc.c      |   332 +
+ grub-core/lib/libgcrypt/cipher/kem-ecc.h      |    40 +
+ grub-core/lib/libgcrypt/cipher/kem.c          |   435 +
+ grub-core/lib/libgcrypt/cipher/kyber-common.c |   766 +
+ grub-core/lib/libgcrypt/cipher/kyber-kdep.c   |   825 +
+ grub-core/lib/libgcrypt/cipher/kyber.c        |   530 +
+ grub-core/lib/libgcrypt/cipher/kyber.h        |   130 +
+ grub-core/lib/libgcrypt/cipher/mac-cmac.c     |   532 +
+ grub-core/lib/libgcrypt/cipher/mac-gmac.c     |   203 +
+ grub-core/lib/libgcrypt/cipher/mac-hmac.c     |  1471 +
+ grub-core/lib/libgcrypt/cipher/mac-internal.h |   290 +
+ grub-core/lib/libgcrypt/cipher/mac-poly1305.c |   382 +
+ grub-core/lib/libgcrypt/cipher/mac.c          |   834 +
+ .../lib/libgcrypt/cipher/mceliece6688128f.c   |  3673 +++
+ .../lib/libgcrypt/cipher/mceliece6688128f.h   |    63 +
+ grub-core/lib/libgcrypt/cipher/md.c           |  1582 +-
+ grub-core/lib/libgcrypt/cipher/md4.c          |   171 +-
+ grub-core/lib/libgcrypt/cipher/md5.c          |   177 +-
+ .../libgcrypt/cipher/poly1305-amd64-avx512.S  |  1626 +
+ .../lib/libgcrypt/cipher/poly1305-internal.h  |    92 +
+ .../lib/libgcrypt/cipher/poly1305-p10le.s     |   841 +
+ .../lib/libgcrypt/cipher/poly1305-s390x.S     |    87 +
+ grub-core/lib/libgcrypt/cipher/poly1305.c     |   846 +
+ grub-core/lib/libgcrypt/cipher/primegen.c     |   563 +-
+ .../lib/libgcrypt/cipher/pubkey-internal.h    |   107 +
+ grub-core/lib/libgcrypt/cipher/pubkey-util.c  |  1363 +
+ grub-core/lib/libgcrypt/cipher/pubkey.c       |  4329 +--
+ grub-core/lib/libgcrypt/cipher/rfc2268.c      |    57 +-
+ .../lib/libgcrypt/cipher/rijndael-aarch64.S   |   512 +
+ .../lib/libgcrypt/cipher/rijndael-aesni.c     |  5033 +++
+ .../lib/libgcrypt/cipher/rijndael-amd64.S     |   477 +
+ grub-core/lib/libgcrypt/cipher/rijndael-arm.S |   581 +
+ .../cipher/rijndael-armv8-aarch32-ce.S        |  2134 ++
+ .../cipher/rijndael-armv8-aarch64-ce.S        |  2038 ++
+ .../lib/libgcrypt/cipher/rijndael-armv8-ce.c  |   396 +
+ .../lib/libgcrypt/cipher/rijndael-gcm-p10le.s |  1401 +
+ .../lib/libgcrypt/cipher/rijndael-internal.h  |   216 +
+ .../lib/libgcrypt/cipher/rijndael-p10le.c     |   119 +
+ .../lib/libgcrypt/cipher/rijndael-padlock.c   |   109 +
+ .../libgcrypt/cipher/rijndael-ppc-common.h    |   328 +
+ .../libgcrypt/cipher/rijndael-ppc-functions.h |  2544 ++
+ grub-core/lib/libgcrypt/cipher/rijndael-ppc.c |   230 +
+ .../lib/libgcrypt/cipher/rijndael-ppc9le.c    |   119 +
+ .../lib/libgcrypt/cipher/rijndael-s390x.c     |  1166 +
+ .../cipher/rijndael-ssse3-amd64-asm.S         |   879 +
+ .../libgcrypt/cipher/rijndael-ssse3-amd64.c   |   742 +
+ .../lib/libgcrypt/cipher/rijndael-tables.h    |  1846 +-
+ .../cipher/rijndael-vaes-avx2-amd64.S         |  3688 +++
+ .../cipher/rijndael-vaes-avx2-i386.S          |  2804 ++
+ .../lib/libgcrypt/cipher/rijndael-vaes-i386.c |   231 +
+ .../lib/libgcrypt/cipher/rijndael-vaes.c      |   240 +
+ grub-core/lib/libgcrypt/cipher/rijndael.c     |  2643 +-
+ grub-core/lib/libgcrypt/cipher/rmd160.c       |   592 +-
+ grub-core/lib/libgcrypt/cipher/rsa-common.c   |  1151 +
+ grub-core/lib/libgcrypt/cipher/rsa.c          |  1736 +-
+ .../lib/libgcrypt/cipher/salsa20-amd64.S      |   940 +
+ .../lib/libgcrypt/cipher/salsa20-armv7-neon.S |   899 +
+ grub-core/lib/libgcrypt/cipher/salsa20.c      |   600 +
+ grub-core/lib/libgcrypt/cipher/scrypt.c       |   322 +
+ grub-core/lib/libgcrypt/cipher/seed.c         |    32 +-
+ .../lib/libgcrypt/cipher/serpent-armv7-neon.S |  1180 +
+ .../lib/libgcrypt/cipher/serpent-avx2-amd64.S |  1214 +
+ .../lib/libgcrypt/cipher/serpent-avx512-x86.c |   994 +
+ .../lib/libgcrypt/cipher/serpent-sse2-amd64.S |  1276 +
+ grub-core/lib/libgcrypt/cipher/serpent.c      |  2017 +-
+ .../lib/libgcrypt/cipher/sha1-armv7-neon.S    |   526 +
+ .../libgcrypt/cipher/sha1-armv8-aarch32-ce.S  |   220 +
+ .../libgcrypt/cipher/sha1-armv8-aarch64-ce.S  |   204 +
+ .../lib/libgcrypt/cipher/sha1-avx-amd64.S     |   433 +
+ .../libgcrypt/cipher/sha1-avx-bmi2-amd64.S    |   446 +
+ .../libgcrypt/cipher/sha1-avx2-bmi2-amd64.S   |   578 +
+ .../lib/libgcrypt/cipher/sha1-intel-shaext.c  |   292 +
+ .../lib/libgcrypt/cipher/sha1-ssse3-amd64.S   |   442 +
+ grub-core/lib/libgcrypt/cipher/sha1.c         |   571 +-
+ grub-core/lib/libgcrypt/cipher/sha1.h         |    47 +
+ .../cipher/sha256-armv8-aarch32-ce.S          |   231 +
+ .../cipher/sha256-armv8-aarch64-ce.S          |   218 +
+ .../lib/libgcrypt/cipher/sha256-avx-amd64.S   |   511 +
+
+  ... (truncated — full libgcrypt 1.11 source tree import)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       LARGE IMPORT (libgcrypt 1.11 source tree)
+Complexity: Hundreds of files, entire library import
+Note:       Import itself is upstream; this branch kept because
+            patch 14 (2025-07-0039) has an unmerged sexp.c memory leak fix.
+
+================================================================================

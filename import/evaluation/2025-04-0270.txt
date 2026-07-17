@@ -1,0 +1,245 @@
+================================================================================
+EVALUATION: 2025-04-0270
+================================================================================
+
+Mailing list subject: [RFC PATCH v2 1/7] i386: Extra x86 definitions needed by AMD SKINIT
+Commit subject:       i386: Extra x86 definitions needed by AMD SKINIT Secure Launch
+Author:               Ross Philipson <ross.philipson@oracle.com>
+Date:                 2025-05-01
+Has FAILED.patch:     1
+Code files changed:   3
+Series:               2025-04-0266 (7 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+A few MSR/CPUID/PCI x86 definitions added.
+
+Signed-off-by: Ross Philipson <ross.philipson@oracle.com>
+Signed-off-by: Sergii Dmytruk <sergii.dmytruk@3mdeb.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch              | 58 ++++++++++++++++++++++++++++++++++++++++
+ include/grub/i386/cpuid.h | 17 ++++++++++++
+ include/grub/i386/msr.h   | 67 +++++++++++++++++++++++++++++++++++++++++++++++
+ include/grub/i386/pci.h   |  1 +
+ 4 files changed, 143 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ include/grub/i386/cpuid.h | 7 ++++---
+ include/grub/i386/msr.h   | 6 ++++++
+ include/grub/i386/pci.h   | 1 +
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/include/grub/i386/cpuid.h b/include/grub/i386/cpuid.h
+index 980bf0875..023ab9431 100644
+--- a/include/grub/i386/cpuid.h
++++ b/include/grub/i386/cpuid.h
+@@ -28,9 +28,10 @@
+ #define GRUB_SMX_CPUID_FEATURE  (1<<6)
+ 
+ /* AMD */
+-#define GRUB_AMD_CPUID_FEATURES 0x80000001
+-#define GRUB_SVM_CPUID_FEATURE  (1<<2)
+-#define GRUB_AMD_CPUID_FUNC     0x8000000a
++#define GRUB_AMD_CPUID_FEATURES   0x80000001
++#define GRUB_SVM_CPUID_FEATURE    (1<<2)
++#define GRUB_AMD_CPUID_FUNC       0x8000000a
++#define GRUB_SKINIT_CPUID_FEATURE (1<<12)
+ 
+ extern unsigned char grub_cpuid_has_longmode;
+ extern unsigned char grub_cpuid_has_pae;
+diff --git a/include/grub/i386/msr.h b/include/grub/i386/msr.h
+index 4487fe4c2..9adb44cd4 100644
+--- a/include/grub/i386/msr.h
++++ b/include/grub/i386/msr.h
+@@ -30,6 +30,12 @@
+ #define GRUB_MSR_X86_APICBASE_ENABLE    (1<<11)
+ #define GRUB_MSR_X86_APICBASE_BASE      (0xfffff<<12) /* Mask for APIC base address */
+ 
++#define GRUB_MSR_X86_X2APICBASE_ENABLE     (1<<10)
++#define GRUB_MSR_X86_X2APICBASE_ICR        0x830
++#define GRUB_MSR_X86_LAPIC_ICR_LO          0x300
++#define GRUB_MSR_X86_ICR_MODE_INIT         (5<<8)
++#define GRUB_MSR_X86_ICR_DELIVER_EXCL_SELF (3<<18)
++
+ #define GRUB_MSR_X86_FEATURE_CONTROL    0x0000003a
+ #define GRUB_MSR_X86_FEATURE_CTRL_LOCK  (1<<0)     /* Lock this (feature control) MSR */
+ #define GRUB_MSR_X86_ENABLE_VMX_IN_SMX  (1<<1)     /* Enable VMX inside SMX */
+diff --git a/include/grub/i386/pci.h b/include/grub/i386/pci.h
+index dffeb5695..952e8bcca 100644
+--- a/include/grub/i386/pci.h
++++ b/include/grub/i386/pci.h
+@@ -27,6 +27,7 @@
+ #define GRUB_PCI_DATA_REG	0xcfc
+ #define GRUB_PCI_NUM_BUS        256
+ #define GRUB_PCI_NUM_DEVICES    32
++#define GRUB_PCI_NUM_FUNCTIONS  8
+ 
+ static inline grub_uint32_t
+ grub_pci_read (grub_pci_address_t addr)
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit b33aa432e0dae9fa7c96d3b1b3915d1ea304355d
+Author: Ross Philipson <ross.philipson@oracle.com>
+Date:   Thu May 1 01:43:19 2025 +0300
+
+    i386: Extra x86 definitions needed by AMD SKINIT Secure Launch
+    
+    A few MSR/CPUID/PCI x86 definitions added.
+    
+    Signed-off-by: Ross Philipson <ross.philipson@oracle.com>
+    Signed-off-by: Sergii Dmytruk <sergii.dmytruk@3mdeb.com>
+
+diff --git a/include/grub/i386/cpuid.h b/include/grub/i386/cpuid.h
+index f7ae4b0a4..a4433ae3e 100644
+--- a/include/grub/i386/cpuid.h
++++ b/include/grub/i386/cpuid.h
+@@ -19,6 +19,23 @@
+ #ifndef GRUB_CPU_CPUID_HEADER
+ #define GRUB_CPU_CPUID_HEADER 1
+ 
++<<<<<<< HEAD
++=======
++/* General */
++#define GRUB_X86_CPUID_VENDOR   0x00000000
++#define GRUB_X86_CPUID_FEATURES 0x00000001
++
++/* Intel */
++#define GRUB_VMX_CPUID_FEATURE  (1<<5)
++#define GRUB_SMX_CPUID_FEATURE  (1<<6)
++
++/* AMD */
++#define GRUB_AMD_CPUID_FEATURES   0x80000001
++#define GRUB_SVM_CPUID_FEATURE    (1<<2)
++#define GRUB_AMD_CPUID_FUNC       0x8000000a
++#define GRUB_SKINIT_CPUID_FEATURE (1<<12)
++
++>>>>>>> i386: Extra x86 definitions needed by AMD SKINIT Secure Launch
+ extern unsigned char grub_cpuid_has_longmode;
+ extern unsigned char grub_cpuid_has_pae;
+ 
+diff --git a/include/grub/i386/msr.h b/include/grub/i386/msr.h
+index 1e838c022..6718deef1 100644
+--- a/include/grub/i386/msr.h
++++ b/include/grub/i386/msr.h
+@@ -19,6 +19,73 @@
+ #ifndef GRUB_I386_MSR_H
+ #define GRUB_I386_MSR_H 1
+ 
++<<<<<<< HEAD
++=======
++/* General */
++#define GRUB_MSR_X86_PLATFORM_ID        0x00000017
++
++#define GRUB_MSR_X86_APICBASE           0x0000001b
++#define GRUB_MSR_X86_APICBASE_BSP       (1<<8)
++#define GRUB_MSR_X86_APICBASE_ENABLE    (1<<11)
++#define GRUB_MSR_X86_APICBASE_BASE      (0xfffff<<12) /* Mask for APIC base address */
++
++#define GRUB_MSR_X86_X2APICBASE_ENABLE     (1<<10)
++#define GRUB_MSR_X86_X2APICBASE_ICR        0x830
++#define GRUB_MSR_X86_LAPIC_ICR_LO          0x300
++#define GRUB_MSR_X86_ICR_MODE_INIT         (5<<8)
++#define GRUB_MSR_X86_ICR_DELIVER_EXCL_SELF (3<<18)
++
++#define GRUB_MSR_X86_FEATURE_CONTROL    0x0000003a
++#define GRUB_MSR_X86_FEATURE_CTRL_LOCK  (1<<0)     /* Lock this (feature control) MSR */
++#define GRUB_MSR_X86_ENABLE_VMX_IN_SMX  (1<<1)     /* Enable VMX inside SMX */
++#define GRUB_MSR_X86_ENABLE_VMX_OUT_SMX	(1<<2)     /* Enable VMX outside SMX */
++#define GRUB_MSR_X86_SENTER_FUNCTIONS   (0x7f<<8)  /* Bitmap of SENTER function enables */
++#define GRUB_MSR_X86_SENTER_ENABLE      (1<<15)    /* SENTER global enable */
++
++#define GRUB_MSR_X86_MTRRCAP            0x000000fe
++#define GRUB_MSR_X86_VCNT_MASK          0xff       /* Number of variable MTRRs */
++
++#define GRUB_MSR_X86_MCG_CAP            0x00000179
++#define GRUB_MSR_MCG_BANKCNT_MASK       0xff       /* Number of banks */
++#define GRUB_MSR_X86_MCG_STATUS         0x0000017a
++#define GRUB_MSR_MCG_STATUS_MCIP        (1ULL<<2)  /* MC in progress */
++
++#define GRUB_MSR_X86_MISC_ENABLE        0x000001a0
++#define GRUB_MSR_X86_ENABLE_MONITOR_FSM (1<<18)
++
++#define GRUB_MSR_X86_MTRR_PHYSBASE0     0x00000200
++#define GRUB_MSR_X86_MTRR_PHYSMASK0     0x00000201
++#define GRUB_MSR_X86_BASE_DEF_TYPE_MASK 0xff
++#define GRUB_MSR_X86_MASK_VALID         (1<<11)
++
++#define GRUB_MSR_X86_MTRR_DEF_TYPE      0x000002ff
++#define GRUB_MSR_X86_DEF_TYPE_MASK      0xff
++#define GRUB_MSR_X86_MTRR_ENABLE_FIXED  (1<<10)
++#define GRUB_MSR_X86_MTRR_ENABLE        (1<<11)
++
++#define GRUB_MSR_X86_MC0_STATUS         0x00000401
++
++#define GRUB_MSR_X86_EFER               0xc0000080 /* Extended features */
++#define GRUB_MSR_EFER_LME               (1<<8)     /* Enable Long Mode/IA-32e */
++#define GRUB_MSR_EFER_LMA               (1<<10)    /* Long Mode/IA-32e Active */
++#define GRUB_MSR_EFER_SVME              (1<<12)    /* Enable SVM (AMD-V) */
++
++/* AMD Specific */
++#define GRUB_MSR_AMD64_PATCH_LEVEL      0x0000008b
++#define GRUB_MSR_AMD64_PATCH_CLEAR      0xc0010021 /* AMD-specific microcode patch clear  */
++#define GRUB_MSR_AMD64_VM_CR            0xc0010114 /* SVM control register */
++#define GRUB_MSR_SVM_VM_CR_SVM_DISABLE  (1<<4)     /* Disable writes to EFER.SVME */
++
++/* MTRR Specific */
++#define GRUB_MTRR_MEMORY_TYPE_UC        0
++#define GRUB_MTRR_MEMORY_TYPE_WC        1
++#define GRUB_MTRR_MEMORY_TYPE_WT        4
++#define GRUB_MTRR_MEMORY_TYPE_WP        5
++#define GRUB_MTRR_MEMORY_TYPE_WB        6
++
++#ifndef ASM_FILE
++
++>>>>>>> i386: Extra x86 definitions needed by AMD SKINIT Secure Launch
+ #include <grub/err.h>
+ #include <grub/i386/cpuid.h>
+ #include <grub/types.h>
+diff --git a/include/grub/i386/pci.h b/include/grub/i386/pci.h
+index dffeb5695..952e8bcca 100644
+--- a/include/grub/i386/pci.h
++++ b/include/grub/i386/pci.h
+@@ -27,6 +27,7 @@
+ #define GRUB_PCI_DATA_REG	0xcfc
+ #define GRUB_PCI_NUM_BUS        256
+ #define GRUB_PCI_NUM_DEVICES    32
++#define GRUB_PCI_NUM_FUNCTIONS  8
+ 
+ static inline grub_uint32_t
+ grub_pci_read (grub_pci_address_t addr)
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  include/grub/i386/cpuid.h: EXISTS (85 lines)
+  include/grub/i386/msr.h: EXISTS (74 lines)
+  include/grub/i386/pci.h: EXISTS (105 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 3 code file(s) + FAILED.patch
+Patch size: +14 -8 lines
+
+================================================================================

@@ -1,0 +1,427 @@
+================================================================================
+EVALUATION: 2025-04-0272
+================================================================================
+
+Mailing list subject: [RFC PATCH v2 6/7] efi: Add AMD SKINIT Secure Launch support
+Commit subject:       efi: Add AMD SKINIT Secure Launch support
+Author:               Ross Philipson <ross.philipson@oracle.com>
+Date:                 2025-05-01
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2025-04-0266 (7 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Extend code introduced for legacy boot with AMD Secure Launch to support
+EFI.
+
+This is for Linux with its EFI stub and also for anything else that can
+be loaded by chainloader.
+
+Signed-off-by: Ross Philipson <ross.philipson@oracle.com>
+Signed-off-by: Sergii Dmytruk <sergii.dmytruk@3mdeb.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 368 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 368 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/loader/efi/chainloader.c          |  6 ++
+ grub-core/loader/efi/linux.c                |  9 +++
+ grub-core/loader/slaunch/skinit.c           | 26 +++++--
+ grub-core/loader/slaunch/skl.c              | 51 ++++++++++---
+ grub-core/loader/slaunch/x86_dlstub.c       |  4 +-
+ grub-core/loader/slaunch/x86_dltrampoline.S | 35 +++++++--
+ grub-core/loader/slaunch/x86_efi.c          | 79 +++++++++++++++++++++
+ include/grub/slaunch.h                      |  2 +
+ 8 files changed, 189 insertions(+), 23 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 0dfb44412..7321a6a75 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -108,6 +108,12 @@ grub_chainloader_boot (void *context)
+       if (err != GRUB_ERR_NONE)
+         return grub_error (err, "Secure Launch setup TXT failed");
+     }
++  else if (grub_slaunch_platform_type () == SLP_AMD_SKINIT)
++    {
++      err = grub_sl_efi_skinit_setup (&slparams, image_mem, loaded_image, /*is_linux=*/false);
++      if (err != GRUB_ERR_NONE)
++        return grub_error (err, "Secure Launch setup SKINIT failed");
++    }
+ 
+   b = grub_efi_system_table->boot_services;
+   status = b->start_image (image_handle, &exit_data_size, &exit_data);
+diff --git a/grub-core/loader/efi/linux.c b/grub-core/loader/efi/linux.c
+index e7c0797a7..ac8ee9f61 100644
+--- a/grub-core/loader/efi/linux.c
++++ b/grub-core/loader/efi/linux.c
+@@ -249,6 +249,15 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
+           goto unload;
+         }
+     }
++  else if (grub_slaunch_platform_type () == SLP_AMD_SKINIT)
++    {
++      err = grub_sl_efi_skinit_setup (&slparams, kernel_addr, loaded_image, /*is_linux=*/true);
++      if (err != GRUB_ERR_NONE)
++        {
++          grub_error (err, "Secure Launch setup SKINIT failed");
++          goto unload;
++        }
++    }
+ 
+   grub_dprintf ("linux", "starting image %p\n", image_handle);
+   status = b->start_image (image_handle, 0, NULL);
+diff --git a/grub-core/loader/slaunch/skinit.c b/grub-core/loader/slaunch/skinit.c
+index 05539518d..6691fe2b7 100644
+--- a/grub-core/loader/slaunch/skinit.c
++++ b/grub-core/loader/slaunch/skinit.c
+@@ -122,18 +122,32 @@ grub_skinit_psp_memory_protect (struct grub_slaunch_params *slparams)
+   grub_efi_memory_descriptor_t *memory_map_end;
+   grub_efi_memory_descriptor_t *desc;
+   struct grub_efi_info *efi_info;
+-  grub_uint64_t efi_memmap, tmr_end = 0;
++  grub_uint64_t efi_memmap, hi_val, tmr_end = 0;
+   grub_err_t err;
+ 
+   /* A bit of work to extract the v2.08 EFI info from the linux params */
+   efi_info = (struct grub_efi_info *)((grub_uint8_t *)&(boot_params->efi_info.v0208)
+                                       + 2*sizeof(grub_uint32_t));
+ 
+-  /*
+-   * On legacy Linux boots, the relocator is used to map the EFI memory map buffer
+-   * and return a virtual address to use. This virtual address is stashed in slparams.
+-   */
+-  efi_memmap = (grub_uint64_t)(grub_addr_t)slparams->efi_memmap_mem;
++  if (slparams->boot_type == GRUB_SL_BOOT_TYPE_EFI)
++    {
++      /*
++       * On EFI stub boots, the EFI memory map is fetched from the stub code so it
++       * needs to be gotten from the boot params on re-entry to the DL stub. The EFI
++       * info in boot params has physical addresses but everything is identity mapped.
++       */
++      efi_memmap = efi_info->efi_mmap;
++      hi_val = efi_info->efi_mmap_hi;
++      efi_memmap |= (hi_val << 32);
++    }
++  else
++    {
++      /*
++       * On legacy Linux boots, the relocator is used to map the EFI memory map buffer
++       * and return a virtual address to use. This virtual address is stashed in slparams.
++       */
++      efi_memmap = (grub_uint64_t)(grub_addr_t)slparams->efi_memmap_mem;
++    }
+ 
+   desc = (grub_efi_memory_descriptor_t *)(grub_addr_t) efi_memmap;
+   memory_map_end = (grub_efi_memory_descriptor_t *)(grub_addr_t) (efi_memmap + efi_info->efi_mmap_size);
+diff --git a/grub-core/loader/slaunch/skl.c b/grub-core/loader/slaunch/skl.c
+index 4f374ff62..cbabc6854 100644
+--- a/grub-core/loader/slaunch/skl.c
++++ b/grub-core/loader/slaunch/skl.c
+@@ -40,6 +40,10 @@
+ #include <grub/i386/linux.h>
+ #include <grub/i386/psp.h>
+ #include <grub/i386/skinit.h>
++#include <grub/efi/efi.h>
++#include <grub/efi/memory.h>
++#undef GRUB_MEMORY_CPU_HEADER
++#include <grub/x86_64/efi/memory.h>
+ 
+ #define SLRT_SIZE GRUB_PAGE_SIZE
+ 
+@@ -141,18 +145,47 @@ grub_skl_setup_module (struct grub_slaunch_params *slparams)
+   grub_phys_addr_t p_addr;
+   grub_uint8_t *v_addr;
+   grub_err_t err;
++#ifdef GRUB_MACHINE_EFI
++  grub_addr_t max_addr;
++#endif
+ 
+-  err = grub_relocator_alloc_chunk_align (slparams->relocator, &ch,
+-					  0, UP_TO_TOP32(SLB_SIZE), SLB_SIZE,
+-					  SLB_MIN_ALIGNMENT,
+-					  GRUB_RELOCATOR_PREFERENCE_HIGH,
+-					  1);
++  if (slparams->boot_type == GRUB_SL_BOOT_TYPE_LINUX)
++    {
++      err = grub_relocator_alloc_chunk_align (slparams->relocator, &ch,
++                                              0, UP_TO_TOP32(SLB_SIZE), SLB_SIZE,
++                                              SLB_MIN_ALIGNMENT,
++                                              GRUB_RELOCATOR_PREFERENCE_HIGH,
++                                              1);
+ 
+-  if (err != GRUB_ERR_NONE)
+-    return grub_error (err, N_("failed to allocate SLB"));
++      if (err != GRUB_ERR_NONE)
++        return grub_error (err, N_("failed to allocate SLB"));
+ 
+-  v_addr = get_virtual_current_address (ch);
+-  p_addr = get_physical_target_address (ch);
++      v_addr = get_virtual_current_address (ch);
++      p_addr = get_physical_target_address (ch);
++    }
++  else if (slparams->boot_type == GRUB_SL_BOOT_TYPE_EFI)
++    {
++#ifdef GRUB_MACHINE_EFI
++      max_addr = ALIGN_DOWN ((GRUB_EFI_MAX_USABLE_ADDRESS - SLB_SIZE),
++                             GRUB_PAGE_SIZE);
++
++      v_addr = grub_efi_allocate_pages_real (max_addr,
++                                             GRUB_EFI_BYTES_TO_PAGES(SLB_SIZE + SLB_MIN_ALIGNMENT),
++                                             GRUB_EFI_ALLOCATE_MAX_ADDRESS,
++                                             GRUB_EFI_LOADER_DATA);
++      if (!v_addr)
++        return GRUB_ERR_OUT_OF_MEMORY;
++
++      v_addr = (grub_uint8_t *) ALIGN_UP ((grub_addr_t) v_addr, SLB_MIN_ALIGNMENT);
++      p_addr = (grub_addr_t) v_addr;
++#else
++      return GRUB_ERR_BUG;
++#endif
++    }
++  else
++    {
++      return grub_error (GRUB_ERR_BUG, N_("unknown dynamic launch boot type: %d"), slparams->boot_type);
++    }
+ 
+   grub_memcpy (v_addr, skl_module, skl_size);
+   skl_module = (struct grub_sl_header *) v_addr;
+diff --git a/grub-core/loader/slaunch/x86_dlstub.c b/grub-core/loader/slaunch/x86_dlstub.c
+index fc1afed33..dbbd46f7d 100644
+--- a/grub-core/loader/slaunch/x86_dlstub.c
++++ b/grub-core/loader/slaunch/x86_dlstub.c
+@@ -35,7 +35,7 @@
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+-extern void dl_trampoline(grub_uint32_t dce_base, grub_uint32_t dce_size);
++extern void dl_trampoline(grub_uint32_t dce_base, grub_uint32_t dce_size, grub_uint32_t platform);
+ 
+ void dl_entry (grub_uint64_t dl_ctx)
+ {
+@@ -124,7 +124,7 @@ void dl_entry (grub_uint64_t dl_ctx)
+     }
+   else if (slparams->boot_type == GRUB_SL_BOOT_TYPE_EFI)
+     {
+-      dl_trampoline (slparams->dce_base, slparams->dce_size);
++      dl_trampoline (slparams->dce_base, slparams->dce_size, slparams->platform_type);
+     }
+   else
+     {
+diff --git a/grub-core/loader/slaunch/x86_dltrampoline.S b/grub-core/loader/slaunch/x86_dltrampoline.S
+index 461e14271..e2d7a674f 100644
+--- a/grub-core/loader/slaunch/x86_dltrampoline.S
++++ b/grub-core/loader/slaunch/x86_dltrampoline.S
+@@ -18,16 +18,14 @@
+ 
+ #include <config.h>
+ #include <grub/symbol.h>
++#include <grub/slaunch.h>
++#include <grub/i386/crfr.h>
++#include <grub/i386/msr.h>
+ 
+ #define GRUB_SMX_LEAF_SENTER	4
+ #define CS_SEL32		0x0008
+ #define DS_SEL			0x0010
+ 
+-#define CR0_PE  0x00000001
+-#define CR0_MP  0x00000002
+-#define CR0_TS  0x00000008
+-#define CR0_NE  0x00000020
+-
+ 	.file	"dltrampoline.S"
+ 	.text
+ 
+@@ -53,7 +51,7 @@ dl_trampoline:
+ 	lretq
+ 
+ 	.code32
+-1:	/* Now in IA-32e compatibility mode load data segments and do senter */
++1:	/* Now in long compatibility (IA-32e), mode load data segments */
+ 	movw	$DS_SEL, %ax
+ 	movw	%ax, %ds
+ 	movw	%ax, %es
+@@ -61,12 +59,37 @@ dl_trampoline:
+ 	movw	%ax, %fs
+ 	movw	%ax, %gs
+ 
++	cmpl	$SLP_AMD_SKINIT, %edx
++	je	1f
++
++	/* Intel SENTER */
+ 	movl	$GRUB_SMX_LEAF_SENTER, %eax
+ 	movl	%edi, %ebx
+ 	movl	%esi, %ecx
+ 	xorl	%edx, %edx
+ 	getsec
+ 
++1:
++	/* Turn paging off - we are identity mapped so we will survive */
++	movl	%cr0, %eax
++	andl	$~(GRUB_CR0_X86_PG | GRUB_CR0_X86_NE | GRUB_CR0_X86_TS | GRUB_CR0_X86_MP), %eax
++	movl	%eax, %cr0
++
++	/* Disable long mode */
++	movl	$(GRUB_MSR_X86_EFER), %ecx
++	rdmsr
++	andl	$~(GRUB_MSR_EFER_LME), %eax
++	wrmsr
++
++	/* Now in protected mode, disable PAE */
++	movl	%cr4, %eax
++	andl	$~(GRUB_CR4_X86_PAE), %eax
++	movl	%eax, %cr4
++
++	/* AMD SKINIT */
++	movl	%edi, %eax
++	skinit
++
+ 	.align 8
+ dl_gdt:
+ 	/* Null Segment */
+diff --git a/grub-core/loader/slaunch/x86_efi.c b/grub-core/loader/slaunch/x86_efi.c
+index 82e873f14..7b80424c7 100644
+--- a/grub-core/loader/slaunch/x86_efi.c
++++ b/grub-core/loader/slaunch/x86_efi.c
+@@ -33,6 +33,7 @@
+ #include <grub/i386/memory.h>
+ #include <grub/i386/linux.h>
+ #include <grub/i386/txt.h>
++#include <grub/i386/skinit.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -377,3 +378,81 @@ fail:
+ 
+   return err;
+ }
++
++grub_err_t
++grub_sl_efi_skinit_setup (struct grub_slaunch_params *slparams, void *kernel_addr,
++                          grub_efi_loaded_image_t *loaded_image, bool is_linux)
++{
++  struct linux_kernel_params *lh = (struct linux_kernel_params *)kernel_addr;
++  grub_addr_t image_base = (grub_addr_t)loaded_image->image_base;
++  grub_efi_uint64_t image_size = loaded_image->image_size;
++  grub_uint8_t *logmem;
++  grub_addr_t max_addr;
++  grub_ssize_t start = 0;
++  grub_err_t err;
++
++  slparams->boot_type = GRUB_SL_BOOT_TYPE_EFI;
++  slparams->platform_type = grub_slaunch_platform_type();
++
++  /* See comment in TXT setup function grub_sl_efi_txt_setup () */
++  if (is_linux)
++    {
++      slparams->boot_params = &boot_params;
++      slparams->boot_params_base = (grub_addr_t)&boot_params;
++
++      start = (lh->hdr.setup_sects + 1) * 512;
++    }
++
++  /* See comment in TXT setup function grub_sl_efi_txt_setup () */
++  slparams->mle_start = image_base + start;
++  slparams->mle_mem = (void *)(grub_addr_t)slparams->mle_start;
++  slparams->mle_size = image_size - start;
++
++  max_addr = ALIGN_DOWN ((GRUB_EFI_MAX_USABLE_ADDRESS - GRUB_EFI_SLAUNCH_TPM_EVT_LOG_SIZE),
++                          GRUB_PAGE_SIZE);
++
++  logmem = grub_efi_allocate_pages_real (max_addr,
++                                         GRUB_EFI_BYTES_TO_PAGES(GRUB_EFI_SLAUNCH_TPM_EVT_LOG_SIZE),
++                                         GRUB_EFI_ALLOCATE_MAX_ADDRESS,
++                                         GRUB_EFI_LOADER_DATA);
++  if (!logmem)
++    {
++      grub_error (GRUB_ERR_OUT_OF_MEMORY, N_("out of memory"));
++      return GRUB_ERR_OUT_OF_MEMORY;
++    }
++
++  slparams->tpm_evt_log_base = (grub_addr_t)logmem;
++  slparams->tpm_evt_log_size = GRUB_EFI_SLAUNCH_TPM_EVT_LOG_SIZE;
++  /* It's OK to call this for AMD SKINIT because SKL erases the log before use. */
++  grub_txt_init_tpm_event_log (logmem, slparams->tpm_evt_log_size);
++
++  err = sl_efi_load_mle_data (slparams, kernel_addr, start, loaded_image, is_linux);
++  if (err != GRUB_ERR_NONE)
++    {
++      grub_dprintf ("slaunch", N_("failed to load MLE data\n"));
++      goto fail;
++    }
++
++  /*
++   * AMD SKL final setup may relocate the SKL module. It is also what sets the SLRT and DCE
++   * values in slparams so this must be done before final setup and launch below.
++   */
++  err = grub_skl_setup_module (slparams);
++  if (err != GRUB_ERR_NONE)
++    goto fail;
++
++  err = grub_skl_prepare_bootloader_data (slparams);
++  if (err != GRUB_ERR_NONE)
++    goto fail;
++
++  err = sl_efi_install_slr_table (slparams);
++  if (err != GRUB_ERR_NONE)
++    goto fail;
++
++  return GRUB_ERR_NONE;
++
++fail:
++  grub_efi_free_pages ((grub_addr_t)logmem, GRUB_EFI_BYTES_TO_PAGES(GRUB_EFI_SLAUNCH_TPM_EVT_LOG_SIZE));
++
++  return err;
++}
+diff --git a/include/grub/slaunch.h b/include/grub/slaunch.h
+index 70c94b3e7..1b29d4c35 100644
+--- a/include/grub/slaunch.h
++++ b/include/grub/slaunch.h
+@@ -151,6 +151,8 @@ grub_err_t grub_sl_skinit_setup_linux (struct grub_slaunch_params *slparams,
+ /* EFI functions */
+ grub_err_t grub_sl_efi_txt_setup (struct grub_slaunch_params *slparams, void *kernel_addr,
+                                   grub_efi_loaded_image_t *loaded_image, bool is_linux);
++grub_err_t grub_sl_efi_skinit_setup (struct grub_slaunch_params *slparams, void *kernel_addr,
++                                     grub_efi_loaded_image_t *loaded_image, bool is_linux);
+ 
+ #endif /* ASM_FILE */
+ 
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/loader/efi/chainloader.c: EXISTS (442 lines)
+  grub-core/loader/efi/linux.c: EXISTS (614 lines)
+  grub-core/loader/slaunch/skinit.c: MISSING on master
+  grub-core/loader/slaunch/skl.c: MISSING on master
+  grub-core/loader/slaunch/x86_dlstub.c: MISSING on master
+  grub-core/loader/slaunch/x86_dltrampoline.S: MISSING on master
+  grub-core/loader/slaunch/x86_efi.c: MISSING on master
+  include/grub/slaunch.h: MISSING on master
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       NEW FEATURE (target files missing on master)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +197 -33 lines
+
+================================================================================

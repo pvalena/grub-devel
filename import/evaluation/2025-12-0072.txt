@@ -1,0 +1,86 @@
+================================================================================
+EVALUATION: 2025-12-0072
+================================================================================
+
+Mailing list subject: [PATCH 1/1] INSTALL: Add new requirement for configure
+Commit subject:       INSTALL: Add new requirement for configure
+Author:               Andrew Hamilton <adhamilt@gmail.com>
+Date:                 2025-12-21
+Has FAILED.patch:     0
+Code files changed:   1
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Since commit 1a5417f39, configure.ac uses a macro called
+AX_CHECK_LINK_FLAG which is defined in a macro provided by
+the GNU Autoconf Archive package (autoconf-archive).
+
+Add the new dependency to the INSTALL instructions to avoid
+errors when running configure.
+
+Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ INSTALL | 1 +
+ 1 file changed, 1 insertion(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+(no FAILED.patch)
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 813d815e3980961938cda421b4a8017c5f4122e1
+Author: Andrew Hamilton <adhamilt@gmail.com>
+Date:   Sun Dec 21 09:43:35 2025 -0600
+
+    INSTALL: Add new requirement for configure
+    
+    Since commit 1a5417f39, configure.ac uses a macro called
+    AX_CHECK_LINK_FLAG which is defined in a macro provided by
+    the GNU Autoconf Archive package (autoconf-archive).
+    
+    Add the new dependency to the INSTALL instructions to avoid
+    errors when running configure.
+    
+    Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+diff --git a/INSTALL b/INSTALL
+index 7e5397f58..bcfa9513f 100644
+--- a/INSTALL
++++ b/INSTALL
+@@ -56,6 +56,7 @@ need the following.
+ * Python 3 (NOTE: python 2.6 should still work, but it's not tested)
+ * Autoconf 2.64 or later
+ * Automake 1.14 or later
++* Autoconf Archive macros (autoconf-archive)
+ 
+ Your distro may package cross-compiling toolchains such as the following
+ incomplete list on Debian: gcc-aarch64-linux-gnu, gcc-arm-linux-gnueabihf,
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +0
+0 -0
+0 lines
+
+================================================================================

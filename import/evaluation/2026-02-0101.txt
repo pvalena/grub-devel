@@ -1,0 +1,127 @@
+================================================================================
+EVALUATION: 2026-02-0101
+================================================================================
+
+Mailing list subject: Re: [PATCH] powerpc_ieee1275: Excluding the PKS for grub-emu on
+Commit subject:       powerpc_ieee1275: Excluding the PKS for grub-emu on 32-bit PowerPC
+Author:               Vladimir 'phcoder' Serbinenko <phcoder@gmail.com>
+Date:                 2026-02-28
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+The header is under powerpc/ieee1275. How does it get included in the first
+place? The problem is with it's including in emu, not its contents
+
+Regards
+
+Le ven. 27 févr. 2026, 16:42, Sudhakar Kuppusamy <sudhakar@linux.ibm.com> a
+écrit :
+
+> Configuring the build with --with-platform=emu fails on 32-bit PowerPC
+> with:
+>
+> /usr/bin/ld: appendedsig.module: in function `grub_mod_init':
+> /home/glaubitz/grub/grub-core/commands/appendedsig/appendedsig.c:1615:(.text+0x2ab4):
+> undefined reference to `grub_pks_get_keystore'
+> /usr/bin/ld: appendedsig.module: in function `create_dbs_from_pks':
+> /home/glaubitz/grub/grub-core/commands/appendedsig/appendedsig.c:1400:(.text+0x2c3c):
+> undefined reference to `grub_pks_free_data'
+> collect2: error: ld returned 1 exit status
+>
+> Fixing this by excluding the Platform Keystore (PKS) for grub-emu on
+> 32-bit PowerPC.
+>
+> Reported-by: John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
+> Signed-off-by: Sudhakar Kuppusamy <sudhakar@linux.ibm.com>
+> ---
+>  include/grub/powerpc/ieee1275/platform_keystore.h | 2 +-
+>  1 file changed, 1 insertion(+), 1 deletion(-)
+>
+> diff --git a/include/grub/powerpc/ieee1275/platform_keystore.h
+> b/include/grub/powerpc/ieee1275/platform_keystore.h
+> index 931ada224..3bfb594a3 100644
+> --- a/include/grub/powerpc/ieee1275/platform_keystore.h
+> +++ b/include/grub/powerpc/ieee1275/platform_keystore.h
+> @@ -96,7 +96,7 @@ struct grub_pks
+>  };
+>  typedef struct grub_pks grub_pks_t;
+>
+> -#if defined(__powerpc__)
+> +#if defined(__powerpc__) && !(GRUB_MACHINE_EMU)
+>  /* Initialization of the Platform Keystore. */
+>  extern void
+>  grub_pks_keystore_init (void);
+> --
+> 2.50.1 (Apple Git-155)
+>
+>
+
+<div dir="auto"><div dir="auto"><div>The header is under powerpc/ieee1275. How does it get included in the first place? The problem is with it&#39;s including in emu, not its contents</div><div><br></div><div data-smartmail="gmail_signature">Regards</div></div><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">Le ven. 27 févr. 2026, 16:42, Sudhakar Kuppusamy &lt;<a href="mailto:sudhakar@linux.ibm.com" target="_blank" rel="noreferrer">sudhakar@linux.ibm.com</a>&gt; a écrit :<br></div><blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">Configuring the build with --with-platform=emu fails on 32-bit PowerPC with:<br>
+<br>
+/usr/bin/ld: appendedsig.module: in function `grub_mod_init&#39;:<br>
+/home/glaubitz/grub/grub-core/commands/appendedsig/appendedsig.c:1615:(.text+0x2ab4): undefined reference to `grub_pks_get_keystore&#39;<br>
+/usr/bin/ld: appendedsig.module: in function `create_dbs_from_pks&#39;:<br>
+/home/glaubitz/grub/grub-core/commands/appendedsig/appendedsig.c:1400:(.text+0x2c3c): undefined reference to `grub_pks_free_data&#39;<br>
+collect2: error: ld returned 1 exit status<br>
+<br>
+Fixing this by excluding the Platform Keystore (PKS) for grub-emu on 32-bit PowerPC.<br>
+<br>
+Reported-by: John Paul Adrian Glaubitz &lt;<a href="mailto:glaubitz@physik.fu-berlin.de" rel="noreferrer noreferrer" target="_blank">glaubitz@physik.fu-berlin.de</a>&gt;<br>
+Signed-off-by: Sudhakar Kuppusamy &lt;<a href="mailto:sudhakar@linux.ibm.com" rel="noreferrer noreferrer" target="_blank">sudhakar@linux.ibm.com</a>&gt;<br>
+---<br>
+ include/grub/powerpc/ieee1275/platform_keystore.h | 2 +-<br>
+ 1 file changed, 1 insertion(+), 1 deletion(-)<br>
+<br>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+diff --git a/include/grub/powerpc/ieee1275/platform_keystore.h b/include/grub/powerpc/ieee1275/platform_keystore.h<br>
+index 931ada224..3bfb594a3 100644<br>
+--- a/include/grub/powerpc/ieee1275/platform_keystore.h<br>
++++ b/include/grub/powerpc/ieee1275/platform_keystore.h<br>
+@@ -96,7 +96,7 @@ struct grub_pks<br>
+ };<br>
+ typedef struct grub_pks grub_pks_t;<br>
+<br>
+-#if defined(__powerpc__)<br>
++#if defined(__powerpc__) &amp;&amp; !(GRUB_MACHINE_EMU)<br>
+ /* Initialization of the Platform Keystore. */<br>
+ extern void<br>
+ grub_pks_keystore_init (void);<br>
+-- <br>
+2.50.1 (Apple Git-155)<br>
+<br>
+</blockquote></div>
+<br><br></div>
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  include/grub/powerpc/ieee1275/platform_keystore.h: EXISTS (106 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +2 -3 lines
+
+================================================================================

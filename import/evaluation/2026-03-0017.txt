@@ -1,0 +1,165 @@
+================================================================================
+EVALUATION: 2026-03-0017
+================================================================================
+
+Mailing list subject: Re: [PATCH v4 0/9] Improve ld.lld-21+ compatibility when building
+Commit subject:       Improve ld.lld-21+ compatibility when building i386-pc target
+Author:               Daniel Kiper <dkiper@net-space.pl>
+Date:                 2026-03-04
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2026-03-0010 (5 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+On Tue, Mar 03, 2026 at 09:41:12PM -0500, Nicholas Vinson wrote:
+> Starting with ld.llvm-21, any attempt create a non-relocatable binary and set
+> one more secton addresses below 0x400000 results in a linker error. Furthermore,
+> the differences between ld.bfd and ld.lld made finding a proper set of
+> command-line flags tht worked with both linkers and bypass the image base
+> address restriction difficult. Therefore, the approach of using a custom linker
+> script was adopted to solve the issue.
+>
+> This approach was tested using:
+>
+> ../configure CC=clang CXX=clang++ LDFLAGS="-fuse-ld=lld" TARGET_LDFLAGS="-fuse-ld=lld" --with-platform=pc
+> ../configure CC=clang CXX=clang++ --with-platform=pc (both with ld.lld as the default and ld.bfd as the default)
+> ../configure CC=gcc CXX=g++ --with-platform=pc
+>
+> and a VM was used for testing. To build the disk images the VM was booted with,
+> the following scripts were used:
+>
+> EFI disk:
+> --- /dev/null	2026-01-18 13:24:44.262332704 -0500
+> +++ efi_disk_image.sh	2026-01-25 11:17:33.554420324 -0500
+> @@ -0,0 +1,23 @@
+> +#!/bin/sh
+> +
+> +set -xe
+> +
+> +dd if=/dev/zero of=grub.img bs=1M count=100 status=progress
+> +
+> +sfdisk --force --no-reread --no-tell-kernel grub.img <<EOF
+> +label: gpt
+> +label-id: ABEB6772-65C7-4391-BF21-B616916286B9
+> +size=1M, type=21686148-6449-6E6F-744E-656564454649, uuid=9892A604-439E-4401-A372-AAD5E99EADBB
+> +type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=FCE5EBB3-C887-4FDE-93C5-7670CC3914BF
+> +EOF
+> +
+> +LOOP_DEV=$(losetup --show -fP grub.img)
+> +sleep 1
+> +
+> +mkfs.ext4 -F "${LOOP_DEV}p2"
+> +
+> +mount "${LOOP_DEV}p2" /mnt/gentoo
+> +./grub-install -v --directory ./grub-core --locale-directory /usr/share/locale --boot-directory=/mnt/gentoo "${LOOP_DEV}"
+> +
+> +umount "${LOOP_DEV}p2"
+> +losetup -d "${LOOP_DEV}"
+> --
+>
+> MBR image:
+> --- /dev/null	2026-01-18 13:24:44.262332704 -0500
+> +++ mbr_disk_image.sh	2026-01-25 11:17:24.129208591 -0500
+> @@ -0,0 +1,22 @@
+> +#!/bin/sh
+> +
+> +set -xe
+> +
+> +dd if=/dev/zero of=grub.img bs=1M count=100 status=progress
+> +
+> +sfdisk --force --no-reread --no-tell-kernel grub.img <<EOF
+> +label: dos
+> +label-id: 0x12345678
+> +type=83, bootable
+> +EOF
+> +
+> +LOOP_DEV=$(losetup --show -fP grub.img)
+> +sleep 1
+> +
+> +mkfs.ext4 -F -O ^has_journal "${LOOP_DEV}p1"
+> +
+> +mount "${LOOP_DEV}p1" /mnt/gentoo
+> +./grub-install -v --directory ./grub-core --locale-directory /usr/share/locale --boot-directory=/mnt/gentoo "${LOOP_DEV}"
+> +
+> +umount "${LOOP_DEV}p1"
+> +losetup -d "${LOOP_DEV}"
+> --
+>
+> In all cases, the VM successfully booted to the standard GRUB prompt.
+>
+> Nicholas Vinson (9):
+>   i386/pc/int.h: move GRUB_MACHINE_PCBIOS ifdef
+>   grub-core: Update kernel image generation
+>   Revert "configure: Print a more helpful error if autoconf-archive is
+>     not installed"
+>   Revert "configure: Check linker for --image-base support"
+>   Revert "INSTALL: Add note that the GNU Autoconf Archive may be needed"
+>   configure: drop -Ttext checks for i386-pc
+>   configure.ac: Add --image-base check for non-i386
+>   i386-cygwin-img-ld.sc -> i386-cygwin-img.lds
+>   conf/i386-cygwin-img.lds: Update to use _grub_text_base symbol
+
+In general Reviewed-by: Daniel Kiper <daniel.kiper@oracle.com> but...
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+diff --git a/configure.ac b/configure.ac
+index 560c8a320..d19fb625d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1462,8 +1462,8 @@ elif test x$grub_cv_target_cc_link_format = x-mi386pe || test x$grub_cv_target_c
+   TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-cygwin-img.lds"
+   TARGET_IMG_LDFLAGS="-Wl,-T${TARGET_IMG_LDSCRIPT}"
+   TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-cygwin-img.lds"
+-  TARGET_IMG_BASE_LDOPT="-Wl,--defsym,_grub_text_base"
+-  TARGET_IMG_BASE_LDOPT_ARG_SEP=","
++  TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
++  TARGET_IMG_BASE_LDOPT_ARG_SEP="="
+   TARGET_IMG_CFLAGS=
+ else
+   TARGET_APPLE_LINKER=0
+@@ -1486,7 +1486,7 @@ else
+         ])])
+     TARGET_IMG_BASE_LDOPT_ARG_SEP=","
+   else
+-    TARGET_IMG_BASE_LDOPT="-Wl,--defsym,_grub_text_base"
++    TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
+     TARGET_IMG_BASE_LDOPT_ARG_SEP="="
+     TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-pc-kernel.lds"
+     TARGET_IMG_LDFLAGS="${TARGET_IMG_LDFLAGS} -Wl,-T${TARGET_IMG_LDSCRIPT}"
+
+The ld man is clear: --defsym=symbol=expression
+
+If you are OK with proposed changes I will make them for you.
+
+Daniel
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  configure.ac: EXISTS (2703 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +4 -4 lines
+
+================================================================================

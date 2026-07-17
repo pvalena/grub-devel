@@ -1,0 +1,90 @@
+================================================================================
+EVALUATION: 2025-05-0025
+================================================================================
+
+Mailing list subject: [PATCH v2] ia64: Disable optimizations using floating-point
+Commit subject:       ia64: Disable optimizations using floating-point arithmetics
+Author:               Vladimir Serbinenko <phcoder@gmail.com>
+Date:                 2025-05-03
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Options -minline-int-divide-* enable performing int division using floating
+point unit.
+They don't work in ski emulator and possibly on some real hardware.
+We don't really need them, so just use normal division.
+
+Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 39 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ configure.ac                | 4 ++--
+ grub-core/Makefile.core.def | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index e34e3cd59..2e95dbce9 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -959,9 +959,9 @@ if test x"$platform" != xemu ; then
+ 		         [grub_cv_target_cc_soft_float="-march=rv64imac_zicsr_zifencei -mabi=lp64"], [])
+     fi
+     if test "x$target_cpu" = xia64; then
+-       CFLAGS="$TARGET_CFLAGS -mno-inline-float-divide -mno-inline-sqrt -Werror"
++       CFLAGS="$TARGET_CFLAGS -mno-inline-int-divide -mno-inline-float-divide -mno-inline-sqrt -Werror"
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[]])],
+-		         [grub_cv_target_cc_soft_float="-mno-inline-float-divide -mno-inline-sqrt"], [])
++		         [grub_cv_target_cc_soft_float="-mno-inline-int-divide -mno-inline-float-divide -mno-inline-sqrt"], [])
+     fi
+     if test "x$target_cpu" = xsh4; then
+        CFLAGS="$TARGET_CFLAGS -m4-nofpu -Werror"
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 9cc0a0ac3..cf65f367b 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -57,7 +57,7 @@ kernel = {
+   x86_64_efi_ldflags       = '$(TARGET_RELOCATABLE)';
+   x86_64_efi_stripflags    = '--strip-unneeded -K start -R .note -R .comment -R .note.gnu.gold-version';
+ 
+-  ia64_efi_cflags = '-fshort-wchar -fno-builtin -fpic -minline-int-divide-max-throughput';
++  ia64_efi_cflags = '-fshort-wchar -fno-builtin -fpic';
+   ia64_efi_ldflags = '-shared';
+   ia64_efi_stripflags = '--strip-unneeded -K start -R .note -R .comment -R .note.gnu.gold-version';
+ 
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  configure.ac: EXISTS (2703 lines)
+  grub-core/Makefile.core.def: EXISTS (2829 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +5 -7 lines
+
+================================================================================

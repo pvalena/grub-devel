@@ -1,0 +1,635 @@
+================================================================================
+EVALUATION: 2025-06-0143
+================================================================================
+
+Mailing list subject: Re: [PATCH v2] Create Containerfiles with required grub packages for
+Commit subject:       Create Containerfiles with required grub packages for development
+Author:               Andrew Hamilton <adhamilt@gmail.com>
+Date:                 2025-06-21
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Thank you for doing this, this is very helpful.
+
+I tested both and they worked well for me. I submitted a separate patch
+just a moment ago to fix 2 of the test failures (not caused by this update).
+
+Reviewed-by: Andrew Hamilton <adhamilt@gmail.com>
+
+Thanks,
+Andrew
+
+On Fri, Jun 20, 2025 at 7:04 PM Leo Sandoval via Grub-devel <
+grub-devel@gnu.org> wrote:
+
+> Containers bring the ability to have ready-to-use environments and in
+> this case complete Fedora and Debian container files are described
+> containing all required packages for building and testing grub2.
+>
+> Once users manually build it, they can run the desired container, jump
+> into a setup ready for development. On the other hand, if users
+> prefer to use bare metal instead of a containerized environment, it is
+> still useful to have a file explicitly indicating the required packages.
+>
+> Signed-off-by: Leo Sandoval <lsandova@redhat.com>
+> ---
+> Some facts observed while creating and testing these containes:
+>
+> NOTE: all the below results are based on
+>
+>     root@a613d2d32efa:/grub# git log --oneline
+>     db506b3 (grafted, HEAD -> master, origin/master, origin/HEAD)
+> gnulib/regexec: Fix resource leak
+>
+> * compilation time
+>
+> Done on my mostly idle-laptop (20 i7-12800H cores) so this is not really
+> an isolated system, as any other benchmark,
+> do not trust too much on these numbers
+>
+> Debian:
+>     root@a613d2d32efa:/grub# time make &>/dev/null
+>
+>     real        1m15.486s
+>     user        0m51.869s
+>     sys         0m23.338s
+>
+> Fedora:
+>     [root@4eabb29f0ef2 grub]# time make &>/dev/null
+>
+>     real        1m18.679s
+>     user        0m51.352s
+>     sys         0m27.417s
+>
+>
+> * image sizes:
+>
+>     $ podman images | grep '\-grub'
+>     localhost/debian-grub                      latest      e789c1f8da26
+> About a minute ago  2.34 GB
+>     localhost/fedora-grub                      latest      b2dd8ef96b85
+> 15 minutes ago      2.04 GB
+>
+> so debian is a 'bit' heavier than fedora.
+>
+> * compilation issue
+>
+> Due to a more recent gcc version on Fedora compared to Debian, compilation
+> failed on the Fedora container
+> with the following error (already reported but not yet at upstream)
+>
+>     lib/gnulib/base64.c:65:3: error: initializer-string for array of
+> ‘char’ truncates NUL terminator but destination lacks ‘nonstring’ attribute
+> (65 chars into 64 available) [-Werror=unterminated-string-initialization]
+>        65 |
+>  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+>     |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+>
+> whereas not observed in Debian. To fix the above, one can install b4 and
+> patch the repo
+>
+>     [root@4eabb29f0ef2 grub]# b4 shazam
+> https://lore.kernel.org/grub-devel/20250618015826.270234-2-adhamilt@gmail.com/
+>     Grabbing thread from
+> lore.kernel.org/all/20250618015826.270234-2-adhamilt@gmail.com/t.mbox.gz
+>     Checking for newer revisions
+>     Grabbing search results from lore.kernel.org
+>     Analyzing 6 messages in the thread
+>     Analyzing 3 code-review messages
+>     Checking attestation on all messages, may take a moment...
+>     ---
+>       ✗ [PATCH v2 1/2] gnulib: Add patch to allow GRUB w/GCC-15 compile
+>         + Reviewed-by: Sudhakar Kuppusamy <sudhakar@linux.ibm.com> (✗
+> DKIM/ibm.com)
+>       ✗ [PATCH v2 2/2] util/grub-protect: Correct uninit 'err' Variable
+>         + Reviewed-by: Sudhakar Kuppusamy <sudhakar@linux.ibm.com> (✗
+> DKIM/ibm.com)
+>       ---
+>       ✗ BADSIG: DKIM/gmail.com
+>     ---
+>     Total patches: 2
+>     ---
+>     Applying: gnulib: Add patch to allow GRUB w/GCC-15 compile
+>     Applying: util/grub-protect: Correct uninit 'err' Variable
+>
+>
+> * make check results
+>
+> Debian:
+>
+> ============================================================================
+>     Testsuite summary for GRUB 2.13
+>
+> ============================================================================
+>     # TOTAL: 88
+>     # PASS:  64
+>     # SKIP:  3
+>     # XFAIL: 0
+>     # FAIL:  2
+>     # XPASS: 0
+>     # ERROR: 19
+>
+> Fedora:
+>
+> ============================================================================
+>     Testsuite summary for GRUB 2.13
+>
+> ============================================================================
+>     # TOTAL: 88
+>     # PASS:  63
+>     # SKIP:  3
+>     # XFAIL: 0
+>     # FAIL:  3
+>     # XPASS: 0
+>     # ERROR: 19
+>
+> In general, the same results in both distros.
+> ---
+>  container/Containerfile.debian | 56
+> +++++++++++++++++++++++++++++++++++++++++
+>  container/Containerfile.fedora | 57
+> ++++++++++++++++++++++++++++++++++++++++++
+>  container/README               | 22 ++++++++++++++++
+>  3 files changed, 135 insertions(+)
+>  create mode 100644 container/Containerfile.debian
+>  create mode 100644 container/Containerfile.fedora
+>  create mode 100644 container/README
+>
+> diff --git a/container/Containerfile.debian
+> b/container/Containerfile.debian
+> new file mode 100644
+> index 0000000000..8906b2921e
+> --- /dev/null
+> +++ b/container/Containerfile.debian
+> @@ -0,0 +1,56 @@
+> +FROM debian
+> +
+> +# Install required packages for configuration & compilation & check
+> +RUN apt update -y  && \
+> +    apt install -y \
+> +        attr \
+> +        autoconf \
+> +        automake \
+> +        autopoint \
+> +        bison \
+> +        btrfs-progs \
+> +        cpio \
+> +        cryptsetup \
+> +        dosfstools \
+> +        e2fsprogs \
+> +        erofs-utils \
+> +        exfatprogs \
+> +        f2fs-tools \
+> +        flex \
+> +        gawk \
+> +        genromfs \
+> +        gettext \
+> +        git \
+> +        hfsplus \
+> +        jfsutils \
+> +        libtool \
+> +        lzop \
+> +        make \
+> +        mtools \
+> +        nilfs-tools \
+> +        ntfs-3g \
+> +        ovmf \
+> +        ovmf-ia32 \
+> +        parted \
+> +        patch \
+> +        pkg-config \
+> +        python3 \
+> +        qemu-efi-aarch64 \
+> +        qemu-efi-arm \
+> +        qemu-system \
+> +        squashfs-tools \
+> +        swtpm-tools \
+> +        tpm2-tools \
+> +        udftools \
+> +        unifont \
+> +        wamerican \
+> +        which \
+> +        xfonts-unifont \
+> +        xfsprogs \
+> +        xorriso \
+> +        zfs-fuse
+> +
+> +# clone tip of grub repository
+> +RUN git clone --depth 1 https://https.git.savannah.gnu.org/git/grub.git
+> /grub
+> +
+> +WORKDIR /grub
+> diff --git a/container/Containerfile.fedora
+> b/container/Containerfile.fedora
+> new file mode 100644
+> index 0000000000..e5b33bfd71
+> --- /dev/null
+> +++ b/container/Containerfile.fedora
+> @@ -0,0 +1,57 @@
+> +FROM registry.fedoraproject.org/fedora
+> +
+> +# Install required packages for configuration & compilation & check
+> +RUN dnf update -y && \
+> +    dnf install -y \
+> +        attr \
+> +        autoconf \
+> +        automake \
+> +        autopoint \
+> +        bison \
+> +        btrfs-progs \
+> +        cpio \
+> +        cryptsetup \
+> +        dosfstools \
+> +        e2fsprogs \
+> +        edk2-ovmf \
+> +        edk2-ovmf-ia32 \
+> +        erofs-utils \
+> +        exfatprogs \
+> +        f2fs-tools \
+> +        flex \
+> +        gawk \
+> +        genromfs \
+> +        gettext \
+> +        git \
+> +        hfsplus-tools \
+> +        jfsutils \
+> +        libtool \
+> +        lzop \
+> +        make \
+> +        mtools \
+> +        nilfs-utils \
+> +        ntfsprogs \
+> +        parted \
+> +        patch \
+> +        pkg-config \
+> +        python3 \
+> +        qemu-system-arm \
+> +        qemu-system-aarch64 \
+> +        qemu-system-riscv \
+> +        qemu-system-x86 \
+> +        squashfs-tools \
+> +        swtpm-tools \
+> +        tpm2-tools \
+> +        udftools \
+> +        unifont \
+> +        unifont-fonts \
+> +        which \
+> +        words \
+> +        xfsprogs \
+> +        xorriso \
+> +        zfs-fuse
+> +
+> +# clone tip of grub repository
+> +RUN git clone --depth 1 https://https.git.savannah.gnu.org/git/grub.git
+> /grub
+> +
+> +WORKDIR /grub
+> diff --git a/container/README b/container/README
+> new file mode 100644
+> index 0000000000..be5e988b9d
+> --- /dev/null
+> +++ b/container/README
+> @@ -0,0 +1,22 @@
+> +install `podman` on your favorite distro then build it with
+> +
+> +$ podman build -t fedora-grub -f Containerfile.fedora .
+> +
+> +or in case you prefer Debian
+> +
+> +$ podman build -t debian-grub -f Containerfile.debian .
+> +
+> +once built, you can run/launch any of the above
+> +
+> +$ podman run -it fedora-grub
+> +
+> +or
+> +
+> +$ podman run -it debian-grub
+> +
+> +and execute the standard build/test commands inside it, e.g
+> +
+> +# ./bootstrap
+> +# ./configure
+> +# ./make
+> +# ./make check
+> \ No newline at end of file
+>
+>
+> _______________________________________________
+> Grub-devel mailing list
+> Grub-devel@gnu.org
+> https://lists.gnu.org/mailman/listinfo/grub-devel
+>
+
+<div dir="ltr"><div dir="ltr"><div dir="ltr">Thank you for doing this, this is very helpful.<div><br></div><div>I tested both and they worked well for me. I submitted a separate patch just a moment ago to fix 2 of the test failures (not caused by this update).</div><div><br></div><div>Reviewed-by: Andrew Hamilton &lt;<a href="mailto:adhamilt@gmail.com">adhamilt@gmail.com</a>&gt;</div><div><br></div><div><br></div><div>Thanks,</div><div>Andrew</div></div></div></div><br><div class="gmail_quote gmail_quote_container"><div dir="ltr" class="gmail_attr">On Fri, Jun 20, 2025 at 7:04 PM Leo Sandoval via Grub-devel &lt;<a href="mailto:grub-devel@gnu.org">grub-devel@gnu.org</a>&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">Containers bring the ability to have ready-to-use environments and in<br>
+this case complete Fedora and Debian container files are described<br>
+containing all required packages for building and testing grub2.<br>
+<br>
+Once users manually build it, they can run the desired container, jump<br>
+into a setup ready for development. On the other hand, if users<br>
+prefer to use bare metal instead of a containerized environment, it is<br>
+still useful to have a file explicitly indicating the required packages.<br>
+<br>
+Signed-off-by: Leo Sandoval &lt;<a href="mailto:lsandova@redhat.com" target="_blank">lsandova@redhat.com</a>&gt;<br>
+---<br>
+Some facts observed while creating and testing these containes:<br>
+<br>
+NOTE: all the below results are based on<br>
+<br>
+    root@a613d2d32efa:/grub# git log --oneline<br>
+    db506b3 (grafted, HEAD -&gt; master, origin/master, origin/HEAD) gnulib/regexec: Fix resource leak<br>
+<br>
+* compilation time<br>
+<br>
+Done on my mostly idle-laptop (20 i7-12800H cores) so this is not really an isolated system, as any other benchmark,<br>
+do not trust too much on these numbers<br>
+<br>
+Debian:<br>
+    root@a613d2d32efa:/grub# time make &amp;&gt;/dev/null<br>
+<br>
+    real        1m15.486s<br>
+    user        0m51.869s<br>
+    sys         0m23.338s<br>
+<br>
+Fedora:<br>
+    [root@4eabb29f0ef2 grub]# time make &amp;&gt;/dev/null<br>
+<br>
+    real        1m18.679s<br>
+    user        0m51.352s<br>
+    sys         0m27.417s<br>
+<br>
+<br>
+* image sizes:<br>
+<br>
+    $ podman images | grep &#39;\-grub&#39;<br>
+    localhost/debian-grub                      latest      e789c1f8da26  About a minute ago  2.34 GB<br>
+    localhost/fedora-grub                      latest      b2dd8ef96b85  15 minutes ago      2.04 GB<br>
+<br>
+so debian is a &#39;bit&#39; heavier than fedora.<br>
+<br>
+* compilation issue<br>
+<br>
+Due to a more recent gcc version on Fedora compared to Debian, compilation failed on the Fedora container<br>
+with the following error (already reported but not yet at upstream)<br>
+<br>
+    lib/gnulib/base64.c:65:3: error: initializer-string for array of ‘char’ truncates NUL terminator but destination lacks ‘nonstring’ attribute (65 chars into 64 available) [-Werror=unterminated-string-initialization]<br>
+       65 |   &quot;ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/&quot;;<br>
+    |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~<br>
+<br>
+whereas not observed in Debian. To fix the above, one can install b4 and patch the repo<br>
+<br>
+    [root@4eabb29f0ef2 grub]# b4 shazam <a href="https://lore.kernel.org/grub-devel/20250618015826.270234-2-adhamilt@gmail.com/" rel="noreferrer" target="_blank">https://lore.kernel.org/grub-devel/20250618015826.270234-2-adhamilt@gmail.com/</a><br>
+    Grabbing thread from <a href="http://lore.kernel.org/all/20250618015826.270234-2-adhamilt@gmail.com/t.mbox.gz" rel="noreferrer" target="_blank">lore.kernel.org/all/20250618015826.270234-2-adhamilt@gmail.com/t.mbox.gz</a><br>
+    Checking for newer revisions<br>
+    Grabbing search results from <a href="http://lore.kernel.org" rel="noreferrer" target="_blank">lore.kernel.org</a><br>
+    Analyzing 6 messages in the thread<br>
+    Analyzing 3 code-review messages<br>
+    Checking attestation on all messages, may take a moment...<br>
+    ---<br>
+      ✗ [PATCH v2 1/2] gnulib: Add patch to allow GRUB w/GCC-15 compile<br>
+        + Reviewed-by: Sudhakar Kuppusamy &lt;<a href="mailto:sudhakar@linux.ibm.com" target="_blank">sudhakar@linux.ibm.com</a>&gt; (✗ DKIM/<a href="http://ibm.com" rel="noreferrer" target="_blank">ibm.com</a>)<br>
+      ✗ [PATCH v2 2/2] util/grub-protect: Correct uninit &#39;err&#39; Variable<br>
+        + Reviewed-by: Sudhakar Kuppusamy &lt;<a href="mailto:sudhakar@linux.ibm.com" target="_blank">sudhakar@linux.ibm.com</a>&gt; (✗ DKIM/<a href="http://ibm.com" rel="noreferrer" target="_blank">ibm.com</a>)<br>
+      ---<br>
+      ✗ BADSIG: DKIM/<a href="http://gmail.com" rel="noreferrer" target="_blank">gmail.com</a><br>
+    ---<br>
+    Total patches: 2<br>
+    ---<br>
+    Applying: gnulib: Add patch to allow GRUB w/GCC-15 compile<br>
+    Applying: util/grub-protect: Correct uninit &#39;err&#39; Variable<br>
+<br>
+<br>
+* make check results<br>
+<br>
+Debian:<br>
+    ============================================================================<br>
+    Testsuite summary for GRUB 2.13<br>
+    ============================================================================<br>
+    # TOTAL: 88<br>
+    # PASS:  64<br>
+    # SKIP:  3<br>
+    # XFAIL: 0<br>
+    # FAIL:  2<br>
+    # XPASS: 0<br>
+    # ERROR: 19<br>
+<br>
+Fedora:<br>
+    ============================================================================<br>
+    Testsuite summary for GRUB 2.13<br>
+    ============================================================================<br>
+    # TOTAL: 88<br>
+    # PASS:  63<br>
+    # SKIP:  3<br>
+    # XFAIL: 0<br>
+    # FAIL:  3<br>
+    # XPASS: 0<br>
+    # ERROR: 19<br>
+<br>
+In general, the same results in both distros.<br>
+---<br>
+ container/Containerfile.debian | 56 +++++++++++++++++++++++++++++++++++++++++<br>
+ container/Containerfile.fedora | 57 ++++++++++++++++++++++++++++++++++++++++++<br>
+ container/README               | 22 ++++++++++++++++<br>
+ 3 files changed, 135 insertions(+)<br>
+ create mode 100644 container/Containerfile.debian<br>
+ create mode 100644 container/Containerfile.fedora<br>
+ create mode 100644 container/README<br>
+<br>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 163 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 163 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+diff --git a/container/Containerfile.debian b/container/Containerfile.debian<br>
+new file mode 100644<br>
+index 0000000000..8906b2921e<br>
+--- /dev/null<br>
++++ b/container/Containerfile.debian<br>
+@@ -0,0 +1,56 @@<br>
++FROM debian<br>
++<br>
++# Install required packages for configuration &amp; compilation &amp; check<br>
++RUN apt update -y  &amp;&amp; \<br>
++    apt install -y \<br>
++        attr \<br>
++        autoconf \<br>
++        automake \<br>
++        autopoint \<br>
++        bison \<br>
++        btrfs-progs \<br>
++        cpio \<br>
++        cryptsetup \<br>
++        dosfstools \<br>
++        e2fsprogs \<br>
++        erofs-utils \<br>
++        exfatprogs \<br>
++        f2fs-tools \<br>
++        flex \<br>
++        gawk \<br>
++        genromfs \<br>
++        gettext \<br>
++        git \<br>
++        hfsplus \<br>
++        jfsutils \<br>
++        libtool \<br>
++        lzop \<br>
++        make \<br>
++        mtools \<br>
++        nilfs-tools \<br>
++        ntfs-3g \<br>
++        ovmf \<br>
++        ovmf-ia32 \<br>
++        parted \<br>
++        patch \<br>
++        pkg-config \<br>
++        python3 \<br>
++        qemu-efi-aarch64 \<br>
++        qemu-efi-arm \<br>
++        qemu-system \<br>
++        squashfs-tools \<br>
++        swtpm-tools \<br>
++        tpm2-tools \<br>
++        udftools \<br>
++        unifont \<br>
++        wamerican \<br>
++        which \<br>
++        xfonts-unifont \<br>
++        xfsprogs \<br>
++        xorriso \<br>
++        zfs-fuse<br>
++<br>
++# clone tip of grub repository<br>
++RUN git clone --depth 1 <a href="https://https.git.savannah.gnu.org/git/grub.git" rel="noreferrer" target="_blank">https://https.git.savannah.gnu.org/git/grub.git</a> /grub<br>
++<br>
++WORKDIR /grub<br>
+diff --git a/container/Containerfile.fedora b/container/Containerfile.fedora<br>
+new file mode 100644<br>
+index 0000000000..e5b33bfd71<br>
+--- /dev/null<br>
++++ b/container/Containerfile.fedora<br>
+@@ -0,0 +1,57 @@<br>
++FROM <a href="http://registry.fedoraproject.org/fedora" rel="noreferrer" target="_blank">registry.fedoraproject.org/fedora</a><br>
++<br>
++# Install required packages for configuration &amp; compilation &amp; check<br>
++RUN dnf update -y &amp;&amp; \<br>
++    dnf install -y \<br>
++        attr \<br>
++        autoconf \<br>
++        automake \<br>
++        autopoint \<br>
++        bison \<br>
++        btrfs-progs \<br>
++        cpio \<br>
++        cryptsetup \<br>
++        dosfstools \<br>
++        e2fsprogs \<br>
++        edk2-ovmf \<br>
++        edk2-ovmf-ia32 \<br>
++        erofs-utils \<br>
++        exfatprogs \<br>
++        f2fs-tools \<br>
++        flex \<br>
++        gawk \<br>
++        genromfs \<br>
++        gettext \<br>
++        git \<br>
++        hfsplus-tools \<br>
++        jfsutils \<br>
++        libtool \<br>
++        lzop \<br>
++        make \<br>
++        mtools \<br>
++        nilfs-utils \<br>
++        ntfsprogs \<br>
++        parted \<br>
++        patch \<br>
++        pkg-config \<br>
++        python3 \<br>
++        qemu-system-arm \<br>
++        qemu-system-aarch64 \<br>
++        qemu-system-riscv \<br>
++        qemu-system-x86 \<br>
++        squashfs-tools \<br>
++        swtpm-tools \<br>
++        tpm2-tools \<br>
++        udftools \<br>
++        unifont \<br>
++        unifont-fonts \<br>
++        which \<br>
++        words \<br>
++        xfsprogs \<br>
++        xorriso \<br>
++        zfs-fuse<br>
++<br>
++# clone tip of grub repository<br>
++RUN git clone --depth 1 <a href="https://https.git.savannah.gnu.org/git/grub.git" rel="noreferrer" target="_blank">https://https.git.savannah.gnu.org/git/grub.git</a> /grub<br>
++<br>
++WORKDIR /grub<br>
+diff --git a/container/README b/container/README<br>
+new file mode 100644<br>
+index 0000000000..be5e988b9d<br>
+--- /dev/null<br>
++++ b/container/README<br>
+@@ -0,0 +1,22 @@<br>
++install `podman` on your favorite distro then build it with<br>
++<br>
++$ podman build -t fedora-grub -f Containerfile.fedora .<br>
++<br>
++or in case you prefer Debian<br>
++<br>
++$ podman build -t debian-grub -f Containerfile.debian .<br>
++<br>
++once built, you can run/launch any of the above<br>
++<br>
++$ podman run -it fedora-grub<br>
++<br>
++or<br>
++<br>
++$ podman run -it debian-grub<br>
++<br>
++and execute the standard build/test commands inside it, e.g<br>
++<br>
++# ./bootstrap<br>
++# ./configure<br>
++# ./make<br>
++# ./make check<br>
+\ No newline at end of file<br>
+<br>
+<br>
+_______________________________________________<br>
+Grub-devel mailing list<br>
+<a href="mailto:Grub-devel@gnu.org" target="_blank">Grub-devel@gnu.org</a><br>
+<a href="https://lists.gnu.org/mailman/listinfo/grub-devel" rel="noreferrer" target="_blank">https://lists.gnu.org/mailman/listinfo/grub-devel</a><br>
+</blockquote></div>
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  container/Containerfile.debian: MISSING on master
+  container/Containerfile.fedora: MISSING on master
+  container/README: MISSING on master
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       NEW FEATURE (target files missing on master)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +138 -3 lines
+
+================================================================================

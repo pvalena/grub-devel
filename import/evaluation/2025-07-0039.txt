@@ -1,0 +1,112 @@
+================================================================================
+EVALUATION: 2025-07-0039
+================================================================================
+
+Mailing list subject: [PATCH v14 14/15] libgcrypt: Fix a memory leak
+Commit subject:       libgcrypt: Fix a memory leak
+Author:               Vladimir Serbinenko <phcoder@gmail.com>
+Date:                 2025-07-07
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-07-0029 (11 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                                       | 31 ++++++++++++++++++++++
+ grub-core/lib/libgcrypt-patches/08_sexp_leak.patch |  7 +++++
+ 2 files changed, 38 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ .../lib/libgcrypt-patches/08_sexp_leak.patch      | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+ create mode 100644 grub-core/lib/libgcrypt-patches/08_sexp_leak.patch
+
+diff --git a/grub-core/lib/libgcrypt-patches/08_sexp_leak.patch b/grub-core/lib/libgcrypt-patches/08_sexp_leak.patch
+new file mode 100644
+index 000000000..706b95395
+--- /dev/null
++++ b/grub-core/lib/libgcrypt-patches/08_sexp_leak.patch
+@@ -0,0 +1,15 @@
++diff -ur ../libgcrypt-1.11.0/src/sexp.c grub-core/lib/libgcrypt/src/sexp.c
++--- a/grub-core/lib/libgcrypt-grub/src/sexp.c	2024-03-28 10:07:27.000000000 +0000
+++++ b/grub-core/lib/libgcrypt-grub/src/sexp.c	2025-07-02 17:10:32.714864459 +0000
++@@ -2714,8 +2714,10 @@
++   length = 0;
++   for (s=string; *s; s +=2 )
++     {
++-      if (!hexdigitp (s) || !hexdigitp (s+1))
+++      if (!hexdigitp (s) || !hexdigitp (s+1)) {
+++	free (buffer);
++         return NULL;           /* Invalid hex digits. */
+++      }
++       ((unsigned char*)buffer)[length++] = xtoi_2 (s);
++     }
++   *r_length = length;
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 41f126627ad4d3fa8192e9d48868d8a963e2eca5
+Author: Vladimir Serbinenko <phcoder@gmail.com>
+Date:   Mon Jul 7 14:52:20 2025 +0000
+
+    libgcrypt: Fix a memory leak
+    
+    Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+diff --git a/grub-core/lib/libgcrypt-patches/08_sexp_leak.patch b/grub-core/lib/libgcrypt-patches/08_sexp_leak.patch
+index eefd0311e..88d8aaa58 100644
+--- a/grub-core/lib/libgcrypt-patches/08_sexp_leak.patch
++++ b/grub-core/lib/libgcrypt-patches/08_sexp_leak.patch
+@@ -1,3 +1,4 @@
++<<<<<<< HEAD
+ sexp: Fix a memory leak
+ 
+ Fixes: CID 468917
+@@ -8,6 +9,12 @@ diff -ur ../libgcrypt-1.11.0/src/sexp.c grub-core/lib/libgcrypt/src/sexp.c
+ --- a/grub-core/lib/libgcrypt-grub/src/sexp.c	2024-03-28 10:07:27.000000000 +0000
+ +++ b/grub-core/lib/libgcrypt-grub/src/sexp.c	2025-07-02 17:10:32.714864459 +0000
+ @@ -2725,8 +2725,10 @@
++=======
++diff -ur ../libgcrypt-1.11.0/src/sexp.c grub-core/lib/libgcrypt/src/sexp.c
++--- a/grub-core/lib/libgcrypt-grub/src/sexp.c	2024-03-28 10:07:27.000000000 +0000
+++++ b/grub-core/lib/libgcrypt-grub/src/sexp.c	2025-07-02 17:10:32.714864459 +0000
++@@ -2714,8 +2714,10 @@
++>>>>>>> libgcrypt: Fix a memory leak
+    length = 0;
+    for (s=string; *s; s +=2 )
+      {
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/lib/libgcrypt-patches/08_sexp_leak.patch: EXISTS (21 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +16 -3 lines
+
+================================================================================

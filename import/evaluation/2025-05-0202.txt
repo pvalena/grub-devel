@@ -1,0 +1,75 @@
+================================================================================
+EVALUATION: 2025-05-0202
+================================================================================
+
+Mailing list subject: =?UTF-8?Q?=5BPATCH_2/2=5D_Docs_for_the_new_options_of_the_=E2=80=98?=
+Commit subject:       Docs for the new options of the ‘export’ command
+Author:               Jiří 'bindiff' Wolker <projects@jwo.cz>
+Date:                 2025-05-26
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2025-05-0201 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+This documents the new ‘-g’ and ‘-u’ options added to the
+command to allow exporting variables to upper scopes and
+cancelling export (un-exporting) the variables.
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ docs/grub.texi | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/docs/grub.texi b/docs/grub.texi
+index 34b3484dc..95ef247c7 100644
+--- a/docs/grub.texi
++++ b/docs/grub.texi
+@@ -6981,9 +6981,17 @@ result as sequence of GRUB commands.
+ @node export
+ @subsection export
+ -@deffn Command export envvar
++@deffn Command export [@option{--global}|@option{--unexport}] envvar...
+ Export the environment variable @var{envvar}. Exported variables are visible
+ to subsidiary configuration files loaded using @command{configfile}.
++
++If the (@option{-u}, @option{--unexport}) is used, the variable is made again
++into a local variable. This is reverse operation of the @command{export} without
++any options.
++
++The (@option{-g}, @option{--global}) causes the variable to become exported
++not only to newly created scopes, but also to the original scope and all its
++parent scopes when the execution leaves the current scope.
+ @end deffn
+  -- 2.45.3
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  docs/grub.texi: EXISTS (12070 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +10 -2 lines
+
+================================================================================

@@ -1,0 +1,194 @@
+================================================================================
+EVALUATION: 2025-09-0037
+================================================================================
+
+Mailing list subject: [PATCH v2] lsefi: fixed memory leaks
+Commit subject:       lsefi: fixed memory leaks
+Author:               Renaud Métrich <rmetrich@redhat.com>
+Date:                 2025-09-02
+Has FAILED.patch:     1
+Code files changed:   2
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Signed-off-by: Renaud Métrich <rmetrich@redhat.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                   | 70 ++++++++++++++++++++++++++++++++++++++++++
+ grub-core/commands/efi/lsefi.c |  6 ++++
+ include/grub/efi/efi.h         | 27 ++++++++++++++++
+ 3 files changed, 103 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/commands/efi/lsefi.c |  4 ++++
+ include/grub/efi/efi.h         | 27 +++++++++++++++++++++++++++
+ 2 files changed, 31 insertions(+)
+
+diff --git a/grub-core/commands/efi/lsefi.c b/grub-core/commands/efi/lsefi.c
+index 7b8316d41..bda25a3a9 100644
+--- a/grub-core/commands/efi/lsefi.c
++++ b/grub-core/commands/efi/lsefi.c
+@@ -127,8 +127,12 @@ grub_cmd_lsefi (grub_command_t cmd __attribute__ ((unused)),
+ 	    grub_printf ("  %pG\n", protocols[j]);
+ 	}
+ 
++      if (protocols)
++	grub_efi_free_pool (protocols);
+     }
+ 
++  grub_free (handles);
++
+   return 0;
+ }
+ 
+diff --git a/include/grub/efi/efi.h b/include/grub/efi/efi.h
+index b4d2f2d46..538bdcda8 100644
+--- a/include/grub/efi/efi.h
++++ b/include/grub/efi/efi.h
+@@ -71,6 +71,7 @@ EXPORT_FUNC(grub_efi_get_memory_map) (grub_efi_uintn_t *memory_map_size,
+ 				      grub_efi_uintn_t *descriptor_size,
+ 				      grub_efi_uint32_t *descriptor_version);
+ void grub_efi_memory_fini (void);
++
+ grub_efi_loaded_image_t *EXPORT_FUNC(grub_efi_get_loaded_image) (grub_efi_handle_t image_handle);
+ void EXPORT_FUNC(grub_efi_print_device_path) (grub_efi_device_path_t *dp);
+ char *EXPORT_FUNC(grub_efi_get_filename) (grub_efi_device_path_t *dp);
+@@ -193,4 +194,30 @@ struct grub_net_card;
+ grub_efi_handle_t
+ grub_efinet_get_device_handle (struct grub_net_card *card);
+ 
++static inline grub_efi_status_t
++__attribute__((__unused__))
++grub_efi_allocate_pool (grub_efi_memory_type_t pool_type,
++			grub_efi_uintn_t buffer_size,
++			void **buffer)
++{
++  grub_efi_boot_services_t *b;
++  grub_efi_status_t status;
++
++  b = grub_efi_system_table->boot_services;
++  status = b->allocate_pool(pool_type, buffer_size, buffer);
++  return status;
++}
++
++static inline grub_efi_status_t
++__attribute__((__unused__))
++grub_efi_free_pool (void *buffer)
++{
++  grub_efi_boot_services_t *b;
++  grub_efi_status_t status;
++
++  b = grub_efi_system_table->boot_services;
++  status = b->free_pool(buffer);
++  return status;
++}
++
+ #endif /* ! GRUB_EFI_EFI_HEADER */
+-- 
+2.51.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit feed5a26c63ede2c9c40dd80c7f750faaff7b4a5
+Author: Renaud Métrich <rmetrich@redhat.com>
+Date:   Tue Sep 2 13:55:15 2025 +0200
+
+    lsefi: fixed memory leaks
+    
+    Signed-off-by: Renaud Métrich <rmetrich@redhat.com>
+
+diff --git a/grub-core/commands/efi/lsefi.c b/grub-core/commands/efi/lsefi.c
+index 4d32efece..da4d135cf 100644
+--- a/grub-core/commands/efi/lsefi.c
++++ b/grub-core/commands/efi/lsefi.c
+@@ -123,9 +123,15 @@ grub_cmd_lsefi (grub_command_t cmd __attribute__ ((unused)),
+ 	    grub_printf ("  %pG\n", protocols[j]);
+ 	}
+ 
++      if (protocols)
++	grub_efi_free_pool (protocols);
+     }
+ 
+   grub_free (handles);
++<<<<<<< HEAD
++=======
++
++>>>>>>> lsefi: fixed memory leaks
+   return 0;
+ }
+ 
+diff --git a/include/grub/efi/efi.h b/include/grub/efi/efi.h
+index 0851258fd..ef0d28a47 100644
+--- a/include/grub/efi/efi.h
++++ b/include/grub/efi/efi.h
+@@ -70,6 +70,7 @@ EXPORT_FUNC(grub_efi_get_memory_map) (grub_efi_uintn_t *memory_map_size,
+ 				      grub_efi_uintn_t *descriptor_size,
+ 				      grub_efi_uint32_t *descriptor_version);
+ void grub_efi_memory_fini (void);
++
+ grub_efi_loaded_image_t *EXPORT_FUNC(grub_efi_get_loaded_image) (grub_efi_handle_t image_handle);
+ void EXPORT_FUNC(grub_efi_print_device_path) (grub_efi_device_path_t *dp);
+ char *EXPORT_FUNC(grub_efi_get_filename) (grub_efi_device_path_t *dp);
+@@ -192,4 +193,30 @@ struct grub_net_card;
+ grub_efi_handle_t
+ grub_efinet_get_device_handle (struct grub_net_card *card);
+ 
++static inline grub_efi_status_t
++__attribute__((__unused__))
++grub_efi_allocate_pool (grub_efi_memory_type_t pool_type,
++			grub_efi_uintn_t buffer_size,
++			void **buffer)
++{
++  grub_efi_boot_services_t *b;
++  grub_efi_status_t status;
++
++  b = grub_efi_system_table->boot_services;
++  status = b->allocate_pool(pool_type, buffer_size, buffer);
++  return status;
++}
++
++static inline grub_efi_status_t
++__attribute__((__unused__))
++grub_efi_free_pool (void *buffer)
++{
++  grub_efi_boot_services_t *b;
++  grub_efi_status_t status;
++
++  b = grub_efi_system_table->boot_services;
++  status = b->free_pool(buffer);
++  return status;
++}
++
+ #endif /* ! GRUB_EFI_EFI_HEADER */
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/commands/efi/lsefi.c: EXISTS (143 lines)
+  include/grub/efi/efi.h: EXISTS (195 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 2 code file(s) + FAILED.patch
+Patch size: +33 -4 lines
+
+================================================================================

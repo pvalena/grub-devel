@@ -1,0 +1,136 @@
+================================================================================
+EVALUATION: 2025-05-0077
+================================================================================
+
+Mailing list subject: [PATCH v3 1/1] loader/efi/linux: Enhance error message of linux
+Commit subject:       loader/efi/linux: Enhance error message of linux command
+Author:               khaalid <khaliidcaliy@gmail.com>
+Date:                 2025-05-12
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-05-0076 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+As said in my privious patch.
+
+The error message "cannot start image" seems better than "start_imaged
+returned ..", to make it consistent with the other one.
+
+Signed-off-by: khalid Ali<khaliidcaliy@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                 | 31 +++++++++++++++++++++++++++++++
+ grub-core/loader/efi/linux.c | 11 ++++++++++-
+ 2 files changed, 41 insertions(+), 1 deletion(-)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/loader/efi/linux.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/grub-core/loader/efi/linux.c b/grub-core/loader/efi/linux.c
+index 78ea07ca8..b45a3cc61 100644
+--- a/grub-core/loader/efi/linux.c
++++ b/grub-core/loader/efi/linux.c
+@@ -212,7 +212,7 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
+ 			  (grub_efi_device_path_t *) mempath,
+ 			  (void *) addr, size, &image_handle);
+   if (status != GRUB_EFI_SUCCESS)
+-    return grub_error (GRUB_ERR_BAD_OS, "cannot load image");
++    return grub_error (GRUB_ERR_BAD_OS, "cannot load image 0x%lx", status);
+ 
+   grub_dprintf ("linux", "linux command line: '%s'\n", args);
+ 
+@@ -238,7 +238,7 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
+   status = b->start_image (image_handle, 0, NULL);
+ 
+   /* When successful, not reached */
+-  grub_error (GRUB_ERR_BAD_OS, "start_image() returned 0x%" PRIxGRUB_EFI_UINTN_T, status);
++  grub_error (GRUB_ERR_BAD_OS, "cannot start image 0x%lx", status);
+   grub_efi_free_pages ((grub_addr_t) loaded_image->load_options,
+ 		       GRUB_EFI_BYTES_TO_PAGES (len));
+   loaded_image->load_options = NULL;
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 4a600321221125781eb4279bbed7abf72fe0916a
+Author: khaalid <khaliidcaliy@gmail.com>
+Date:   Mon May 12 19:15:50 2025 +0000
+
+    loader/efi/linux: Enhance error message of linux command
+    
+    As said in my privious patch.
+    
+    The error message "cannot start image" seems better than "start_imaged
+    returned ..", to make it consistent with the other one.
+    
+    Signed-off-by: khalid Ali<khaliidcaliy@gmail.com>
+
+diff --git a/grub-core/loader/efi/linux.c b/grub-core/loader/efi/linux.c
+index ded507cd5..3c8b5264a 100644
+--- a/grub-core/loader/efi/linux.c
++++ b/grub-core/loader/efi/linux.c
+@@ -215,6 +215,7 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
+   mempath[1].header.subtype = GRUB_EFI_END_ENTIRE_DEVICE_PATH_SUBTYPE;
+   mempath[1].header.length = sizeof (grub_efi_device_path_t);
+ 
++<<<<<<< HEAD
+   image_handle = grub_efi_get_last_verified_image_handle ();
+   if (image_handle == NULL)
+     {
+@@ -229,6 +230,14 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
+     }
+ 
+   grub_free (mempath);
++=======
++  b = grub_efi_system_table->boot_services;
++  status = b->load_image (0, grub_efi_image_handle,
++			  (grub_efi_device_path_t *) mempath,
++			  (void *) addr, size, &image_handle);
++  if (status != GRUB_EFI_SUCCESS)
++    return grub_error (GRUB_ERR_BAD_OS, "cannot load image 0x%lx", status);
++>>>>>>> loader/efi/linux: Enhance error message of linux command
+ 
+   grub_dprintf ("linux", "linux command line: '%s'\n", args);
+ 
+@@ -256,7 +265,7 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
+   status = grub_efi_start_image (image_handle, 0, NULL);
+ 
+   /* When successful, not reached */
+-  grub_error (GRUB_ERR_BAD_OS, "start_image() returned 0x%" PRIxGRUB_EFI_UINTN_T, status);
++  grub_error (GRUB_ERR_BAD_OS, "cannot start image 0x%lx", status);
+   grub_efi_free_pages ((grub_addr_t) loaded_image->load_options,
+ 		       GRUB_EFI_BYTES_TO_PAGES (len));
+   loaded_image->load_options = NULL;
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/loader/efi/linux.c: EXISTS (614 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +3 -5 lines
+
+================================================================================

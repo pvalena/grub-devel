@@ -1,0 +1,222 @@
+================================================================================
+EVALUATION: 2025-07-0038
+================================================================================
+
+Mailing list subject: [PATCH v14 11/15] import_gcry: Make compatible with python 3.4
+Commit subject:       import_gcry: Make compatible with python 3.4
+Author:               Vladimir Serbinenko <phcoder@gmail.com>
+Date:                 2025-07-07
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-07-0029 (11 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch        | 42 +++++++++++++++++++++++++
+ util/import_gcry.py | 90 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 132 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ util/import_gcry.py | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/util/import_gcry.py b/util/import_gcry.py
+index ca918c777..9b0e8d936 100644
+--- a/util/import_gcry.py
++++ b/util/import_gcry.py
+@@ -249,15 +249,15 @@ for cipher_file in cipher_files:
+                 if not re.search (" *};", line) is None:
+                     escapenl = " \\" if ismddefine else ""
+                     if not iscomma:
+-                        fw.write (f"    ,{escapenl}\n")
+-                    fw.write (f"    GRUB_UTIL_MODNAME(\"%s\"){escapenl}\n" % modname);
++                        fw.write ("    ,%s\n" % escapenl)
++                    fw.write ("    GRUB_UTIL_MODNAME(\"%s\")%s\n" % (modname, escapenl))
+                     if ismd:
+                         if not (mdname in mdblocksizes):
+                             print ("ERROR: Unknown digest blocksize: %s\n"
+                                    % mdname)
+                             exit (1)
+-                        fw.write (f"    .blocksize = %s{escapenl}\n"
+-                                  % mdblocksizes [mdname])
++                        fw.write ("    .blocksize = %s%s\n"
++                                  % (mdblocksizes [mdname], escapenl))
+                     ismd = False
+                     ismddefine = False
+                     mdarg = 0
+@@ -361,7 +361,7 @@ for cipher_file in cipher_files:
+             if isc and not m is None:
+                 bs = m.groups()[0]
+                 bits = m.groups()[2]
+-                mdname = f"_gcry_digest_spec_blake2{bs}_{bits}"
++                mdname = "_gcry_digest_spec_blake2%s_%s" % (bs, bits)
+                 mdnames.append (mdname)
+ 
+             m = re.match ("(const )?gcry_md_spec_t", line)
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit e6e8ba6f950fb2be34695bca0cffba515f68196e
+Author: Vladimir Serbinenko <phcoder@gmail.com>
+Date:   Mon Jul 7 14:52:17 2025 +0000
+
+    import_gcry: Make compatible with python 3.4
+    
+    Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+diff --git a/util/import_gcry.py b/util/import_gcry.py
+index d96d938e9..c4246cff0 100644
+--- a/util/import_gcry.py
++++ b/util/import_gcry.py
+@@ -113,6 +113,7 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
+ 
+     confutil.write ("\n")
+ 
++<<<<<<< HEAD
+ 
+     # rijndael is the only cipher using aliases. So no need for mangling, just
+     # hardcode it
+@@ -197,6 +198,86 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
+                 mdnames = []
+                 mdctxsizes = []
+                 pknames = []
++=======
++        ciphernames = []
++        mdnames = []
++        mdctxsizes = []
++        pknames = []
++        hold = False
++        skip = 0
++        skip2 = False
++        ismd = False
++        ismddefine = False
++        mdarg = 0
++        ispk = False
++        iscipher = False
++        iscryptostart = False
++        iscomma = False
++        skip_statement = False
++        skip_comma = False
++        if isc:
++            modname = "gcry_%s" % removesuffix(removesuffix(cipher_file, ".c"), "-glue").replace("-", "_")
++        for line in f:
++            line = line
++            if skip_statement:
++                if not re.search (";", line) is None:
++                    skip_statement = False
++                continue
++            if skip > 0:
++                if line[0] == "}":
++                    skip = skip - 1
++                continue
++            if skip2:
++                if not re.search (" *};", line) is None:
++                    skip2 = False
++                continue
++            if iscryptostart:
++                s = re.search (" *\"([A-Z0-9_a-z-]*)\"", line)
++                if not s is None:
++                    sg = s.groups()[0]
++                    cryptolist.write (("%s: %s\n") % (sg, modname))
++                    iscryptostart = False
++            if ismd:
++                spl = line.split (",")
++                if mdarg + len (spl) > 9 and mdarg <= 9 and ("sizeof" in spl[9-mdarg]):
++                    mdctxsizes.append (spl[9-mdarg].lstrip ().rstrip())
++                mdarg = mdarg + len (spl) - 1
++            if ismd or iscipher or ispk:
++                if not re.search (" *};", line) is None:
++                    escapenl = " \\" if ismddefine else ""
++                    if not iscomma:
++                        fw.write ("    ,%s\n" % escapenl)
++                    fw.write ("    GRUB_UTIL_MODNAME(\"%s\")%s\n" % (modname, escapenl))
++                    if ismd:
++                        if not (mdname in mdblocksizes):
++                            print ("ERROR: Unknown digest blocksize: %s\n"
++                                   % mdname)
++                            exit (1)
++                        fw.write ("    .blocksize = %s%s\n"
++                                  % (mdblocksizes [mdname], escapenl))
++                    ismd = False
++                    ismddefine = False
++                    mdarg = 0
++                    iscipher = False
++                    ispk = False
++                iscomma = not re.search (",$", line) is None
++            # Used only for selftests.
++            m = re.match (r"(static byte|static unsigned char|static const gcry_md_spec_t \* const) (weak_keys_chksum|digest_list)\[[0-9]*\] =", line)
++            if not m is None:
++                skip = 1
++                fname = m.groups ()[1]
++                chmsg = "(%s): Removed." % fname
++                if nch:
++                    chlognew = "%s\n	%s" % (chlognew, chmsg)
++                else:
++                    chlognew = "%s %s" % (chlognew, chmsg)
++                    nch = True
++                continue
++            if (not hold) and (re.match (r"[ \t]*(run_selftests|do_tripledes_set_extra_info),?", line) is not None):
++                iscomma = True
++                line = ""
++            if hold:
++>>>>>>> import_gcry: Make compatible with python 3.4
+                 hold = False
+                 skip = 0
+                 skip2 = False
+@@ -644,12 +725,21 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
+                     fw.write("typedef gcry_selftest_func_t selftest_func_t;")
+                     continue
+ 
++<<<<<<< HEAD
+                 if src == "g10lib.h":
+                     fw.write("#include <cipher_wrap.h>\n")
+                     fw.write("#include <grub/crypto.h>\n")
+                     fw.write("#include <stdlib.h>\n")
+                     fw.write (f.read ().replace ("(printf,f,a)", "(__printf__,f,a)").replace ("#include \"../compat/libcompat.h\"", "").replace("#define N_(a) (a)", ""))
+                     continue
++=======
++            m = re.match (r"DEFINE_BLAKE2_VARIANT\((.), (.), ([0-9]*)", line)
++            if isc and not m is None:
++                bs = m.groups()[0]
++                bits = m.groups()[2]
++                mdname = "_gcry_digest_spec_blake2%s_%s" % (bs, bits)
++                mdnames.append (mdname)
++>>>>>>> import_gcry: Make compatible with python 3.4
+ 
+                 fw.write (f.read ())
+ 
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  util/import_gcry.py: EXISTS (754 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +6 -8 lines
+
+================================================================================

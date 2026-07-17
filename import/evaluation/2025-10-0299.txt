@@ -1,0 +1,156 @@
+================================================================================
+EVALUATION: 2025-10-0299
+================================================================================
+
+Mailing list subject: [PATCH v6 06/12] util/grub-editenv: wire unset_variables to optional
+Commit subject:       util/grub-editenv: wire unset_variables to optional fs_envblk
+Author:               Michael Chang <mchang@suse.com>
+Date:                 2025-10-17
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-10-0294 (6 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+This patch updates unset_variables() so that removals are also applied
+to the external environment block when it is present. The code opens the
+external block, deletes the same named keys there, and then writes the
+external block back using fs_envblk_write(). The file based envblk is
+still updated and written as before.
+
+Signed-off-by: Michael Chang <mchang@suse.com>
+Reviewed-by: Neal Gompa <ngompa13@gmail.com>
+Reviewed-by: Avnish Chouhan <avnish@linux.ibm.com>
+Reviewed-by: Daniel Kiper <daniel.kiper@oracle.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch        | 46 ++++++++++++++++++++++++++++++++++++++++++++++
+ util/grub-editenv.c |  6 ++++++
+ 2 files changed, 52 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ util/grub-editenv.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/util/grub-editenv.c b/util/grub-editenv.c
+index 7d4981d67..7f39ff120 100644
+--- a/util/grub-editenv.c
++++ b/util/grub-editenv.c
+@@ -499,18 +499,32 @@ static void
+ unset_variables (const char *name, int argc, char *argv[])
+ {
+   grub_envblk_t envblk;
++  grub_envblk_t envblk_on_block = NULL;
+ 
+   envblk = open_envblk_file (name);
++
++  if (fs_envblk != NULL)
++    envblk_on_block = fs_envblk->ops->open (envblk);
++
+   while (argc)
+     {
+       grub_envblk_delete (envblk, argv[0]);
+ 
++      if (envblk_on_block != NULL)
++	grub_envblk_delete (envblk_on_block, argv[0]);
++
+       argc--;
+       argv++;
+     }
+ 
+   write_envblk (name, envblk);
+   grub_envblk_close (envblk);
++
++  if (envblk_on_block != NULL)
++    {
++      fs_envblk->ops->write (envblk_on_block);
++      grub_envblk_close (envblk_on_block);
++    }
+ }
+ 
+ int
+-- 
+2.51.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit e8d295334bdb88c174d5e9d97a61d854503b83dd
+Author: Michael Chang <mchang@suse.com>
+Date:   Fri Oct 17 17:01:37 2025 +0800
+
+    util/grub-editenv: wire unset_variables to optional fs_envblk
+    
+    This patch updates unset_variables() so that removals are also applied
+    to the external environment block when it is present. The code opens the
+    external block, deletes the same named keys there, and then writes the
+    external block back using fs_envblk_write(). The file based envblk is
+    still updated and written as before.
+    
+    Signed-off-by: Michael Chang <mchang@suse.com>
+    Reviewed-by: Neal Gompa <ngompa13@gmail.com>
+    Reviewed-by: Avnish Chouhan <avnish@linux.ibm.com>
+    Reviewed-by: Daniel Kiper <daniel.kiper@oracle.com>
+
+diff --git a/util/grub-editenv.c b/util/grub-editenv.c
+index 143bcdaca..cfc6627d8 100644
+--- a/util/grub-editenv.c
++++ b/util/grub-editenv.c
+@@ -524,8 +524,11 @@ unset_variables (const char *name, int argc, char *argv[])
+ 
+   if (fs_envblk != NULL)
+     envblk_on_block = fs_envblk->ops->open (envblk);
++<<<<<<< HEAD
+   else
+     grub_envblk_delete (envblk, "env_block");
++=======
++>>>>>>> util/grub-editenv: wire unset_variables to optional fs_envblk
+ 
+   while (argc)
+     {
+@@ -546,6 +549,7 @@ unset_variables (const char *name, int argc, char *argv[])
+       fs_envblk->ops->write (envblk_on_block);
+       grub_envblk_close (envblk_on_block);
+     }
++<<<<<<< HEAD
+ }
+ 
+ static bool
+@@ -651,6 +655,8 @@ probe_fs_envblk (fs_envblk_spec_t *spec)
+   grub_gcry_fini_all ();
+   grub_fini_all ();
+   grub_util_biosdisk_fini ();
++=======
++>>>>>>> util/grub-editenv: wire unset_variables to optional fs_envblk
+ }
+ 
+ int
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  util/grub-editenv.c: EXISTS (708 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +15 -3 lines
+
+================================================================================

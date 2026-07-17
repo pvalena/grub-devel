@@ -1,0 +1,256 @@
+================================================================================
+EVALUATION: 2025-05-0201
+================================================================================
+
+Mailing list subject: [PATCH 1/2] Exporting variables to upper levels
+Commit subject:       Exporting variables to upper levels
+Author:               Jiří 'bindiff' Wolker <projects@jwo.cz>
+Date:                 2025-05-26
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2025-05-0201 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+This adds new options ‘-g’ and ‘-u’ to the ‘export’ command.
+
+By default, the ‘export’ command exports the variables to
+lower environment context nesting levels, but not to the upper levels.
+This behavior is left unchanged from the original version.
+
+Using of the ‘-g’ option allows exporting of the given variable(s)
+even to the upper levels.
+
+The ‘-u’ option complements the default behavior of ‘export’ command:
+It causes the variable to become local, i.e., un-exported.
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 199 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 199 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/kern/env.c       | 11 ++++--
+ grub-core/normal/context.c | 70 ++++++++++++++++++++++++++++++--------
+ include/grub/env.h         | 11 +++++-
+ 3 files changed, 75 insertions(+), 17 deletions(-)
+
+diff --git a/grub-core/kern/env.c b/grub-core/kern/env.c
+index 764068896..6b60c71de 100644
+--- a/grub-core/kern/env.c
++++ b/grub-core/kern/env.c
+@@ -231,7 +231,8 @@ grub_register_variable_hook (const char *name,
+ }
+  grub_err_t
+-grub_env_export (const char *name)
++grub_env_set_export_mode (const char *name,
++			  enum grub_env_var_export mode)
+ {
+   struct grub_env_var *var;
+ @@ -245,7 +246,13 @@ grub_env_export (const char *name)
+ 	return err;
+       var = grub_env_find (name);
+     }
+-  var->global = 1;
++  var->global = mode;
+    return GRUB_ERR_NONE;
+ }
++
++grub_err_t
++grub_env_export (const char *name)
++{
++  return grub_env_set_export_mode (name, grub_env_var_exported);
++}
+diff --git a/grub-core/normal/context.c b/grub-core/normal/context.c
+index ba185e915..8abe5065c 100644
+--- a/grub-core/normal/context.c
++++ b/grub-core/normal/context.c
+@@ -22,6 +22,7 @@
+ #include <grub/misc.h>
+ #include <grub/mm.h>
+ #include <grub/command.h>
++#include <grub/extcmd.h>
+ #include <grub/normal.h>
+ #include <grub/i18n.h>
+ @@ -88,7 +89,7 @@ grub_env_new_context (int export_all)
+ 		grub_env_context_close ();
+ 		return grub_errno;
+ 	      }
+-	    grub_env_export (var->name);
++	    grub_env_set_export_mode (var->name, var->global);
+ 	    grub_register_variable_hook (var->name, var->read_hook, var->write_hook);
+ 	  }
+     }
+@@ -115,31 +116,52 @@ grub_err_t
+ grub_env_context_close (void)
+ {
+   struct grub_env_context *context;
++  struct grub_env_context *original_context;
+   int i;
+   struct menu_pointer *menu;
++  grub_err_t last_err = GRUB_ERR_NONE;
+    if (! grub_current_context->prev)
+     return grub_error (GRUB_ERR_BAD_ARGUMENT,
+ 		       "cannot close the initial context");
+ -  /* Free the variables associated with this context.  */
++  /* Restore the previous context.  */
++  original_context = grub_current_context;
++  context = grub_current_context->prev;
++  grub_current_context = context;
++
++  /* Re-export global variables to the upper context. */
++
+   for (i = 0; i < HASHSZ; i++)
+     {
+       struct grub_env_var *p, *q;
+ -      for (p = grub_current_context->vars[i]; p; p = q)
++      for (p = original_context->vars[i]; p; p = q)
+ 	{
+ 	  q = p->next;
++
++	  /* Copy global variables to the upper context. */
++	  if (p->global == grub_env_var_global) {
++	    if (grub_env_set (p->name, p->value) != GRUB_ERR_NONE)
++	      {
++		last_err = grub_errno;
++	      }
++	    else
++	      {
++		grub_env_set_export_mode (p->name, p->global);
++		grub_register_variable_hook (p->name, p->read_hook, p->write_hook);
++	      }
++	  }
++
++	  /* Free the variables associated with this context.  */
+           grub_free (p->name);
+ 	  grub_free (p->value);
+ 	  grub_free (p);
+ 	}
+     }
+ -  /* Restore the previous context.  */
+-  context = grub_current_context->prev;
+-  grub_free (grub_current_context);
+-  grub_current_context = context;
++  /* Free the previous context. */
++  grub_free (original_context);
+    menu = current_menu->prev;
+   if (current_menu->menu)
+@@ -181,34 +203,54 @@ grub_env_extractor_close (int source)
+   return err;
+ }
+ -static grub_command_t export_cmd;
++static grub_extcmd_t export_cmd;
+  static grub_err_t
+-grub_cmd_export (struct grub_command *cmd __attribute__ ((unused)),
++grub_cmd_export (grub_extcmd_context_t ctxt,
+ 		 int argc, char **args)
+ {
++  struct grub_arg_list *state = ctxt->state;
+   int i;
+ +  enum grub_env_var_export mode = grub_env_var_exported;
++  if (state[0].set)
++    mode = grub_env_var_local;
++  if (state[1].set)
++    mode = grub_env_var_global;
++  if (state[0].set && state[1].set)
++    return grub_error (GRUB_ERR_BAD_ARGUMENT,
++		       N_("canot use both -u and -a at once"));
++
+   if (argc < 1)
+     return grub_error (GRUB_ERR_BAD_ARGUMENT,
+ 		       N_("one argument expected"));
+    for (i = 0; i < argc; i++)
+-    grub_env_export (args[i]);
++    grub_env_set_export_mode (args[i], mode);
+    return 0;
+ }
+ +static const struct grub_arg_option export_options[] =
++  {
++    {"unexport", 'u', 0, N_("Undo exporting the variable."), 0, 0},
++    {"global", 'g', 0, N_("Export also to parent contexts."), 0, 0},
++    {0, 0, 0, 0, 0, 0}
++  };
++
+ void
+ grub_context_init (void)
+ {
+-  export_cmd = grub_register_command ("export", grub_cmd_export,
+-				      N_("ENVVAR [ENVVAR] ..."),
+-				      N_("Export variables."));
++  export_cmd = grub_register_extcmd ("export", grub_cmd_export,
++				     GRUB_COMMAND_ACCEPT_DASH
++				     | GRUB_COMMAND_OPTIONS_AT_START,
++				     N_("[-u|-g] ENVVAR [ENVVAR] ..."),
++				     N_("Export variables."),
++				     export_options);
+ }
+  void
+ grub_context_fini (void)
+ {
+-  grub_unregister_command (export_cmd);
++  grub_unregister_extcmd (export_cmd);
+ }
+diff --git a/include/grub/env.h b/include/grub/env.h
+index 6b9379a30..4634c09d3 100644
+--- a/include/grub/env.h
++++ b/include/grub/env.h
+@@ -31,6 +31,13 @@ typedef const char *(*grub_env_read_hook_t) (struct grub_env_var *var,
+ typedef char *(*grub_env_write_hook_t) (struct grub_env_var *var,
+ 					const char *val);
+ +enum grub_env_var_export
++{
++  grub_env_var_local    = 0,
++  grub_env_var_exported = 1,
++  grub_env_var_global   = 2,
++};
++
+ struct grub_env_var
+ {
+   char *name;
+@@ -40,7 +47,7 @@ struct grub_env_var
+   struct grub_env_var *next;
+   struct grub_env_var **prevp;
+   struct grub_env_var *sorted_next;
+-  int global;
++  enum grub_env_var_export global;
+ };
+  grub_err_t EXPORT_FUNC(grub_env_set) (const char *name, const char *val);
+@@ -58,6 +65,8 @@ grub_err_t EXPORT_FUNC(grub_register_variable_hook) (const char *name,
+ grub_err_t grub_env_context_open (void);
+ grub_err_t grub_env_context_close (void);
+ grub_err_t EXPORT_FUNC(grub_env_export) (const char *name);
++grub_err_t EXPORT_FUNC(grub_env_set_export_mode) (const char *name,
++						  enum grub_env_var_export mode);
+  void grub_env_unset_menu (void);
+ grub_menu_t grub_env_get_menu (void);
+-- 
+2.45.3
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/kern/env.c: EXISTS (251 lines)
+  grub-core/normal/context.c: EXISTS (214 lines)
+  include/grub/env.h: EXISTS (73 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +75 -18 lines
+
+================================================================================

@@ -1,0 +1,140 @@
+================================================================================
+EVALUATION: 2025-05-0076
+================================================================================
+
+Mailing list subject: [PATCH v3 0/1] loader/efi/chainloader: Enhance error message of
+Commit subject:       loader/efi/chainloader: Enhance error message of chainloader command
+Author:               khaalid <khaliidcaliy@gmail.com>
+Date:                 2025-05-12
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-05-0076 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Well, i think the hex option is simpler in terms of code. Or maybe we
+need to have centralized function for all UEFI error messages, however
+this will complicate things a little bit as it requires modifications.
+
+Just thought maybe we can extract high bit and treat like integer, thus
+align close as the way spec documented.
+
+Signed-off-by: Khalid Ali<khaliidcaliy@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                       | 35 +++++++++++++++++++++++++++++++++++
+ grub-core/loader/efi/chainloader.c |  7 ++++++-
+ 2 files changed, 41 insertions(+), 1 deletion(-)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/loader/efi/chainloader.c | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 869307bf3..ecdce2393 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -91,7 +91,7 @@ grub_chainloader_boot (void *context)
+ 	    }
+ 	}
+       else
+-	grub_error (GRUB_ERR_BAD_OS, "unknown error");
++	grub_error (GRUB_ERR_BAD_OS, "cannot start image 0x%lx", status);
+     }
+ 
+   if (exit_data)
+@@ -344,11 +344,7 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 			  &image_handle);
+   if (status != GRUB_EFI_SUCCESS)
+     {
+-      if (status == GRUB_EFI_OUT_OF_RESOURCES)
+-	grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of resources");
+-      else
+-	grub_error (GRUB_ERR_BAD_OS, "cannot load image");
+-
++      grub_error (GRUB_ERR_BAD_OS, "cannot load image 0x%lx",status);
+       goto fail;
+     }
+ 
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit c7795503ca647c5f5f49dd2344e4d46717ab65cd
+Author: khaalid <khaliidcaliy@gmail.com>
+Date:   Mon May 12 19:15:08 2025 +0000
+
+    loader/efi/chainloader: Enhance error message of chainloader command
+    
+    Well, i think the hex option is simpler in terms of code. Or maybe we
+    need to have centralized function for all UEFI error messages, however
+    this will complicate things a little bit as it requires modifications.
+    
+    Just thought maybe we can extract high bit and treat like integer, thus
+    align close as the way spec documented.
+    
+    Signed-off-by: Khalid Ali<khaliidcaliy@gmail.com>
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index e77bd863c..a3cb2dd5a 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -90,7 +90,7 @@ grub_chainloader_boot (void *context)
+ 	    }
+ 	}
+       else
+-	grub_error (GRUB_ERR_BAD_OS, "unknown error");
++	grub_error (GRUB_ERR_BAD_OS, "cannot start image 0x%lx", status);
+     }
+ 
+   if (exit_data)
+@@ -341,6 +341,7 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+   image_handle = grub_efi_get_last_verified_image_handle ();
+   if (image_handle == NULL)
+     {
++<<<<<<< HEAD
+       status = grub_efi_load_image (0, grub_efi_image_handle, file_path,
+ 				boot_image, size, &image_handle);
+       if (status != GRUB_EFI_SUCCESS)
+@@ -352,6 +353,10 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 
+ 	  goto fail;
+ 	}
++=======
++      grub_error (GRUB_ERR_BAD_OS, "cannot load image 0x%lx",status);
++      goto fail;
++>>>>>>> loader/efi/chainloader: Enhance error message of chainloader command
+     }
+ 
+   /* LoadImage does not set a device handler when the image is
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/loader/efi/chainloader.c: EXISTS (442 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +3 -9 lines
+
+================================================================================

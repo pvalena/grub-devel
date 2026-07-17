@@ -1,12 +1,15 @@
 #!/bin/bash
-# Usage: ./generate_evaluation.sh <branch>
-# Generates a comprehensive evaluation file for a KEEP branch.
+# Usage: ./generate_evaluation.sh <branch> [branch2] ...
+# Generates a comprehensive evaluation file for each KEEP branch.
 
 set -uo pipefail
 
-B="${1:?Usage: $0 <branch>}"
+[[ $# -ge 1 ]] || { echo "Usage: $0 <branch> [branch2] ..."; exit 1; }
+
 DIR="$(dirname "$0")"
 GRUB="${DIR}/../grub"
+
+for B in "$@"; do
 OUT="${DIR}/evaluation/${B}.txt"
 
 ml_subj=$(grep "^${B}: " "$DIR/failed_subj.txt" | sed 's/^[^:]*: //')
@@ -113,3 +116,4 @@ done
 } > "$OUT"
 
 echo "Written: $OUT ($(wc -l < "$OUT") lines)"
+done

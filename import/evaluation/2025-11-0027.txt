@@ -1,0 +1,204 @@
+================================================================================
+EVALUATION: 2025-11-0027
+================================================================================
+
+Mailing list subject: [PATCH v2 1/1] util/grub.d/00_header.in: Disable loading all_video
+Commit subject:       util/grub.d/00_header.in: Disable loading all_video for EFI
+Author:               Andrew Hamilton <adhamilt@gmail.com>
+Date:                 2025-11-06
+Has FAILED.patch:     1
+Code files changed:   3
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Loading all_video for EFI can cause video issues in some cases
+since GRUB Bochs/Cirrus drivers may conflict with native EFI drivers.
+Change default behavior for EFI to only load EFI specific video
+modules. Also include a new environment variable to restore the old
+behavior if needed.
+
+Fixes: https://savannah.gnu.org/bugs/index.php?66200
+
+Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch             | 73 ++++++++++++++++++++++++++++++++++++++++++++++++
+ docs/grub.texi           |  4 +++
+ util/grub-mkconfig.in    |  4 +++
+ util/grub.d/00_header.in |  4 +++
+ 4 files changed, 85 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ docs/grub.texi           |  7 +++++++
+ util/grub-mkconfig.in    |  3 ++-
+ util/grub.d/00_header.in | 16 +++++++++++++++-
+ 3 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/docs/grub.texi b/docs/grub.texi
+index 5b23ae47b..1ec5d3566 100644
+--- a/docs/grub.texi
++++ b/docs/grub.texi
+@@ -1642,6 +1642,13 @@ This option is unset by default, and is deprecated in favour of the less
+ confusing @samp{GRUB_TIMEOUT_STYLE=countdown} or
+ @samp{GRUB_TIMEOUT_STYLE=hidden}.
+ 
++@item GRUB_FORCE_EFI_ALL_VIDEO
++When set to true, this will allow grub-mkconfig to generate a GRUB config
++that supports loading the all_video module on the EFI platform instead of
++just the efi_gop and efi_uga modules.
++
++This option is unset by default.
++
+ @end table
+ 
+ For more detailed customisation of @command{grub-mkconfig}'s output, you may
+diff --git a/util/grub-mkconfig.in b/util/grub-mkconfig.in
+index 32c480dae..45787a1d1 100644
+--- a/util/grub-mkconfig.in
++++ b/util/grub-mkconfig.in
+@@ -255,7 +255,8 @@ export GRUB_DEFAULT \
+   GRUB_ENABLE_CRYPTODISK \
+   GRUB_BADRAM \
+   GRUB_OS_PROBER_SKIP_LIST \
+-  GRUB_DISABLE_SUBMENU
++  GRUB_DISABLE_SUBMENU \
++  GRUB_FORCE_EFI_ALL_VIDEO
+ 
+ if test "x${grub_cfg}" != "x"; then
+   rm -f "${grub_cfg}.new"
+diff --git a/util/grub.d/00_header.in b/util/grub.d/00_header.in
+index 9d36feda3..77834cfaf 100644
+--- a/util/grub.d/00_header.in
++++ b/util/grub.d/00_header.in
+@@ -124,10 +124,24 @@ if [ -n "${GRUB_VIDEO_BACKEND}" ]; then
+   insmod ${GRUB_VIDEO_BACKEND}
+ EOF
+ else
++# For EFI, use EFI video drivers only by default to avoid conflict between
++# GRUB Bochs/Cirrus and native EFI drivers. If GRUB_FORCE_EFI_ALL_VIDEO is
++# set/true then defer back to all_video even for EFI.
++if [ "${GRUB_FORCE_EFI_ALL_VIDEO}" = "1" ]; then
++    cat <<EOF
++  if [ x\$feature_all_video_module = xy ]; then
++EOF
++else # GRUB_FORCE_EFI_ALL_VIDEO is not set true
++    cat <<EOF
++  if [ x\$grub_platform = xefi ]; then
++    insmod efi_gop
++    insmod efi_uga
++  elif [ x\$feature_all_video_module = xy ]; then
++EOF
++fi # end GRUB_FORCE_EFI_ALL_VIDEO
+ # If all_video.mod isn't available load all modules available
+ # with versions prior to introduction of all_video.mod
+ cat <<EOF
+-  if [ x\$feature_all_video_module = xy ]; then
+     insmod all_video
+   else
+     insmod efi_gop
+-- 
+2.43.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 8531fd21eda1fd1a3d207c7aaa7483c2edb4ee22
+Author: Andrew Hamilton <adhamilt@gmail.com>
+Date:   Thu Nov 6 18:24:33 2025 -0600
+
+    util/grub.d/00_header.in: Disable loading all_video for EFI
+    
+    Loading all_video for EFI can cause video issues in some cases
+    since GRUB Bochs/Cirrus drivers may conflict with native EFI drivers.
+    Change default behavior for EFI to only load EFI specific video
+    modules. Also include a new environment variable to restore the old
+    behavior if needed.
+    
+    Fixes: https://savannah.gnu.org/bugs/index.php?66200
+    
+    Signed-off-by: Andrew Hamilton <adhamilt@gmail.com>
+
+diff --git a/docs/grub.texi b/docs/grub.texi
+index bc60a3ac1..331d399fa 100644
+--- a/docs/grub.texi
++++ b/docs/grub.texi
+@@ -1665,7 +1665,11 @@ confusing @samp{GRUB_TIMEOUT_STYLE=countdown} or
+ @item GRUB_FORCE_EFI_ALL_VIDEO
+ When set to true, this will allow grub-mkconfig to generate a GRUB config
+ that supports loading the all_video module on the EFI platform instead of
++<<<<<<< HEAD
+ just the efi_gop module.
++=======
++just the efi_gop and efi_uga modules.
++>>>>>>> util/grub.d/00_header.in: Disable loading all_video for EFI
+ 
+ This option is unset by default.
+ 
+diff --git a/util/grub-mkconfig.in b/util/grub-mkconfig.in
+index a5a80b2f4..0b604f164 100644
+--- a/util/grub-mkconfig.in
++++ b/util/grub-mkconfig.in
+@@ -271,12 +271,16 @@ export GRUB_DEFAULT \
+   GRUB_BADRAM \
+   GRUB_OS_PROBER_SKIP_LIST \
+   GRUB_DISABLE_SUBMENU \
++<<<<<<< HEAD
+   GRUB_FORCE_EFI_ALL_VIDEO \
+   GRUB_USERS \
+   GRUB_UNRESTRICTED_ACCESS_LEVEL \
+   GRUB_SIMPLE_ACCESS_LEVEL \
+   GRUB_ADVANCED_ACCESS_LEVEL \
+   GRUB_RECOVERY_ACCESS_LEVEL
++=======
++  GRUB_FORCE_EFI_ALL_VIDEO
++>>>>>>> util/grub.d/00_header.in: Disable loading all_video for EFI
+ 
+ if test "x${grub_cfg}" != "x"; then
+   rm -f "${grub_cfg}.new"
+diff --git a/util/grub.d/00_header.in b/util/grub.d/00_header.in
+index 742e2ea14..7a901e99a 100644
+--- a/util/grub.d/00_header.in
++++ b/util/grub.d/00_header.in
+@@ -182,6 +182,10 @@ else # GRUB_FORCE_EFI_ALL_VIDEO is not set true
+     cat <<EOF
+   if [ x\$grub_platform = xefi ]; then
+     insmod efi_gop
++<<<<<<< HEAD
++=======
++    insmod efi_uga
++>>>>>>> util/grub.d/00_header.in: Disable loading all_video for EFI
+   elif [ x\$feature_all_video_module = xy ]; then
+ EOF
+ fi # end GRUB_FORCE_EFI_ALL_VIDEO
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  docs/grub.texi: EXISTS (12070 lines)
+  util/grub-mkconfig.in: EXISTS (339 lines)
+  util/grub.d/00_header.in: EXISTS (435 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 3 code file(s) + FAILED.patch
+Patch size: +27 -7 lines
+
+================================================================================

@@ -1,0 +1,106 @@
+================================================================================
+EVALUATION: 2025-07-0047
+================================================================================
+
+Mailing list subject: [RFC PATCH 5/5] arm64/xen: Allows to use kernel command line from
+Commit subject:       arm64/xen: Allows to use kernel command line from first module
+Author:               Frediano Ziglio <frediano.ziglio@cloud.com>
+Date:                 2025-07-08
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               2025-07-0047 (3 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+For ARM64 command lines are passed using device tree, for
+x86_64 we need to use LoadOptions putting both Xen and kernel
+arguments.
+On x86_64 the LoadOptions is composed by 2 parts, EFI options
+and Xen options. The Xen options is composed by Xen options and,
+optionally, kernel options.
+In order to have options for both Xen (xen_hypervisor) and kernel
+(first xen_module) compose the command lines.
+
+Signed-off-by: Frediano Ziglio <frediano.ziglio@cloud.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 52 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/loader/arm64/xen_boot.c | 25 ++++++++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/grub-core/loader/arm64/xen_boot.c b/grub-core/loader/arm64/xen_boot.c
+index 64f685de6..bf66db3eb 100644
+--- a/grub-core/loader/arm64/xen_boot.c
++++ b/grub-core/loader/arm64/xen_boot.c
+@@ -302,6 +302,29 @@ fail:
+ 
+   return grub_error (GRUB_ERR_IO, "failed to install/update FDT");
+ #else
++  const char *xen_cmdline, *start = "placeholder -- ";
++  char *new_cmdline;
++
++  /* Concatenate Xen command line with kernel command line */
++  if (!module_head || !module_head->cmdline || !module_head->cmdline_size)
++    return GRUB_ERR_NONE;
++
++  xen_cmdline = xen_hypervisor->cmdline ? xen_hypervisor->cmdline : "";
++  if (grub_strncmp(xen_cmdline, "-- ", 3) == 0 ||
++      grub_strstr(xen_cmdline, " -- ") != NULL)
++    start = "";
++  new_cmdline =
++    grub_xasprintf ("%s%s -- %s", start, xen_cmdline, module_head->cmdline);
++  if (!new_cmdline)
++    return grub_errno;
++
++  grub_free (xen_hypervisor->cmdline);
++  grub_free (module_head->cmdline);
++  xen_hypervisor->cmdline = new_cmdline;
++  xen_hypervisor->cmdline_size = grub_strlen (new_cmdline);
++  module_head->cmdline = NULL;
++  module_head->cmdline_size = 0;
++
+   return GRUB_ERR_NONE;
+ #endif
+ }
+@@ -507,7 +530,7 @@ grub_cmd_xen_module (grub_command_t cmd __attribute__((unused)),
+   xen_boot_binary_load (module, file, argc, argv);
+   if (grub_errno == GRUB_ERR_NONE)
+     {
+-      grub_list_push (GRUB_AS_LIST_P (&module_head), GRUB_AS_LIST (module));
++      grub_list_append (GRUB_AS_LIST_P (&module_head), GRUB_AS_LIST (module));
+       lf2_start (&module->lf2);
+     }
+ 
+-- 
+2.43.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/loader/arm64/xen_boot.c: EXISTS (528 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +25 -4 lines
+
+================================================================================

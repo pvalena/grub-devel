@@ -1,0 +1,357 @@
+================================================================================
+EVALUATION: 2025-07-0037
+================================================================================
+
+Mailing list subject: [PATCH v14 09/15] gcry: Ignore sign-compare warnings
+Commit subject:       gcry: Ignore sign-compare warnings
+Author:               Vladimir Serbinenko <phcoder@gmail.com>
+Date:                 2025-07-07
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-07-0029 (11 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+libgcrypt itself is compiled with -Wno-sign-compare.
+Do the same for consistency
+
+Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch        |  86 +++++++++++++++++++++++
+ util/import_gcry.py | 191 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 277 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ conf/Makefile.common        |  2 +-
+ grub-core/Makefile.core.def | 10 +++++-----
+ util/import_gcry.py         |  2 +-
+ 3 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/conf/Makefile.common b/conf/Makefile.common
+index 0df4d6e7a..4d38ff034 100644
+--- a/conf/Makefile.common
++++ b/conf/Makefile.common
+@@ -81,7 +81,7 @@ CPPFLAGS_GNULIB = -I$(top_builddir)/grub-core/lib/gnulib -I$(top_srcdir)/grub-co
+ CFLAGS_POSIX = -fno-builtin
+ CPPFLAGS_POSIX = -I$(top_srcdir)/grub-core/lib/posix_wrap
+ 
+-CFLAGS_GCRY = -Wno-error=sign-compare -Wno-missing-field-initializers -Wno-redundant-decls -Wno-undef $(CFLAGS_POSIX)
++CFLAGS_GCRY = -Wno-sign-compare -Wno-missing-field-initializers -Wno-redundant-decls -Wno-undef $(CFLAGS_POSIX)
+ CPPFLAGS_GCRY = -I$(top_srcdir)/grub-core/lib/libgcrypt_wrap $(CPPFLAGS_POSIX) -D_GCRYPT_IN_LIBGCRYPT=1 -D_GCRYPT_CONFIG_H_INCLUDED=1 -I$(top_srcdir)/include/grub/gcrypt
+ 
+ CPPFLAGS_EFIEMU = -I$(top_srcdir)/grub-core/efiemu/runtime
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 2d0fce4be..b3f71196a 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -975,7 +975,7 @@ module = {
+ module = {
+   name = pgp;
+   common = commands/pgp.c;
+-  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';
++  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+   cppflags = '$(CPPFLAGS_GCRY)';
+ };
+ 
+@@ -2184,7 +2184,7 @@ module = {
+   name = dsa_sexp_test;
+   common = tests/dsa_sexp_test.c;
+ 
+-  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';
++  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+   cppflags = '$(CPPFLAGS_GCRY)';
+ };
+ 
+@@ -2192,7 +2192,7 @@ module = {
+   name = rsa_sexp_test;
+   common = tests/rsa_sexp_test.c;
+ 
+-  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';
++  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+   cppflags = '$(CPPFLAGS_GCRY)';
+ };
+ 
+@@ -2561,7 +2561,7 @@ module = {
+   common = lib/libgcrypt_wrap/mem.c;
+   common = lib/libgcrypt-grub/cipher/md.c;
+ 
+-  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare -Wno-unused-but-set-variable';
++  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-unused-but-set-variable';
+   cppflags = '$(CPPFLAGS_GCRY)';
+ };
+ 
+@@ -2573,7 +2573,7 @@ module = {
+   common = lib/libgcrypt-grub/src/sexp.c;
+   common = lib/b64dec.c;
+ 
+-  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';
++  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+   cppflags = '$(CPPFLAGS_GCRY)';
+ };
+ 
+diff --git a/util/import_gcry.py b/util/import_gcry.py
+index 1be18cf91..a4411ecb9 100644
+--- a/util/import_gcry.py
++++ b/util/import_gcry.py
+@@ -551,7 +551,7 @@ for cipher_file in cipher_files:
+                     confutil.write ("  common = grub-core/lib/libgcrypt-grub/cipher/%s;\n" % src)
+             if modname == "gcry_ecc":
+                 conf.write ("  common = lib/libgcrypt-grub/mpi/ec.c;\n")
+-                conf.write ("  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';\n")
++                conf.write ("  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';\n")
+             elif modname == "gcry_rijndael" or modname == "gcry_md4" or modname == "gcry_md5" or modname == "gcry_rmd160" or modname == "gcry_sha1" or modname == "gcry_sha256" or modname == "gcry_sha512" or modname == "gcry_tiger":
+                 # Alignment checked by hand
+                 conf.write ("  cflags = '$(CFLAGS_GCRY) -Wno-cast-align';\n");
+-- 
+2.49.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 7686513767adaaf5fc969b567bb8cc3e556d6930
+Author: Vladimir Serbinenko <phcoder@gmail.com>
+Date:   Mon Jul 7 14:52:15 2025 +0000
+
+    gcry: Ignore sign-compare warnings
+    
+    libgcrypt itself is compiled with -Wno-sign-compare.
+    Do the same for consistency
+    
+    Signed-off-by: Vladimir Serbinenko <phcoder@gmail.com>
+
+diff --git a/util/import_gcry.py b/util/import_gcry.py
+index d96d938e9..a0f448dfe 100644
+--- a/util/import_gcry.py
++++ b/util/import_gcry.py
+@@ -653,8 +653,199 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
+ 
+                 fw.write (f.read ())
+ 
++<<<<<<< HEAD
+     for src in sorted (os.listdir (os.path.join (indir, "mpi"))):
+         if src in ["config.links", "ChangeLog-2011", "Manifest", "Makefile.am"]:
++=======
++            m = re.match ("cipher_extra_spec_t", line)
++            if isc and not m is None:
++                skip2 = True
++                fname = line[len ("cipher_extra_spec_t "):]
++                fname = re.match ("[a-zA-Z0-9_]*", fname).group ()
++                chmsg = "(%s): Removed." % fname
++                if nch:
++                    chlognew = "%s\n	%s" % (chlognew, chmsg)
++                else:
++                    chlognew = "%s %s" % (chlognew, chmsg)
++                    nch = True
++                continue
++            m = re.match ("pk_extra_spec_t", line)
++            if isc and not m is None:
++                skip2 = True
++                fname = line[len ("pk_extra_spec_t "):]
++                fname = re.match ("[a-zA-Z0-9_]*", fname).group ()
++                chmsg = "(%s): Removed." % fname
++                if nch:
++                    chlognew = "%s\n	%s" % (chlognew, chmsg)
++                else:
++                    chlognew = "%s %s" % (chlognew, chmsg)
++                    nch = True
++                continue
++            m = re.match ("md_extra_spec_t", line)
++            if isc and not m is None:
++                skip2 = True
++                fname = line[len ("md_extra_spec_t "):]
++                fname = re.match ("[a-zA-Z0-9_]*", fname).group ()
++                chmsg = "(%s): Removed." % fname
++                if nch:
++                    chlognew = "%s\n	%s" % (chlognew, chmsg)
++                else:
++                    chlognew = "%s %s" % (chlognew, chmsg)
++                    nch = True
++                continue
++            fw.write (line)
++        if len (ciphernames) > 0 or len (mdnames) > 0 or len (pknames) > 0:
++            modfiles = [cipher_file]
++            if modname in extra_files.keys():
++                modfiles += extra_files[modname]
++            if len (ciphernames) > 0 or len (mdnames) > 0:
++                modules_sym_md.append (modname)
++            chmsg = "(GRUB_MOD_INIT(%s)): New function\n" % modname
++            if nch:
++                chlognew = "%s\n	%s" % (chlognew, chmsg)
++            else:
++                chlognew = "%s%s" % (chlognew, chmsg)
++                nch = True
++            fw.write ("\n\nGRUB_MOD_INIT(%s)\n" % modname)
++            fw.write ("{\n")
++            for ciphername in ciphernames:
++                chmsg = "Register cipher %s" % ciphername
++                chlognew = "%s\n	%s" % (chlognew, chmsg)
++                fw.write ("  grub_cipher_register (&%s);\n" % ciphername)
++            for ctxsize in mdctxsizes:
++                fw.write ("  COMPILE_TIME_ASSERT(%s <= GRUB_CRYPTO_MAX_MD_CONTEXT_SIZE);\n" % ctxsize)
++            for mdname in mdnames:
++                chmsg = "Register digest %s" % mdname
++                chlognew = "%s\n	%s" % (chlognew, chmsg)
++                fw.write ("  grub_md_register (&%s);\n" % mdname)
++            for pkname in pknames:
++                chmsg = "Register pk %s" % pkname
++                chlognew = "%s\n	%s" % (chlognew, chmsg)
++                fw.write ("  grub_crypto_pk_%s = &%s;\n"
++                          % (pkname.replace ("_gcry_pubkey_spec_", ""), pkname))
++            fw.write ("}")
++            chmsg = "(GRUB_MOD_FINI(%s)): New function\n" % modname
++            chlognew = "%s\n	%s" % (chlognew, chmsg)
++            fw.write ("\n\nGRUB_MOD_FINI(%s)\n" % modname)
++            fw.write ("{\n")
++            for ciphername in ciphernames:
++                chmsg = "Unregister cipher %s" % ciphername
++                chlognew = "%s\n	%s" % (chlognew, chmsg)
++                fw.write ("  grub_cipher_unregister (&%s);\n" % ciphername)
++            for mdname in mdnames:
++                chmsg = "Unregister MD %s" % mdname
++                chlognew = "%s\n	%s" % (chlognew, chmsg)
++                fw.write ("  grub_md_unregister (&%s);\n" % mdname)
++            for pkname in pknames:
++                chmsg = "Unregister pk %s" % pkname
++                chlognew = "%s\n	%s" % (chlognew, chmsg)
++                fw.write ("  grub_crypto_pk_%s = 0;\n"
++                          % (pkname.replace ("_gcry_pubkey_spec_", "")))
++            fw.write ("}\n")
++            conf.write ("module = {\n")
++            conf.write ("  name = %s;\n" % modname)
++            for src in modfiles:
++                conf.write ("  common = lib/libgcrypt-grub/cipher/%s;\n" % src)
++                if len (ciphernames) > 0 or len (mdnames) > 0:
++                    confutil.write ("  common = grub-core/lib/libgcrypt-grub/cipher/%s;\n" % src)
++            if modname == "gcry_ecc":
++                conf.write ("  common = lib/libgcrypt-grub/mpi/ec.c;\n")
++                conf.write ("  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';\n")
++            elif modname == "gcry_rijndael" or modname == "gcry_md4" or modname == "gcry_md5" or modname == "gcry_rmd160" or modname == "gcry_sha1" or modname == "gcry_sha256" or modname == "gcry_sha512" or modname == "gcry_tiger":
++                # Alignment checked by hand
++                conf.write ("  cflags = '$(CFLAGS_GCRY) -Wno-cast-align';\n");
++            else:
++                conf.write ("  cflags = '$(CFLAGS_GCRY)';\n");
++            conf.write ("  cppflags = '$(CPPFLAGS_GCRY)';\n");
++            conf.write ("};\n\n")
++            f.close ()
++            fw.close ()
++            if nch:
++                chlog = "%s%s\n" % (chlog, chlognew)
++        elif isc and cipher_file not in extra_files_list:
++            print ("WARNING: C file isn't a module: %s" % cipher_file)
++            f.close ()
++            fw.close ()
++            os.remove (outfile)
++            chlog = "%s\n	* %s: Removed" % (chlog, cipher_file)
++        continue
++    chlog = "%s%sSkipped unknown file\n" % (chlog, chlognew)
++    print ("WARNING: unknown file %s" % cipher_file)
++
++cryptolist.close ()
++
++for src in sorted (os.listdir (os.path.join (indir, "src"))):
++    if src == "versioninfo.rc.in" or src == "ath.c" or src == "ChangeLog-2011" \
++            or src == "dumpsexp.c" or src == "fips.c" or src == "gcrypt.h.in" \
++            or src == "gcryptrnd.c"or src == "getrandom.c" \
++            or src == "global.c" or src == "hmac256.c" \
++            or src == "hwfeatures.c" or src == "libgcrypt-config.in" \
++            or src == "libgcrypt.def" or src == "libgcrypt.m4" \
++            or src == "libgcrypt.vers" or src == "Makefile.am" \
++            or src == "Manifest" or src == "misc.c" \
++            or src == "missing-string.c" or src == "module.c" \
++            or src == "secmem.c" \
++            or src == "stdmem.c" or src == "visibility.c":
++        continue
++    outfile = os.path.join (basedir, "src", src)
++    infile = os.path.join (indir, "src", src)
++    if os.path.isdir (infile):
++        continue
++    fw = codecs.open (outfile, "w", "utf-8")
++    if src == "gcrypt-module.h":
++        fw.close ()
++        continue
++    if src == "visibility.h":
++        fw.write ("# include <grub/gcrypt/gcrypt.h>\n")
++        fw.close ()
++        continue
++    f = codecs.open (infile, "r", "utf-8")
++    if src == "types.h":
++        fw.write (f.read ().replace ("float f;", "").replace ("double g;", ""))
++        f.close ()
++        fw.close ()
++        continue
++
++    if src == "cipher-proto.h":
++        fw.write("#include <grub/crypto.h>\n")
++        fw.write("typedef gcry_selftest_func_t selftest_func_t;")
++        f.close ()
++        fw.close ()
++        continue
++
++    if src == "g10lib.h":
++        fw.write("#include <cipher_wrap.h>\n")
++        fw.write("#include <grub/crypto.h>\n")
++        fw.write("#include <stdlib.h>\n")
++        fw.write (f.read ().replace ("(printf,f,a)", "(__printf__,f,a)").replace ("#include \"../compat/libcompat.h\"", "").replace("#define N_(a) (a)", ""))
++        f.close ()
++        fw.close ()
++        continue
++
++    fw.write (f.read ())
++    f.close ()
++    fw.close ()
++
++for src in sorted (os.listdir (os.path.join (indir, "mpi"))):
++    if src == "config.links" or src == "ChangeLog-2011" \
++            or src == "Manifest" \
++            or src == "Makefile.am":
++        continue
++    infile = os.path.join (indir, "mpi", src)
++    outfile = os.path.join (basedir, "mpi", src)
++    if os.path.isdir (infile):
++        continue
++    f = codecs.open (infile, "r", "utf-8")
++    fw = codecs.open (outfile, "w", "utf-8")
++    fw.write ("/* This file was automatically imported with \n")
++    fw.write ("   import_gcry.py. Please don't modify it */\n")
++    hold = False
++    skip = 0
++    for line in f:
++        if skip > 0:
++            if line[0] == "}":
++                skip = skip - 1
++>>>>>>> gcry: Ignore sign-compare warnings
+             continue
+         infile = os.path.join (indir, "mpi", src)
+         outfile = os.path.join (basedir, "mpi", src)
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  conf/Makefile.common: EXISTS (154 lines)
+  grub-core/Makefile.core.def: EXISTS (2829 lines)
+  util/import_gcry.py: EXISTS (754 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +10 -12 lines
+
+================================================================================

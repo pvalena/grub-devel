@@ -1,0 +1,588 @@
+================================================================================
+EVALUATION: 2025-07-0004
+================================================================================
+
+Mailing list subject: [PATCH v3 1/2] efi/tpcm: Add UEFI interface for TPCM module
+Commit subject:       efi/tpcm: Add UEFI interface for TPCM module
+Author:               chench246 <chench246@gmail.com>
+Date:                 2025-07-02
+Has FAILED.patch:     1
+Code files changed:   3
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+TPCM(Trusted Platform Control Module) is a Chinese standard, and
+the interface implementation complies with UEFI specification. If
+tpcm related protocol is not implemented in UEFI, then tpcm module
+directly returns NONE.
+
+Signed-off-by: hao chen <chench246@gmail.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                  | 263 ++++++++++++++++++++++++++++++++++++++++++
+ grub-core/commands/efi/tpcm.c | 163 ++++++++++++++++++++++++++
+ include/grub/efi/tpcm.h       |  61 ++++++++++
+ include/grub/err.h            |   4 +
+ 4 files changed, 491 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ grub-core/commands/efi/tpcm.c | 163 ++++++++++++++++++++++++++++++++++
+ include/grub/efi/tpcm.h       |  61 +++++++++++++
+ include/grub/err.h            |   3 +-
+ 3 files changed, 226 insertions(+), 1 deletion(-)
+ create mode 100755 grub-core/commands/efi/tpcm.c
+ create mode 100644 include/grub/efi/tpcm.h
+
+diff --git a/grub-core/commands/efi/tpcm.c b/grub-core/commands/efi/tpcm.c
+new file mode 100755
+index 000000000..57cd147dc
+--- /dev/null
++++ b/grub-core/commands/efi/tpcm.c
+@@ -0,0 +1,163 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2025  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ *  EFI TPCM support code.
++ */
++
++#include <grub/err.h>
++#include <grub/efi/tpcm.h>
++
++
++static grub_uint32_t g_measured_id = STAGE_START;
++
++/*
++ * get_tpcm_stage:
++ * TPCM does not make a distinction with the type of
++ * measured target, so we use g_measured_id directly
++ * for the stage.
++ */
++static grub_uint32_t
++get_tpcm_stage (void)
++{
++    grub_uint32_t stage = STAGE_INVALID;
++
++    stage = g_measured_id;
++
++    if (stage < STAGE_START || stage > STAGE_END)
++      stage = STAGE_INVALID;
++
++    return stage;
++}
++
++/*
++ * update_measured_id:
++ * update g_measured_id +1 every time measured, and g_measured_id
++ * will never be decreased.
++ */
++static void
++update_measured_id (void)
++{
++    g_measured_id++;
++}
++
++/*
++ * measure_memory:
++ * measure the memery region--(addr, size) through the TPCM protocol.
++ * if TPCM protocol is not exist in BIOS, it will return SUCC to keep
++ * compatible with non-measurement-support bios; if TPCM protocol is
++ * exist but not enabled, it will also return SUCC.
++ */
++static grub_err_t
++measure_memory (enum grub_file_type type __attribute__((unused)),
++                char *desc, grub_addr_t addr, grub_size_t size)
++{
++    grub_efi_handle_t   *handles = NULL;
++    grub_efi_uintn_t    num_handles;
++    grub_efi_handle_t   grub_c2p_handle = 0;
++    grub_err_t  test_c2p_err = GRUB_ERR_BAD_OS;
++    grub_guid_t         c2p_guid = C2PGUID;
++    grub_uint32_t       measure_result = 0;
++    grub_uint32_t       control_result = 0;
++    grub_efi_boolean_t    verify_enable = false;
++    grub_size_t         desc_len = 0;
++
++    handles = grub_efi_locate_handle (GRUB_EFI_BY_PROTOCOL, &c2p_guid, NULL, &num_handles);
++    if (handles != NULL && num_handles > 0)
++    {
++        struct c2p_protocol *c2p;
++
++        grub_c2p_handle = handles[0];
++        grub_dprintf ("tpcm", "measue memory addr 0x%lx size 0x%lx  \n", addr, size);
++        c2p = grub_efi_open_protocol (grub_c2p_handle, &c2p_guid,
++                                      GRUB_EFI_OPEN_PROTOCOL_GET_PROTOCOL);
++        if (c2p != NULL)
++        {
++            verify_enable = c2p->verify_is_enabled (c2p);
++            if (verify_enable == true)
++            {
++                struct addr_range range;
++                grub_efi_status_t status = 0;
++                grub_uint32_t stage = STAGE_INVALID;
++
++                range.start  = addr;
++                range.length = size;
++
++                stage = get_tpcm_stage ();
++                if (stage != STAGE_INVALID)
++                {
++                    desc_len = grub_strlen (desc) + 1;
++                    status = c2p->verify_raw (c2p, stage, (grub_uint64_t)desc, desc_len, 1, &range, &measure_result, &control_result);
++                    if (status == 0 && (control_result & MEASURE_ACTION_MASK) == 0)
++                    {
++                        grub_dprintf ("tpcm", "verify_raw success. stage[%d]desc:[%s]\n", stage, desc);
++                        test_c2p_err = GRUB_ERR_NONE;
++                    }
++                    else
++                    {
++                        grub_dprintf ("tpcm", "verify_raw error\n");
++                        while (1)
++                        {
++                            grub_error (GRUB_ERR_TPCM_VERIFY, "tpcm verify error. stage[%d]desc[%s]\n", stage, desc);
++                            asm volatile ("hlt");
++                        }
++                    }
++                }
++                else
++                  grub_dprintf ("tpcm", "invalid stage\n");
++
++                update_measured_id ();
++
++            }
++            else
++            {
++                grub_dprintf ("tpcm", "image verify not enabled\n");
++                test_c2p_err = GRUB_ERR_NONE;
++            }
++        }
++        else
++            grub_dprintf ("tpcm", "open c2p protocol failed\n");
++    }
++    else
++    {
++        /* keep compatible with non-measurement-support bios. */
++        grub_dprintf ("tpcm", "not found C2P protocol\n");
++        test_c2p_err = GRUB_ERR_NONE;
++    }
++
++    return test_c2p_err;
++}
++
++/* grub_tpcm_measure_memory */
++grub_err_t
++grub_tpcm_measure_memory (void *context, grub_addr_t buf, grub_size_t size)
++{
++    char *p_context = (char *) context;
++    char *p, *p_desc;
++    char tmp[TPCM_MAX_BUF_SIZE] = {'0'};
++    enum grub_file_type type;
++
++    if (p_context == NULL)
++        return GRUB_ERR_BUG;
++
++    p = grub_strchr (p_context, '|');
++    p_desc = p + 1;
++    grub_memcpy (tmp, p_context, (p - p_context));
++    type = grub_strtoul (tmp, 0, 10);
++
++    return measure_memory (type, p_desc, buf, size);
++}
++
+diff --git a/include/grub/efi/tpcm.h b/include/grub/efi/tpcm.h
+new file mode 100644
+index 000000000..e54aee6c2
+--- /dev/null
++++ b/include/grub/efi/tpcm.h
+@@ -0,0 +1,61 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2025  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef GRUB_EFI_TPCM_HEADER
++#define GRUB_EFI_TPCM_HEADER 1
++
++#include <grub/file.h>
++#include <grub/efi/api.h>
++#include <grub/efi/efi.h>
++
++#define C2PGUID                          {0xf89ab5cd, 0x2829, 0x422f, {0xa5, 0xf3, 0x03, 0x28, 0xe0, 0x6c, 0xfc, 0xbb}}
++#define MEASURE_RESULT_MASK          (0xff00)
++#define MEASURE_RESULT_SHIFT         (16)
++#define MEASURE_ACTION_MASK          (0x1)
++#define TPCM_MAX_BUF_SIZE            128
++
++/*
++ * stage layout:
++ * 2000~2999: +1 every time
++ */
++
++#define STAGE_START      2000
++#define STAGE_END        2999
++#define STAGE_INVALID    3000
++
++struct addr_range {
++    grub_uint64_t start;
++    grub_uint64_t length;
++};
++struct c2p_protocol {
++    grub_efi_status_t (__grub_efi_api *verify_raw) (struct c2p_protocol *this,
++                                    grub_uint32_t measure_stage,
++                                    grub_uint64_t image_info,
++                                    grub_uint32_t image_info_size,
++                                    grub_uint32_t num_addr_range,
++                                    struct addr_range ranges[],
++                                    grub_uint32_t *measure_result,
++                                    grub_uint32_t *control_result);
++    grub_efi_boolean_t (__grub_efi_api *verify_is_enabled)(struct c2p_protocol *this);
++};
++typedef struct c2p_protocol c2p_protocol_t;
++
++grub_err_t
++grub_tpcm_measure_memory (void *context, grub_addr_t buf, grub_size_t size);
++
++#endif
+diff --git a/include/grub/err.h b/include/grub/err.h
+index 202fa8a7a..4d2756097 100644
+--- a/include/grub/err.h
++++ b/include/grub/err.h
+@@ -75,7 +75,8 @@ typedef enum
+     GRUB_ERR_BAD_SIGNATURE,
+     GRUB_ERR_BAD_FIRMWARE,
+     GRUB_ERR_STILL_REFERENCED,
+-    GRUB_ERR_RECURSION_DEPTH
++    GRUB_ERR_RECURSION_DEPTH,
++    GRUB_ERR_TPCM_VERIFY
+   }
+ grub_err_t;
+ 
+-- 
+2.17.1
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit a186a87853ac3539aa7ae20e051a0be973ded034
+Author: chench246 <chench246@gmail.com>
+Date:   Wed Jul 2 17:42:32 2025 +0800
+
+    efi/tpcm: Add UEFI interface for TPCM module
+    
+    TPCM(Trusted Platform Control Module) is a Chinese standard, and
+    the interface implementation complies with UEFI specification. If
+    tpcm related protocol is not implemented in UEFI, then tpcm module
+    directly returns NONE.
+    
+    Signed-off-by: hao chen <chench246@gmail.com>
+
+diff --git a/grub-core/commands/efi/tpcm.c b/grub-core/commands/efi/tpcm.c
+new file mode 100755
+index 000000000..57cd147dc
+--- /dev/null
++++ b/grub-core/commands/efi/tpcm.c
+@@ -0,0 +1,163 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2025  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ *  EFI TPCM support code.
++ */
++
++#include <grub/err.h>
++#include <grub/efi/tpcm.h>
++
++
++static grub_uint32_t g_measured_id = STAGE_START;
++
++/*
++ * get_tpcm_stage:
++ * TPCM does not make a distinction with the type of
++ * measured target, so we use g_measured_id directly
++ * for the stage.
++ */
++static grub_uint32_t
++get_tpcm_stage (void)
++{
++    grub_uint32_t stage = STAGE_INVALID;
++
++    stage = g_measured_id;
++
++    if (stage < STAGE_START || stage > STAGE_END)
++      stage = STAGE_INVALID;
++
++    return stage;
++}
++
++/*
++ * update_measured_id:
++ * update g_measured_id +1 every time measured, and g_measured_id
++ * will never be decreased.
++ */
++static void
++update_measured_id (void)
++{
++    g_measured_id++;
++}
++
++/*
++ * measure_memory:
++ * measure the memery region--(addr, size) through the TPCM protocol.
++ * if TPCM protocol is not exist in BIOS, it will return SUCC to keep
++ * compatible with non-measurement-support bios; if TPCM protocol is
++ * exist but not enabled, it will also return SUCC.
++ */
++static grub_err_t
++measure_memory (enum grub_file_type type __attribute__((unused)),
++                char *desc, grub_addr_t addr, grub_size_t size)
++{
++    grub_efi_handle_t   *handles = NULL;
++    grub_efi_uintn_t    num_handles;
++    grub_efi_handle_t   grub_c2p_handle = 0;
++    grub_err_t  test_c2p_err = GRUB_ERR_BAD_OS;
++    grub_guid_t         c2p_guid = C2PGUID;
++    grub_uint32_t       measure_result = 0;
++    grub_uint32_t       control_result = 0;
++    grub_efi_boolean_t    verify_enable = false;
++    grub_size_t         desc_len = 0;
++
++    handles = grub_efi_locate_handle (GRUB_EFI_BY_PROTOCOL, &c2p_guid, NULL, &num_handles);
++    if (handles != NULL && num_handles > 0)
++    {
++        struct c2p_protocol *c2p;
++
++        grub_c2p_handle = handles[0];
++        grub_dprintf ("tpcm", "measue memory addr 0x%lx size 0x%lx  \n", addr, size);
++        c2p = grub_efi_open_protocol (grub_c2p_handle, &c2p_guid,
++                                      GRUB_EFI_OPEN_PROTOCOL_GET_PROTOCOL);
++        if (c2p != NULL)
++        {
++            verify_enable = c2p->verify_is_enabled (c2p);
++            if (verify_enable == true)
++            {
++                struct addr_range range;
++                grub_efi_status_t status = 0;
++                grub_uint32_t stage = STAGE_INVALID;
++
++                range.start  = addr;
++                range.length = size;
++
++                stage = get_tpcm_stage ();
++                if (stage != STAGE_INVALID)
++                {
++                    desc_len = grub_strlen (desc) + 1;
++                    status = c2p->verify_raw (c2p, stage, (grub_uint64_t)desc, desc_len, 1, &range, &measure_result, &control_result);
++                    if (status == 0 && (control_result & MEASURE_ACTION_MASK) == 0)
++                    {
++                        grub_dprintf ("tpcm", "verify_raw success. stage[%d]desc:[%s]\n", stage, desc);
++                        test_c2p_err = GRUB_ERR_NONE;
++                    }
++                    else
++                    {
++                        grub_dprintf ("tpcm", "verify_raw error\n");
++                        while (1)
++                        {
++                            grub_error (GRUB_ERR_TPCM_VERIFY, "tpcm verify error. stage[%d]desc[%s]\n", stage, desc);
++                            asm volatile ("hlt");
++                        }
++                    }
++                }
++                else
++                  grub_dprintf ("tpcm", "invalid stage\n");
++
++                update_measured_id ();
++
++            }
++            else
++            {
++                grub_dprintf ("tpcm", "image verify not enabled\n");
++                test_c2p_err = GRUB_ERR_NONE;
++            }
++        }
++        else
++            grub_dprintf ("tpcm", "open c2p protocol failed\n");
++    }
++    else
++    {
++        /* keep compatible with non-measurement-support bios. */
++        grub_dprintf ("tpcm", "not found C2P protocol\n");
++        test_c2p_err = GRUB_ERR_NONE;
++    }
++
++    return test_c2p_err;
++}
++
++/* grub_tpcm_measure_memory */
++grub_err_t
++grub_tpcm_measure_memory (void *context, grub_addr_t buf, grub_size_t size)
++{
++    char *p_context = (char *) context;
++    char *p, *p_desc;
++    char tmp[TPCM_MAX_BUF_SIZE] = {'0'};
++    enum grub_file_type type;
++
++    if (p_context == NULL)
++        return GRUB_ERR_BUG;
++
++    p = grub_strchr (p_context, '|');
++    p_desc = p + 1;
++    grub_memcpy (tmp, p_context, (p - p_context));
++    type = grub_strtoul (tmp, 0, 10);
++
++    return measure_memory (type, p_desc, buf, size);
++}
++
+diff --git a/include/grub/efi/tpcm.h b/include/grub/efi/tpcm.h
+new file mode 100644
+index 000000000..e54aee6c2
+--- /dev/null
++++ b/include/grub/efi/tpcm.h
+@@ -0,0 +1,61 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2025  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef GRUB_EFI_TPCM_HEADER
++#define GRUB_EFI_TPCM_HEADER 1
++
++#include <grub/file.h>
++#include <grub/efi/api.h>
++#include <grub/efi/efi.h>
++
++#define C2PGUID                          {0xf89ab5cd, 0x2829, 0x422f, {0xa5, 0xf3, 0x03, 0x28, 0xe0, 0x6c, 0xfc, 0xbb}}
++#define MEASURE_RESULT_MASK          (0xff00)
++#define MEASURE_RESULT_SHIFT         (16)
++#define MEASURE_ACTION_MASK          (0x1)
++#define TPCM_MAX_BUF_SIZE            128
++
++/*
++ * stage layout:
++ * 2000~2999: +1 every time
++ */
++
++#define STAGE_START      2000
++#define STAGE_END        2999
++#define STAGE_INVALID    3000
++
++struct addr_range {
++    grub_uint64_t start;
++    grub_uint64_t length;
++};
++struct c2p_protocol {
++    grub_efi_status_t (__grub_efi_api *verify_raw) (struct c2p_protocol *this,
++                                    grub_uint32_t measure_stage,
++                                    grub_uint64_t image_info,
++                                    grub_uint32_t image_info_size,
++                                    grub_uint32_t num_addr_range,
++                                    struct addr_range ranges[],
++                                    grub_uint32_t *measure_result,
++                                    grub_uint32_t *control_result);
++    grub_efi_boolean_t (__grub_efi_api *verify_is_enabled)(struct c2p_protocol *this);
++};
++typedef struct c2p_protocol c2p_protocol_t;
++
++grub_err_t
++grub_tpcm_measure_memory (void *context, grub_addr_t buf, grub_size_t size);
++
++#endif
+diff --git a/include/grub/err.h b/include/grub/err.h
+index 971e7ccef..c17b96188 100644
+--- a/include/grub/err.h
++++ b/include/grub/err.h
+@@ -76,7 +76,11 @@ typedef enum
+     GRUB_ERR_BAD_FIRMWARE,
+     GRUB_ERR_STILL_REFERENCED,
+     GRUB_ERR_RECURSION_DEPTH,
++<<<<<<< HEAD
+     GRUB_ERR_EXISTS
++=======
++    GRUB_ERR_TPCM_VERIFY
++>>>>>>> efi/tpcm: Add UEFI interface for TPCM module
+   }
+ grub_err_t;
+ 
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/commands/efi/tpcm.c: MISSING on master
+  include/grub/efi/tpcm.h: MISSING on master
+  include/grub/err.h: EXISTS (107 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 3 code file(s) + FAILED.patch
+Patch size: +229 -6 lines
+
+================================================================================

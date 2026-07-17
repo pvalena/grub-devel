@@ -1,0 +1,183 @@
+================================================================================
+EVALUATION: 2025-10-0189
+================================================================================
+
+Mailing list subject: [PATCH] commands/hashsum: Allow to store hash in variable
+Commit subject:       commands/hashsum: Allow to store hash in variable
+Author:               D.-E. Divernois <d-e.divernois@musiciel.fr>
+Date:                 2025-10-09
+Has FAILED.patch:     1
+Code files changed:   0
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Signed-off-by: David-Emmanuel Divernois <d-e.divernois@musiciel.fr>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch | 137 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 137 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+docs/grub.texi | 5 +++-
+grub-core/commands/hashsum.c | 46 +++++++++++++++++++++++++++++-------
+2 files changed, 41 insertions(+), 10 deletions(-)
+
+diff --git a/docs/grub.texi b/docs/grub.texi
+index b81eb1d93..7660ba3f7 100644
+--- a/docs/grub.texi
++++ b/docs/grub.texi
+@@ -7376,7 +7376,7 @@ Otherwise, the computer is shut down using APM on that target.
+@node hashsum
+@subsection hashsum
+-@deffn Command hashsum @option{--hash} hash @option{--keep-going} @option{--uncompress} @option{--check} file [@option{--prefix} dir]|file @dots{}
++@deffn Command hashsum @option{--hash} hash @option{--keep-going} @option{--uncompress} [@option{--set} var] @option{--check} file [@option{--prefix} dir]|file @dots{}
+Compute or verify file hashes. Hash type is selected with option @option{--hash}.
+Supported hashes are: @samp{adler32}, @samp{crc64}, @samp{crc32},
+@samp{crc32rfc1510}, @samp{crc24rfc2440}, @samp{md4}, @samp{md5},
+@@ -7387,6 +7387,9 @@ Option @option{--uncompress} uncompresses files before computing hash.
+When list of files is given, hash of each file is computed and printed,
+followed by file name, each file on a new line.
++When option @option{--set} is given, only one file is allowed and its hash
++is assigned to variable @var{var}.
++
+When option @option{--check} is given, it points to a file that contains
+list of @var{hash name} pairs in the same format as used by UNIX
+@command{md5sum} command. Option @option{--prefix}
+diff --git a/grub-core/commands/hashsum.c b/grub-core/commands/hashsum.c
+index b6f8e3d1a..fb632e69c 100644
+--- a/grub-core/commands/hashsum.c
++++ b/grub-core/commands/hashsum.c
+@@ -36,6 +36,8 @@ static const struct grub_arg_option options[] = {
+ARG_TYPE_STRING},
+{"keep-going", 'k', 0, N_("Don't stop after first error."), 0, 0},
+{"uncompress", 'u', 0, N_("Uncompress file before checksumming."), 0, 0},
++ {"set", 's', 0, N_("Store the value in the given variable name."), N_("VAR"),
++ ARG_TYPE_STRING},
+{0, 0, 0, 0, 0, 0}
+};
+@@ -210,6 +212,7 @@ grub_cmd_hashsum (struct grub_extcmd_context *ctxt,
+struct grub_arg_list *state = ctxt->state;
+const char *hashname = NULL;
+const char *prefix = NULL;
++ const char *variable = NULL;
+const gcry_md_spec_t *hash;
+unsigned i;
+int keep = state[3].set;
+@@ -235,6 +238,13 @@ grub_cmd_hashsum (struct grub_extcmd_context *ctxt,
+if (state[2].set)
+prefix = state[2].arg;
++ if (state[5].set) {
++ variable = state[5].arg;
++ if (argc != 1)
++ return grub_error (GRUB_ERR_BAD_ARGUMENT,
++ "--set is only usable with a single file");
++ }
++
+if (state[1].set)
+{
+if (argc != 0)
+@@ -272,9 +282,27 @@ grub_cmd_hashsum (struct grub_extcmd_context *ctxt,
+unread++;
+continue;
+}
+- for (j = 0; j < hash->mdlen; j++)
+- grub_printf ("%02x", ((grub_uint8_t *) result)[j]);
+- grub_printf (" %s\n", args[i]);
++ if (variable)
++ {
++ char *hex_string = grub_malloc (hash->mdlen * 2 + 1);
++ if (hex_string)
++ {
++ for (j = 0; j < hash->mdlen; j++)
++ {
++ grub_snprintf (hex_string + j * 2, 3, "%02x",
++ ((grub_uint8_t *) result)[j]);
++ }
++ hex_string[hash->mdlen * 2] = '\0';
++ grub_env_set (variable, hex_string);
++ grub_free (hex_string);
++ }
++ }
++ else
++ {
++ for (j = 0; j < hash->mdlen; j++)
++ grub_printf ("%02x", ((grub_uint8_t *) result)[j]);
++ grub_printf (" %s\n", args[i]);
++ }
+}
+if (unread)
+@@ -288,7 +316,7 @@ static grub_extcmd_t cmd, cmd_md5, cmd_sha1, cmd_sha256, cmd_sha512, cmd_crc;
+GRUB_MOD_INIT(hashsum)
+{
+cmd = grub_register_extcmd ("hashsum", grub_cmd_hashsum, 0,
+- N_("-h HASH [-c FILE [-p PREFIX]] "
++ N_("-h HASH [-c FILE [-p PREFIX]] [-s VAR]"
+"[FILE1 [FILE2 ...]]"),
+/* TRANSLATORS: "hash checksum" is just to
+be a bit more precise, you can treat it as
+@@ -296,28 +324,28 @@ GRUB_MOD_INIT(hashsum)
+N_("Compute or check hash checksum."),
+options);
+cmd_md5 = grub_register_extcmd ("md5sum", grub_cmd_hashsum, 0,
+- N_("[-c FILE [-p PREFIX]] "
++ N_("[-c FILE [-p PREFIX]] [-s VAR]"
+"[FILE1 [FILE2 ...]]"),
+N_("Compute or check hash checksum."),
+options);
+cmd_sha1 = grub_register_extcmd ("sha1sum", grub_cmd_hashsum, 0,
+- N_("[-c FILE [-p PREFIX]] "
++ N_("[-c FILE [-p PREFIX]] [-s VAR]"
+"[FILE1 [FILE2 ...]]"),
+N_("Compute or check hash checksum."),
+options);
+cmd_sha256 = grub_register_extcmd ("sha256sum", grub_cmd_hashsum, 0,
+- N_("[-c FILE [-p PREFIX]] "
++ N_("[-c FILE [-p PREFIX]] [-s VAR]"
+"[FILE1 [FILE2 ...]]"),
+N_("Compute or check hash checksum."),
+options);
+cmd_sha512 = grub_register_extcmd ("sha512sum", grub_cmd_hashsum, 0,
+- N_("[-c FILE [-p PREFIX]] "
++ N_("[-c FILE [-p PREFIX]] [-s VAR]"
+"[FILE1 [FILE2 ...]]"),
+N_("Compute or check hash checksum."),
+options);
+cmd_crc = grub_register_extcmd ("crc", grub_cmd_hashsum, 0,
+- N_("[-c FILE [-p PREFIX]] "
++ N_("[-c FILE [-p PREFIX]] [-s VAR]"
+"[FILE1 [FILE2 ...]]"),
+N_("Compute or check hash checksum."),
+options);
+
+-- 
+2.51.0
+
+
+
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  docs/grub.texi: EXISTS (12070 lines)
+  grub-core/commands/hashsum.c: EXISTS (334 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 0 code file(s) + FAILED.patch
+Patch size: +43 -14 lines
+
+================================================================================

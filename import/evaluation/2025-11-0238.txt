@@ -1,0 +1,772 @@
+================================================================================
+EVALUATION: 2025-11-0238
+================================================================================
+
+Mailing list subject: [PATCH] tests: add functional tests for ECB mode using various ciphers
+Commit subject:       tests: add functional tests for ECB mode using various ciphers
+Author:               Srish Srinivasan <ssrish@linux.ibm.com>
+Date:                 2025-11-26
+Has FAILED.patch:     1
+Code files changed:   4
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Add functional tests covering ECB mode for the following
+ciphers: des, 3des, aes, blowfish, cast5, and camellia
+
+Signed-off-by: Srish Srinivasan <ssrish@linux.ibm.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch                          | 354 ++++++++++++++++++++++++++++++++++
+ docs/grub.texi                        |   6 +
+ grub-core/Makefile.core.def           |   5 +
+ grub-core/tests/ecb_test.c            | 283 +++++++++++++++++++++++++++
+ grub-core/tests/lib/functional_test.c |   4 +
+ 5 files changed, 652 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+ docs/grub.texi                        |   6 +
+ grub-core/Makefile.core.def           |   5 +
+ grub-core/tests/ecb_test.c            | 283 ++++++++++++++++++++++++++
+ grub-core/tests/lib/functional_test.c |   1 +
+ 4 files changed, 295 insertions(+)
+ create mode 100644 grub-core/tests/ecb_test.c
+
+diff --git a/docs/grub.texi b/docs/grub.texi
+index 7181009b6..f90eb992d 100644
+--- a/docs/grub.texi
++++ b/docs/grub.texi
+@@ -4092,6 +4092,7 @@ Modules can be loaded via the @command{insmod} (@pxref{insmod}) command.
+ * dm_nv_module::
+ * drivemap_module::
+ * dsa_sexp_test_module::
++* ecb_test_module::
+ * echo_module::
+ * efi_gop_module::
+ * efi_uga_module::
+@@ -4677,6 +4678,11 @@ mappings. @xref{drivemap} for more information.
+ @section dsa_sexp_test
+ This module provides a test of the libgcrypt DSA functionality in GRUB.
+ 
++@node ecb_test_module
++@section ecb_test
++This module is intended for performing a functional test of the ecb
++mode of operation for various ciphers in GRUB.
++
+ @node echo_module
+ @section echo
+ This module provides support for the @command{echo} to display a line of text.
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index fa4bc54aa..de0e857eb 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -2272,6 +2272,11 @@ module = {
+   common = tests/argon2_test.c;
+ };
+ 
++module = {
++  name = ecb_test;
++  common = tests/ecb_test.c;
++};
++
+ module = {
+   name = legacy_password_test;
+   common = tests/legacy_password_test.c;
+diff --git a/grub-core/tests/ecb_test.c b/grub-core/tests/ecb_test.c
+new file mode 100644
+index 000000000..b92e0d619
+--- /dev/null
++++ b/grub-core/tests/ecb_test.c
+@@ -0,0 +1,283 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2025 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/test.h>
++#include <grub/dl.h>
++#include <grub/misc.h>
++#include <grub/crypto.h>
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++static struct
++{
++  const char *cipher;
++  const char *key;
++  unsigned int keylen;
++  const char *ptext;
++  unsigned int plen;
++  const char *ctext;
++} vectors[] = {
++  {
++    "des",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef",
++    8,
++    "\x01\x23\x45\x67\x89\xab\xcd\xe7"
++    "\x22\x33\x44\x55\x66\x77\x88\x99"
++    "\xca\xfe\xba\xbe\xfe\xed\xbe\xef",
++    24,
++    "\xc9\x57\x44\x25\x6a\x5e\xd3\x1d"
++    "\xf7\x9c\x89\x2a\x33\x8f\x4a\x8b"
++    "\xb4\x99\x26\xf7\x1f\xe1\xd4\x90",
++  },
++  {
++    "3des",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\x55\x55\x55\x55\x55\x55\x55\x55"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    24,
++    "\x73\x6f\x6d\x65\x64\x61\x74\x61",
++    8,
++    "\x18\xd7\x48\xe5\x63\x62\x05\x72",
++  },
++  {
++    "aes",
++    "\x00\x01\x02\x03\x04\x05\x06\x07"
++    "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
++    16,
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    16,
++    "\x69\xc4\xe0\xd8\x6a\x7b\x04\x30"
++    "\xd8\xcd\xb7\x80\x70\xb4\xc5\x5a",
++  },
++  {
++    "aes",
++    "\x00\x01\x02\x03\x04\x05\x06\x07"
++    "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
++    "\x10\x11\x12\x13\x14\x15\x16\x17",
++    24,
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    16,
++    "\xdd\xa9\x7c\xa4\x86\x4c\xdf\xe0"
++    "\x6e\xaf\x70\xa0\xec\x0d\x71\x91",
++  },
++  {
++    "aes",
++    "\x00\x01\x02\x03\x04\x05\x06\x07"
++    "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
++    "\x10\x11\x12\x13\x14\x15\x16\x17"
++    "\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f",
++    32,
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    16,
++    "\x8e\xa2\xb7\xca\x51\x67\x45\xbf"
++    "\xea\xfc\x49\x90\x4b\x49\x60\x89",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87",
++    8,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\xe8\x7a\x24\x4e\x2c\xc8\x5e\x82",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87"
++    "\x78\x69\x5a\x4b\x3c\x2d\x1e\x0f",
++    16,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\x93\x14\x28\x87\xee\x3b\xe1\x5c",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87"
++    "\x78\x69\x5a\x4b\x3c\x2d\x1e\x0f"
++    "\x00\x11\x22\x33\x44",
++    21,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\xe6\xf5\x1e\xd7\x9b\x9d\xb2\x1f",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87"
++    "\x78\x69\x5a\x4b\x3c\x2d\x1e\x0f"
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x04\x68\x91\x04\xc2\xfd\x3b\x2f"
++    "\x58\x40\x23\x64\x1a\xba\x61\x76"
++    "\x1f\x1f\x1f\x1f\x0e\x0e\x0e\x0e"
++    "\xff\xff\xff\xff\xff\xff\xff\xff",
++    56,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\xc0\x45\x04\x01\x2e\x4e\x1f\x53",
++  },
++  {
++    "cast5",
++    "\x01\x23\x45\x67\x12\x34\x56\x78"
++    "\x23\x45\x67\x89\x34\x56\x78\x9a",
++    16,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef",
++    8,
++    "\x23\x8b\x4f\xe5\x84\x7e\x44\xb2",
++  },
++  {
++    "cast5",
++    "\x01\x23\x45\x67\x12\x34\x56\x78"
++    "\x23\x45\x00\x00\x00\x00\x00\x00",
++    16,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef",
++    8,
++    "\x75\x3d\xe2\x9f\x5d\x16\x7d\x03",
++  },
++  {
++    "camellia128",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\x67\x67\x31\x38\x54\x96\x69\x73"
++    "\x08\x57\x06\x56\x48\xea\xbe\x43",
++  },
++  {
++    "camellia192",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10"
++    "\x00\x11\x22\x33\x44\x55\x66\x77",
++    24,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\xb4\x99\x34\x01\xb3\xe9\x96\xf8"
++    "\x4e\xe5\xce\xe7\xd7\x9b\x09\xb9",
++  },
++  {
++    "camellia256",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10"
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    32,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\x9a\xcc\x23\x7d\xff\x16\xd7\x6c"
++    "\x20\xef\x7c\x91\x9e\x3a\x75\x09",
++  },
++};
++
++static void
++ecb_test (void)
++{
++  grub_size_t i;
++
++  for (i = 0; i < ARRAY_SIZE (vectors); i++)
++    {
++      gcry_err_code_t err;
++      unsigned char *plaintext, *ciphertext;
++      int rc;
++
++      const gcry_cipher_spec_t *cipher = grub_crypto_lookup_cipher_by_name (vectors[i].cipher);
++      grub_test_assert (cipher != NULL, "cipher lookup failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (cipher == NULL)
++        return;
++
++      grub_crypto_cipher_handle_t handle = grub_crypto_cipher_open (cipher);
++      grub_test_assert (handle != NULL, "cipher handle opening failed for vector %ld (cipher: %s)",
++                        i+1, vectors[i].cipher);
++      if (handle == NULL)
++        return;
++
++      err = grub_crypto_cipher_set_key (handle, (grub_uint8_t *)vectors[i].key, vectors[i].keylen);
++      grub_test_assert (err == GPG_ERR_NO_ERROR,
++                        "setting key of length %d failed for vector %ld (cipher: %s)",
++                        vectors[i].keylen, i+1, vectors[i].cipher);
++      if (err != GPG_ERR_NO_ERROR)
++        {
++          grub_crypto_cipher_close(handle);
++          return;
++        }
++
++      /* Test Encryption  */
++      ciphertext = grub_zalloc (vectors[i].plen);
++      grub_test_assert (ciphertext != NULL,
++                        "ciphertext buffer allocation failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (ciphertext == NULL)
++        {
++          grub_crypto_cipher_close(handle);
++          return;
++        }
++
++      err = grub_crypto_ecb_encrypt (handle, ciphertext, vectors[i].ptext, vectors[i].plen);
++      grub_test_assert (err == GPG_ERR_NO_ERROR,
++                        "ecb encryption failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (err != GPG_ERR_NO_ERROR)
++        {
++          grub_crypto_cipher_close(handle);
++          grub_free(ciphertext);
++          return;
++        }
++
++      rc = grub_memcmp (ciphertext, vectors[i].ctext, vectors[i].plen);
++      grub_test_assert (rc == 0, "ciphertext mismatch after encryption for vector %ld (cipher: %s)",
++                        i+1, vectors[i].cipher);
++
++      grub_free(ciphertext);
++
++      /* Test Decryption  */
++      plaintext = grub_zalloc (vectors[i].plen);
++      grub_test_assert (plaintext != NULL,
++                        "plaintext buffer allocation failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (plaintext == NULL)
++        {
++          grub_crypto_cipher_close(handle);
++          return;
++        }
++
++      err = grub_crypto_ecb_decrypt (handle, plaintext, vectors[i].ctext, vectors[i].plen);
++      grub_test_assert (err == GPG_ERR_NO_ERROR,
++                        "ecb decryption failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (err != GPG_ERR_NO_ERROR)
++        {
++          grub_crypto_cipher_close(handle);
++          grub_free(plaintext);
++          return;
++        }
++
++      rc = grub_memcmp (plaintext, vectors[i].ptext, vectors[i].plen);
++      grub_test_assert (rc == 0, "plaintext mismatch after decryption for vector %ld (cipher: %s)",
++                        i+1, vectors[i].cipher);
++
++      grub_free(plaintext);
++      grub_crypto_cipher_close(handle);
++    }
++}
++
++/* Register example_test method as a functional test.  */
++GRUB_FUNCTIONAL_TEST (ecb_test, ecb_test);
+diff --git a/grub-core/tests/lib/functional_test.c b/grub-core/tests/lib/functional_test.c
+index 776934e1f..b3cc5f5ce 100644
+--- a/grub-core/tests/lib/functional_test.c
++++ b/grub-core/tests/lib/functional_test.c
+@@ -82,6 +82,7 @@ grub_functional_all_tests (grub_extcmd_context_t ctxt __attribute__ ((unused)),
+   grub_dl_load ("shift_test");
+   grub_dl_load ("asn1_test");
+   grub_dl_load ("argon2_test");
++  grub_dl_load ("ecb_test");
+ 
+   FOR_LIST_ELEMENTS (test, grub_test_list)
+     ok = !grub_test_run (test) && ok;
+-- 
+2.43.0
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 8a3f17aa74d2cd86190467512690135b1d4aa910
+Author: Srish Srinivasan <ssrish@linux.ibm.com>
+Date:   Wed Nov 26 16:39:09 2025 +0530
+
+    tests: add functional tests for ECB mode using various ciphers
+    
+    Add functional tests covering ECB mode for the following
+    ciphers: des, 3des, aes, blowfish, cast5, and camellia
+    
+    Signed-off-by: Srish Srinivasan <ssrish@linux.ibm.com>
+
+diff --git a/docs/grub.texi b/docs/grub.texi
+index bc60a3ac1..a57cf4180 100644
+--- a/docs/grub.texi
++++ b/docs/grub.texi
+@@ -4186,6 +4186,7 @@ Modules can be loaded via the @command{insmod} (@pxref{insmod}) command.
+ * dm_nv_module::
+ * drivemap_module::
+ * dsa_sexp_test_module::
++* ecb_test_module::
+ * echo_module::
+ * efi_gop_module::
+ * efibootnext_module::
+@@ -4778,6 +4779,11 @@ mappings. @xref{drivemap} for more information.
+ @section dsa_sexp_test
+ This module provides a test of the libgcrypt DSA functionality in GRUB.
+ 
++@node ecb_test_module
++@section ecb_test
++This module is intended for performing a functional test of the ecb
++mode of operation for various ciphers in GRUB.
++
+ @node echo_module
+ @section echo
+ This module provides support for the @command{echo} to display a line of text.
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 535a6a833..ffcb62240 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -2324,8 +2324,13 @@ module = {
+ };
+ 
+ module = {
++<<<<<<< HEAD
+   name = crypto_cipher_mode_test;
+   common = tests/crypto_cipher_mode_test.c;
++=======
++  name = ecb_test;
++  common = tests/ecb_test.c;
++>>>>>>> tests: add functional tests for ECB mode using various ciphers
+ };
+ 
+ module = {
+diff --git a/grub-core/tests/ecb_test.c b/grub-core/tests/ecb_test.c
+new file mode 100644
+index 000000000..b92e0d619
+--- /dev/null
++++ b/grub-core/tests/ecb_test.c
+@@ -0,0 +1,283 @@
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2025 Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/test.h>
++#include <grub/dl.h>
++#include <grub/misc.h>
++#include <grub/crypto.h>
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++static struct
++{
++  const char *cipher;
++  const char *key;
++  unsigned int keylen;
++  const char *ptext;
++  unsigned int plen;
++  const char *ctext;
++} vectors[] = {
++  {
++    "des",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef",
++    8,
++    "\x01\x23\x45\x67\x89\xab\xcd\xe7"
++    "\x22\x33\x44\x55\x66\x77\x88\x99"
++    "\xca\xfe\xba\xbe\xfe\xed\xbe\xef",
++    24,
++    "\xc9\x57\x44\x25\x6a\x5e\xd3\x1d"
++    "\xf7\x9c\x89\x2a\x33\x8f\x4a\x8b"
++    "\xb4\x99\x26\xf7\x1f\xe1\xd4\x90",
++  },
++  {
++    "3des",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\x55\x55\x55\x55\x55\x55\x55\x55"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    24,
++    "\x73\x6f\x6d\x65\x64\x61\x74\x61",
++    8,
++    "\x18\xd7\x48\xe5\x63\x62\x05\x72",
++  },
++  {
++    "aes",
++    "\x00\x01\x02\x03\x04\x05\x06\x07"
++    "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
++    16,
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    16,
++    "\x69\xc4\xe0\xd8\x6a\x7b\x04\x30"
++    "\xd8\xcd\xb7\x80\x70\xb4\xc5\x5a",
++  },
++  {
++    "aes",
++    "\x00\x01\x02\x03\x04\x05\x06\x07"
++    "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
++    "\x10\x11\x12\x13\x14\x15\x16\x17",
++    24,
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    16,
++    "\xdd\xa9\x7c\xa4\x86\x4c\xdf\xe0"
++    "\x6e\xaf\x70\xa0\xec\x0d\x71\x91",
++  },
++  {
++    "aes",
++    "\x00\x01\x02\x03\x04\x05\x06\x07"
++    "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
++    "\x10\x11\x12\x13\x14\x15\x16\x17"
++    "\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f",
++    32,
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    16,
++    "\x8e\xa2\xb7\xca\x51\x67\x45\xbf"
++    "\xea\xfc\x49\x90\x4b\x49\x60\x89",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87",
++    8,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\xe8\x7a\x24\x4e\x2c\xc8\x5e\x82",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87"
++    "\x78\x69\x5a\x4b\x3c\x2d\x1e\x0f",
++    16,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\x93\x14\x28\x87\xee\x3b\xe1\x5c",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87"
++    "\x78\x69\x5a\x4b\x3c\x2d\x1e\x0f"
++    "\x00\x11\x22\x33\x44",
++    21,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\xe6\xf5\x1e\xd7\x9b\x9d\xb2\x1f",
++  },
++  {
++    "blowfish",
++    "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87"
++    "\x78\x69\x5a\x4b\x3c\x2d\x1e\x0f"
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x04\x68\x91\x04\xc2\xfd\x3b\x2f"
++    "\x58\x40\x23\x64\x1a\xba\x61\x76"
++    "\x1f\x1f\x1f\x1f\x0e\x0e\x0e\x0e"
++    "\xff\xff\xff\xff\xff\xff\xff\xff",
++    56,
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    8,
++    "\xc0\x45\x04\x01\x2e\x4e\x1f\x53",
++  },
++  {
++    "cast5",
++    "\x01\x23\x45\x67\x12\x34\x56\x78"
++    "\x23\x45\x67\x89\x34\x56\x78\x9a",
++    16,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef",
++    8,
++    "\x23\x8b\x4f\xe5\x84\x7e\x44\xb2",
++  },
++  {
++    "cast5",
++    "\x01\x23\x45\x67\x12\x34\x56\x78"
++    "\x23\x45\x00\x00\x00\x00\x00\x00",
++    16,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef",
++    8,
++    "\x75\x3d\xe2\x9f\x5d\x16\x7d\x03",
++  },
++  {
++    "camellia128",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\x67\x67\x31\x38\x54\x96\x69\x73"
++    "\x08\x57\x06\x56\x48\xea\xbe\x43",
++  },
++  {
++    "camellia192",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10"
++    "\x00\x11\x22\x33\x44\x55\x66\x77",
++    24,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\xb4\x99\x34\x01\xb3\xe9\x96\xf8"
++    "\x4e\xe5\xce\xe7\xd7\x9b\x09\xb9",
++  },
++  {
++    "camellia256",
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10"
++    "\x00\x11\x22\x33\x44\x55\x66\x77"
++    "\x88\x99\xaa\xbb\xcc\xdd\xee\xff",
++    32,
++    "\x01\x23\x45\x67\x89\xab\xcd\xef"
++    "\xfe\xdc\xba\x98\x76\x54\x32\x10",
++    16,
++    "\x9a\xcc\x23\x7d\xff\x16\xd7\x6c"
++    "\x20\xef\x7c\x91\x9e\x3a\x75\x09",
++  },
++};
++
++static void
++ecb_test (void)
++{
++  grub_size_t i;
++
++  for (i = 0; i < ARRAY_SIZE (vectors); i++)
++    {
++      gcry_err_code_t err;
++      unsigned char *plaintext, *ciphertext;
++      int rc;
++
++      const gcry_cipher_spec_t *cipher = grub_crypto_lookup_cipher_by_name (vectors[i].cipher);
++      grub_test_assert (cipher != NULL, "cipher lookup failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (cipher == NULL)
++        return;
++
++      grub_crypto_cipher_handle_t handle = grub_crypto_cipher_open (cipher);
++      grub_test_assert (handle != NULL, "cipher handle opening failed for vector %ld (cipher: %s)",
++                        i+1, vectors[i].cipher);
++      if (handle == NULL)
++        return;
++
++      err = grub_crypto_cipher_set_key (handle, (grub_uint8_t *)vectors[i].key, vectors[i].keylen);
++      grub_test_assert (err == GPG_ERR_NO_ERROR,
++                        "setting key of length %d failed for vector %ld (cipher: %s)",
++                        vectors[i].keylen, i+1, vectors[i].cipher);
++      if (err != GPG_ERR_NO_ERROR)
++        {
++          grub_crypto_cipher_close(handle);
++          return;
++        }
++
++      /* Test Encryption  */
++      ciphertext = grub_zalloc (vectors[i].plen);
++      grub_test_assert (ciphertext != NULL,
++                        "ciphertext buffer allocation failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (ciphertext == NULL)
++        {
++          grub_crypto_cipher_close(handle);
++          return;
++        }
++
++      err = grub_crypto_ecb_encrypt (handle, ciphertext, vectors[i].ptext, vectors[i].plen);
++      grub_test_assert (err == GPG_ERR_NO_ERROR,
++                        "ecb encryption failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (err != GPG_ERR_NO_ERROR)
++        {
++          grub_crypto_cipher_close(handle);
++          grub_free(ciphertext);
++          return;
++        }
++
++      rc = grub_memcmp (ciphertext, vectors[i].ctext, vectors[i].plen);
++      grub_test_assert (rc == 0, "ciphertext mismatch after encryption for vector %ld (cipher: %s)",
++                        i+1, vectors[i].cipher);
++
++      grub_free(ciphertext);
++
++      /* Test Decryption  */
++      plaintext = grub_zalloc (vectors[i].plen);
++      grub_test_assert (plaintext != NULL,
++                        "plaintext buffer allocation failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (plaintext == NULL)
++        {
++          grub_crypto_cipher_close(handle);
++          return;
++        }
++
++      err = grub_crypto_ecb_decrypt (handle, plaintext, vectors[i].ctext, vectors[i].plen);
++      grub_test_assert (err == GPG_ERR_NO_ERROR,
++                        "ecb decryption failed for vector %ld (cipher: %s)", i+1,
++                        vectors[i].cipher);
++      if (err != GPG_ERR_NO_ERROR)
++        {
++          grub_crypto_cipher_close(handle);
++          grub_free(plaintext);
++          return;
++        }
++
++      rc = grub_memcmp (plaintext, vectors[i].ptext, vectors[i].plen);
++      grub_test_assert (rc == 0, "plaintext mismatch after decryption for vector %ld (cipher: %s)",
++                        i+1, vectors[i].cipher);
++
++      grub_free(plaintext);
++      grub_crypto_cipher_close(handle);
++    }
++}
++
++/* Register example_test method as a functional test.  */
++GRUB_FUNCTIONAL_TEST (ecb_test, ecb_test);
+diff --git a/grub-core/tests/lib/functional_test.c b/grub-core/tests/lib/functional_test.c
+index 4214332df..aac3d5897 100644
+--- a/grub-core/tests/lib/functional_test.c
++++ b/grub-core/tests/lib/functional_test.c
+@@ -82,7 +82,11 @@ grub_functional_all_tests (grub_extcmd_context_t ctxt __attribute__ ((unused)),
+   grub_dl_load ("shift_test");
+   grub_dl_load ("asn1_test");
+   grub_dl_load ("argon2_test");
++<<<<<<< HEAD
+   grub_dl_load ("crypto_cipher_mode_test");
++=======
++  grub_dl_load ("ecb_test");
++>>>>>>> tests: add functional tests for ECB mode using various ciphers
+ 
+   FOR_LIST_ELEMENTS (test, grub_test_list)
+     ok = !grub_test_run (test) && ok;
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  docs/grub.texi: EXISTS (12070 lines)
+  grub-core/Makefile.core.def: EXISTS (2829 lines)
+  grub-core/tests/ecb_test.c: MISSING on master
+  grub-core/tests/lib/functional_test.c: EXISTS (110 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 4 code file(s) + FAILED.patch
+Patch size: +299 -6 lines
+
+================================================================================

@@ -1,0 +1,80 @@
+================================================================================
+EVALUATION: 2026-01-0021
+================================================================================
+
+Mailing list subject: [PATCH] configure: print a more helpful error if autoconf-archive is
+Commit subject:       configure: print a more helpful error if autoconf-archive is not installed
+Author:               Radoslav Kolev <radoslav.kolev@suse.com>
+Date:                 2026-01-13
+Has FAILED.patch:     0
+Code files changed:   1
+Series:               standalone
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Because an undefined macro receives another macro as parameter autoconf
+is not smart enough to produce a useful error message.
+
+Signed-off-by: Radoslav Kolev <radoslav.kolev@suse.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ configure.ac | 3 +++
+ 1 file changed, 3 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+(no FAILED.patch)
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 86dfd71d76e629d7ec4eb7652d9be36de296492d
+Author: Radoslav Kolev <radoslav.kolev@suse.com>
+Date:   Tue Jan 13 10:04:22 2026 +0200
+
+    configure: print a more helpful error if autoconf-archive is not installed
+    
+    Because an undefined macro receives another macro as parameter autoconf
+    is not smart enough to produce a useful error message.
+    
+    Signed-off-by: Radoslav Kolev <radoslav.kolev@suse.com>
+
+diff --git a/configure.ac b/configure.ac
+index 5354dc72f..35667e600 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1843,6 +1843,9 @@ LIBS=""
+ # Defined in acinclude.m4.
+ grub_ASM_USCORE
+ grub_PROG_TARGET_CC
++#the error message produced by autoconf if autoconf-archive is not installed is
++#quite misleading and not very helpful, so try point people in the right direction
++m4_ifndef([AX_CHECK_LINK_FLAG], [m4_fatal([autoconf-archive is missing. You must install it to generate the configure script.])])
+ if test "x$TARGET_APPLE_LINKER" != x1 ; then
+ grub_PROG_OBJCOPY_ABSOLUTE
+ fi
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +0
+0 -0
+0 lines
+
+================================================================================

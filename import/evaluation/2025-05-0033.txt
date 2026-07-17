@@ -1,0 +1,132 @@
+================================================================================
+EVALUATION: 2025-05-0033
+================================================================================
+
+Mailing list subject: [PATCH] fs/zfs: Fix another memory leak in ZFS code
+Commit subject:       fs/zfs: Fix another memory leak in ZFS code
+Author:               Glenn Washburn <development@efficientek.com>
+Date:                 2025-05-05
+Has FAILED.patch:     1
+Code files changed:   1
+Series:               2025-05-0032 (2 members)
+
+--------------------------------------------------------------------------------
+COMMIT MESSAGE
+--------------------------------------------------------------------------------
+
+Commit b66c6f918 ("fs/zfs: Fix a number of memory leaks in ZFS code")
+fixes many of the same leaks detected in bug #63846 except one, which
+is fixed here.
+
+Fixes: https://savannah.gnu.org/bugs/?63846
+Signed-off-by: Glenn Washburn <development@efficientek.com>
+
+--------------------------------------------------------------------------------
+FILES CHANGED (commit stat)
+--------------------------------------------------------------------------------
+
+ FAILED.patch           | 47 +++++++++++++++++++++++++++++++++++++++++++++++
+ grub-core/fs/zfs/zfs.c |  4 ++++
+ 2 files changed, 51 insertions(+)
+
+--------------------------------------------------------------------------------
+FAILED.patch (the intended change)
+--------------------------------------------------------------------------------
+
+---
+Reviewing some of the bugs on Savannah, I noticed #63846 which, apparently,
+independently fixes some of the same leaks as fixed in the more recent
+commit b66c6f918. The one change in the Savannah bug patch that I did not find
+in b66c6f918 is the one here. The fix has been modified from the original
+patch to be in the style of the other similar fixes in b66c6f918.
+
+Glenn
+---
+ grub-core/fs/zfs/zfs.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/grub-core/fs/zfs/zfs.c b/grub-core/fs/zfs/zfs.c
+index bff9d0208b9f..8036b2e31cc5 100644
+--- a/grub-core/fs/zfs/zfs.c
++++ b/grub-core/fs/zfs/zfs.c
+@@ -3052,6 +3052,7 @@ dnode_get_path (struct subvolume *subvol, const char *path_in, dnode_end_t *dn,
+ 	  void *sahdrp;
+ 	  int hdrsize;
+ 	  grub_size_t sz;
++	  bool free_sahdrp = false;
+ 
+ 	  if (dnode_path->dn.dn.dn_bonuslen != 0)
+ 	    {
+@@ -3064,6 +3065,7 @@ dnode_get_path (struct subvolume *subvol, const char *path_in, dnode_end_t *dn,
+ 	      err = zio_read (bp, dnode_path->dn.endian, &sahdrp, NULL, data);
+ 	      if (err)
+ 	        break;
++	      free_sahdrp = true;
+ 	    }
+ 	  else
+ 	    {
+@@ -3122,6 +3124,9 @@ dnode_get_path (struct subvolume *subvol, const char *path_in, dnode_end_t *dn,
+ 		     }
+ 	      dn_new = dnode_path;
+ 	    }
++	  if (free_sahdrp)
++	    grub_free (sahdrp);
++
+ 	}
+     }
+ 
+-- 
+2.34.1
+
+
+
+
+--------------------------------------------------------------------------------
+CODE CHANGES IN COMMIT (conflict resolution artifacts)
+--------------------------------------------------------------------------------
+
+commit 8aad14722012856213cf902e3d19d33b9d278da3
+Author: Glenn Washburn <development@efficientek.com>
+Date:   Mon May 5 17:09:19 2025 -0500
+
+    fs/zfs: Fix another memory leak in ZFS code
+    
+    Commit b66c6f918 ("fs/zfs: Fix a number of memory leaks in ZFS code")
+    fixes many of the same leaks detected in bug #63846 except one, which
+    is fixed here.
+    
+    Fixes: https://savannah.gnu.org/bugs/?63846
+    Signed-off-by: Glenn Washburn <development@efficientek.com>
+
+diff --git a/grub-core/fs/zfs/zfs.c b/grub-core/fs/zfs/zfs.c
+index 83dfa6d52..1577d9233 100644
+--- a/grub-core/fs/zfs/zfs.c
++++ b/grub-core/fs/zfs/zfs.c
+@@ -3124,7 +3124,11 @@ dnode_get_path (struct subvolume *subvol, const char *path_in, dnode_end_t *dn,
+ 		     }
+ 	      dn_new = dnode_path;
+ 	    }
++<<<<<<< HEAD
+ 	  if (free_sahdrp == true)
++=======
++	  if (free_sahdrp)
++>>>>>>> fs/zfs: Fix another memory leak in ZFS code
+ 	    grub_free (sahdrp);
+ 
+ 	}
+
+--------------------------------------------------------------------------------
+MASTER CONTEXT (current state of affected files)
+--------------------------------------------------------------------------------
+
+  grub-core/fs/zfs/zfs.c: EXISTS (4581 lines)
+
+--------------------------------------------------------------------------------
+ASSESSMENT
+--------------------------------------------------------------------------------
+
+Type:       ENHANCEMENT / FIX (modifies existing files)
+Complexity: 1 code file(s) + FAILED.patch
+Patch size: +6 -4 lines
+
+================================================================================
