@@ -9,7 +9,7 @@ Pipeline documentation: [FINAL_REPORT.md](FINAL_REPORT.md).
 
 12 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
 
-## Series: 2025-01-0098 (2 patches, Egor Ignatov) — KEEP
+## Series: [2025-01-0098](series/2025-01-0098) (2 patches, Egor Ignatov) — KEEP
 
 **Topic**: fs/xfs: Fix return values and error propagation in `grub_xfs_iterate_dir`
 
@@ -24,27 +24,36 @@ no `else if (grub_errno)` guards after `iterate_dir_call_hook` calls (lines 874,
 **Decision**: KEEP — patch 2 carries unmerged error propagation fixes.
 
 
-## Series: 2025-04-0266 + 2025-04-0270 (6 of 7, Brown/Philipson) — KEEP
+## Series: [2025-04-0266](series/2025-04-0266) (3 of 7, Alec Brown) — KEEP
 
-**Topic**: AMD SKINIT Secure Launch: PSP discovery, x86 definitions, core SKINIT,
-EFI support, TMR setup
+**Topic**: AMD SKINIT Secure Launch: PSP discovery and TMR setup
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
 | 2025-04-0266 | FAILED.patch only: PSP discovery code, `psp.c`, `psp.h` | Not upstream |
 | 2025-04-0267 | FAILED.patch only: core PSP commands and capability | Not upstream |
 | 2025-04-0268 | FAILED.patch only: TMR setup to protect RAM from DMA | Not upstream |
+
+RFC PATCH v2 parts 2-4/7. All FAILED.patch only. `grub-core/loader/slaunch/psp.c`
+and `include/grub/i386/psp.h` MISSING on master.
+**Decision**: KEEP — new feature, not upstream.
+
+## Series: [2025-04-0270](series/2025-04-0270) (3 of 7, Ross Philipson) — KEEP
+
+**Topic**: AMD SKINIT Secure Launch: x86 definitions, core SKINIT, EFI support
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
 | 2025-04-0270 | FAILED.patch only: x86 definitions for AMD SKINIT | Not upstream |
 | 2025-04-0271 | FAILED.patch only: AMD SKINIT Secure Launch core (`skinit.c`, `skl.c`, `slaunch.c`) | Not upstream |
 | 2025-04-0272 | FAILED.patch only: EFI AMD SKINIT support | Not upstream |
 
-RFC PATCH v2, all FAILED.patch only. No slaunch/PSP/SKINIT code on master.
-All target files MISSING: `grub-core/loader/slaunch/`, `include/grub/i386/psp.h`,
-`include/grub/i386/skinit.h`, `include/grub/slaunch.h`, `include/grub/slr_table.h`.
+RFC PATCH v2 parts 1,5-6/7. All FAILED.patch only. `include/grub/i386/skinit.h`,
+`include/grub/slaunch.h`, `include/grub/slr_table.h` MISSING on master.
 **Decision**: KEEP — new feature, not upstream.
 
 
-## Series: 2025-05-0032 (2 patches, Glenn Washburn) — KEEP
+## Series: [2025-05-0032](series/2025-05-0032) (2 patches, Glenn Washburn) — KEEP
 
 **Topic**: Disable gfxterm_menu/cmdline_cat tests + ZFS memory leak fix
 
@@ -60,7 +69,7 @@ proximity; keeping as a unit for review.
 **Decision**: KEEP — test disable not upstream.
 
 
-## Series: 2025-05-0076 (2 patches, khaalid) — KEEP
+## Series: [2025-05-0076](series/2025-05-0076) (2 patches, khaalid) — KEEP
 
 **Topic**: Enhance error messages in chainloader/linux with hex status codes
 
@@ -74,7 +83,7 @@ chainloader.c. linux.c has different wording (`"start_image() returned"` vs `"ca
 **Decision**: KEEP.
 
 
-## Series: 2025-05-0201 (2 patches, Jiří Wolker) — KEEP
+## Series: [2025-05-0201](series/2025-05-0201) (2 patches, Jiří Wolker) — KEEP
 
 **Topic**: Export/unexport env variables with `-u`/`-g` flags
 
@@ -87,7 +96,7 @@ Not upstream — no `unexport` command, no `grub_env_set_export_mode`, no `-g` f
 **Decision**: KEEP.
 
 
-## Series: 2025-07-0029 (11 of 15 patches, Vladimir Serbinenko) — KEEP
+## Series: [2025-07-0029](series/2025-07-0029) (11 of 15 patches, Vladimir Serbinenko) — KEEP
 
 **Topic**: Import libgcrypt 1.11, b64dec, blake2, import script, coverity fixes, memory leak
 
@@ -111,7 +120,7 @@ Master has libgcrypt 1.11.0 — the import itself is upstream. However, patch 14
 **Decision**: KEEP — memory leak fix not upstream.
 
 
-## Series: 2025-07-0047 (3 of 5, Frediano Ziglio) — KEEP
+## Series: [2025-07-0047](series/2025-07-0047) (3 of 5, Frediano Ziglio) — KEEP
 
 **Topic**: kern/list: `grub_list_append` + arm64/xen LoadFile2 + xen kernel cmdline
 
@@ -125,7 +134,7 @@ RFC patches. No `grub_list_append` on master. Xen LoadFile2 not in xen loader.
 **Decision**: KEEP.
 
 
-## Series: 2025-08-0012 (2 patches, Vladimir Serbinenko) — KEEP
+## Series: [2025-08-0012](series/2025-08-0012) (2 patches, Vladimir Serbinenko) — KEEP
 
 **Topic**: ZFS: rewrite endianness handling + datto encryption support
 
@@ -138,7 +147,7 @@ Not upstream — no `datto`, no `DSL_CRYPTO`, no `grub_cpu_to_zfs` on master.
 **Decision**: KEEP.
 
 
-## Series: 2025-10-0294 (6 of 12, Michael Chang) — grub-editenv v6 — KEEP
+## Series: [2025-10-0294](series/2025-10-0294) (6 of 12, Michael Chang) — grub-editenv v6 — KEEP
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
@@ -155,7 +164,7 @@ grub.texi (patch 11/12) is NOT on master.
 **Decision**: KEEP — docs not upstream.
 
 
-## Series: 2025-11-0014 (2 of 3, Andrew Hamilton) — KEEP
+## Series: [2025-11-0014](series/2025-11-0014) (2 of 3, Andrew Hamilton) — KEEP
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
@@ -166,7 +175,7 @@ grub.texi (patch 11/12) is NOT on master.
 **Decision**: KEEP.
 
 
-## Series: 2025-12-0028 (2, Glenn Washburn) — KEEP
+## Series: [2025-12-0028](series/2025-12-0028) (2, Glenn Washburn) — KEEP
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
@@ -178,7 +187,7 @@ Autoconf Archive note in INSTALL (patch 1) is NOT upstream.
 **Decision**: KEEP — autoconf-archive note not upstream.
 
 
-## Series: 2026-03-0010 (4 of 9, Nicholas Vinson) — KEEP
+## Series: [2026-03-0010](series/2026-03-0010) (4 of 9, Nicholas Vinson) — KEEP
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|
