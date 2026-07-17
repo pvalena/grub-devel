@@ -1300,3 +1300,33 @@ Originally classified KEEP because grep for `GRUB_SSIZE_MAX` found no match on m
 **Evidence**: master commit `0e1762c8a` (Andrew Hamilton) fixes the same bug differently:
 introduces `run_size` variable, uses `curr += (run_size + 1)`. Reviewed-by Kiper.
 Same underlying issue (quadratic `curr` growth), different fix approach.
+
+## 2025-01-0098 — DROP (series context)
+
+**Subject**: fs/xfs: Fix grub_xfs_iterate_dir return value in case of failure
+**Author**: Egor Ignatov | **fp=1 code=0**
+**Target**: `grub-core/fs/xfs.c`
+**Change**: `return grub_error()` → `grub_error(); return 0` at 2 boundary check sites.
+**Evidence**: master commit `f20988738` (same author, Reviewed-by Kiper). Exact same patch.
+**Context**: Was patch 1 of 2 in xfs series. Patch 2 (2025-01-0099, error propagation)
+is NOT upstream and remains as standalone KEEP. This patch is fully redundant.
+
+## 2025-05-0033 — DROP (series context)
+
+**Subject**: fs/zfs: Fix another memory leak in ZFS code
+**Author**: Glenn Washburn | **fp=1 code=1**
+**Target**: `grub-core/fs/zfs/zfs.c`
+**Change**: Add `free_sahdrp` flag to track heap allocation, free on exit.
+**Evidence**: master commit `34bd00ee2` (same author, Reviewed-by Kiper). Exact same patch.
+**Context**: Was patch 2 of 2 in test-disable series. Patch 1 (2025-05-0032, test disable)
+is NOT upstream and remains as standalone KEEP. This patch is fully redundant.
+
+## 2025-07-0034 — DROP (series context)
+
+**Subject**: libgcrypt: Fix coverity warnings
+**Author**: Vladimir Serbinenko | **fp=1 code=2**
+**Target**: 2 new patch files in `grub-core/lib/libgcrypt-patches/`
+**Change**: NULL check in mpiutil + resource free in sexp error path. Coverity CID 369001/369003.
+**Evidence**: master commit `e23704ad4` (same author, Reviewed-by Kiper). Exact same patches.
+**Context**: Was patch 7 of 11 in libgcrypt v14 series. Patch 11 (2025-07-0039, sexp.c leak)
+is NOT upstream and remains in the series. This patch is fully redundant.
