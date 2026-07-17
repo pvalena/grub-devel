@@ -349,6 +349,7 @@ tpm2_cmd.c:572). `TPM_CC_PCR_Event` at tss2_types.h:346.
 QEMU patches (`hw/core/machine.c`, `target/i386/kvm/kvm.c`) sent to GRUB ML.
 Not applicable to GRUB.
 **Decision**: DROP — not a GRUB patch.
+**Dropped branches**: 2025-09-0115, 2025-09-0116
 
 ## Series: 2025-10-0092 (3 of 7, Gary Lin) — tss2 PCR_Event v4
 
@@ -486,8 +487,3 @@ configure.ac still has `--image-base` check (line 1502) and `-Ttext` fallback
 (line 1504). `i386-cygwin-img.lds` exists but old `.sc` file removed.
 **Decision**: KEEP — linker compatibility changes not upstream.
 
-## Series: 2025-09-0115 (2, Hector Cao)
-
-QEMU patches (`target/i386/kvm/kvm.c`) sent to GRUB ML by mistake.
-**Decision**: DROP — not a GRUB patch.
-**Dropped branches**: 2025-09-0115, 2025-09-0116
