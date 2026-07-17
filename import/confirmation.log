@@ -1007,3 +1007,93 @@ set_variables (const char *name, int argc, char *argv[])
 === 2025-10-0299: unset_variables fs_envblk ===
 3
 (count of fs_envblk refs inside unset_variables)
+=== 2025-03-0186: pkcs1_v15 module ===
+  pkcs1_v15.c on master: 0
+  pkcs1_v15.h on master: 0
+  grub_crypto_rsa_pad on master: 
+=== 2025-03-0226: qemu_mips removal ===
+  qemu_mips in configure.ac: 9
+  mips-qemu_mips in configure.ac:   mips-qemu_mips) ;;
+
+=== 2025-04-0048: call vs jmp grub_main ===
+  Master startup.S: 	call	EXT_C(grub_main)
+
+=== 2025-04-0142: debug timestamps ===
+  DEBUG_WITH_TIMESTAMPS: 0
+  grub_get_time_ms in kern/misc.c: 1
+=== 2025-04-0142: check grub_get_time_ms context ===
+1556-  n->file = file;
+1557-  n->line = line;
+1558:  n->tp = grub_get_time_ms ();
+1559-  n->next = 0;
+1560-
+=== 2025-05-0076: chainloader hex error ===
+  'cannot start image 0x': 0
+  Master error for start_image: 	grub_error (GRUB_ERR_BAD_OS, "unknown error");
+
+=== 2025-05-0077: linux hex error ===
+  'cannot.*image.*0x' in linux.c: 0
+  Master error for load image: 	  return grub_error (GRUB_ERR_BAD_OS, "cannot load image");
+
+=== 2025-05-0201: env export mode ===
+  grub_env_set_export_mode:   'unexport' command: 
+=== 2025-07-0042: import_gcry pylint ===
+  f-strings on master: 4
+  Master import_gcry.py total lines: 754
+=== 2025-07-0050: xen LoadFile2 ===
+  LoadFile2 in xen_boot.c: 0
+
+=== 2025-09-0238: xen zstd hint ===
+  Master error msg:   grub_error (GRUB_ERR_BAD_OS, "not xen image");
+
+=== 2025-10-0189: hashsum --set ===
+  grub_env_set in hashsum.c: 0
+  '--set' option: 0
+=== libgcrypt series re-verify ===
+--- 2025-07-0029 ---
+  Target: grub-core/lib/b64dec.c -> master 279L
+--- 2025-07-0031 ---
+  Target: autogen.sh -> master 165L
+--- 2025-07-0032 ---
+  Target: grub-core/Makefile.core.def -> master 2829L
+--- 2025-07-0033 ---
+  Target: grub-core/lib/libgcrypt/AUTHORS -> master 274L
+--- 2025-07-0040 ---
+  Target: grub-core/lib/libgcrypt-patches/06_blake.patch -> master 80L
+=== editenv series (2025-10-0294, 0296) ===
+  2025-10-0294 fs_envblk_open on master: 3
+  2025-10-0296 fs_envblk_write on master: 3
+=== Remaining new feature re-verification ===
+2025-03-0061: systemd_tpm2: 0
+
+2025-04-0266: slaunch: 0
+
+2025-04-0267: slaunch: 0
+
+2025-04-0268: slaunch: 0
+
+2025-04-0270: slaunch: 0
+
+2025-04-0271: slaunch: 0
+
+2025-04-0272: slaunch: 0
+
+2025-04-0273: slaunch: 0
+
+2025-06-0121: container/: 0
+
+2025-06-0143: container/: 0
+
+2025-07-0004: tpcm.c: 0
+
+2025-07-0047: xen cmdline module: 0
+
+2025-07-0057: grub_list_append: 
+2025-08-0012: datto: 0
+
+2025-08-0013: datto: 0
+
+2025-11-0238: ecb_test.c: 0
+
+2026-01-0079: i386/efi/linux.c: 0
+

@@ -1,6 +1,6 @@
 # Evaluation Overview
 
-53 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
+46 KEEP branches evaluated. Detailed evaluation files in [`evaluation/`](evaluation/).
 Each file contains: commit message, FAILED.patch (the intended change that needs
 manual incorporation), any conflict resolution artifacts, and master context.
 
@@ -11,12 +11,12 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | Type | Count |
 |------|------:|
 | Bug fix | 6 |
-| New feature | 24 |
+| New feature | 17 |
 | Enhancement | 11 |
 | Compatibility | 9 |
 | RFC | 1 |
 | Documentation | 2 |
-| **Total** | **53** |
+| **Total** | **46** |
 
 ---
 
@@ -49,14 +49,9 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-06-0121](evaluation/2025-06-0121.txt) | New feature | +70 -3 lines | standalone | Create a Containerfile with required grub packages for development |
 | [2025-06-0143](evaluation/2025-06-0143.txt) | New feature | +138 -3 lines | standalone | Create Containerfiles with required grub packages for development |
 | [2025-07-0004](evaluation/2025-07-0004.txt) | New feature | +229 -6 lines | standalone | efi/tpcm: Add UEFI interface for TPCM module |
-| [2025-07-0029](evaluation/2025-07-0029.txt) | New feature | +280 -3 lines | [2025-07-0029](series/2025-07-0029) | Import b64dec from gpg-error |
-| [2025-07-0031](evaluation/2025-07-0031.txt) | New feature | +1031 -311 lines | [2025-07-0029](series/2025-07-0029) | Adjust import script, definitions and API users for libgcrypt 1.11 |
-| [2025-07-0032](evaluation/2025-07-0032.txt) | New feature | +247 -5 lines | [2025-07-0029](series/2025-07-0029) | Add DSA and RSA SEXP tests |
-| [2025-07-0033](evaluation/2025-07-0033.txt) | New feature | (see file) | [2025-07-0029](series/2025-07-0029) | Import libgcrypt 1.11 |
-| [2025-07-0038](evaluation/2025-07-0038.txt) | Compatibility | +6 -8 lines | [2025-07-0029](series/2025-07-0029) | import_gcry: Make compatible with python 3.4 |
-| [2025-07-0039](evaluation/2025-07-0039.txt) | Bug fix | +16 -3 lines | [2025-07-0029](series/2025-07-0029) | libgcrypt: Fix a memory leak |
-| [2025-07-0040](evaluation/2025-07-0040.txt) | New feature | +121 -12 lines | [2025-07-0029](series/2025-07-0029) | libgcrypt: Import blake family of hashes |
-| [2025-07-0042](evaluation/2025-07-0042.txt) | Enhancement | +623 -657 lines | [2025-07-0029](series/2025-07-0029) | import_gcry: Fix pylint warnings |
+| [2025-07-0038](evaluation/2025-07-0038.txt) | Compatibility | +6 -8 lines | 2025-07-0029 (11 members) | import_gcry: Make compatible with python 3.4 |
+| [2025-07-0039](evaluation/2025-07-0039.txt) | Bug fix | +16 -3 lines | 2025-07-0029 (11 members) | libgcrypt: Fix a memory leak |
+| [2025-07-0042](evaluation/2025-07-0042.txt) | Enhancement | +623 -657 lines | 2025-07-0029 (11 members) | import_gcry: Fix pylint warnings |
 | [2025-07-0047](evaluation/2025-07-0047.txt) | New feature | +25 -4 lines | [2025-07-0047](series/2025-07-0047) | arm64/xen: Allows to use kernel command line from first module |
 | [2025-07-0050](evaluation/2025-07-0050.txt) | Enhancement | +178 -5 lines | [2025-07-0047](series/2025-07-0047) | arm64/xen: Use LoadFile2 protocol for Xen boot |
 | [2025-07-0057](evaluation/2025-07-0057.txt) | New feature | +0 | [2025-07-0047](series/2025-07-0047) | kern/list: Add a grub_list_append function |
@@ -66,8 +61,6 @@ manual incorporation), any conflict resolution artifacts, and master context.
 | [2025-09-0037](evaluation/2025-09-0037.txt) | Bug fix | +33 -4 lines | standalone | lsefi: fixed memory leaks |
 | [2025-09-0238](evaluation/2025-09-0238.txt) | Enhancement | +2 -3 lines | standalone | Hint missing zstd support for PvGrub2 "not xen image" |
 | [2025-10-0189](evaluation/2025-10-0189.txt) | Enhancement | +43 -14 lines | standalone | commands/hashsum: Allow to store hash in variable |
-| [2025-10-0294](evaluation/2025-10-0294.txt) | New feature | +171 -3 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: add fs_envblk open helper |
-| [2025-10-0296](evaluation/2025-10-0296.txt) | New feature | +38 -4 lines | [2025-10-0294](series/2025-10-0294) | util/grub-editenv: add fs_envblk write helper |
 | [2025-11-0238](evaluation/2025-11-0238.txt) | New feature | +299 -6 lines | standalone | tests: add functional tests for ECB mode using various ciphers |
 | [2025-12-0072](evaluation/2025-12-0072.txt) | Documentation | +0 | standalone | INSTALL: Add new requirement for configure |
 | [2026-01-0019](evaluation/2026-01-0019.txt) | RFC | +20 -3 lines | standalone | Feature proposal: EFI variable check to enter grub menu |

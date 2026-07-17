@@ -244,7 +244,7 @@ NUL terminator (252), `grub_utf8_to_utf16` with `args_len` (250).
 **Decision**: DROP.
 **Dropped branches**: 2025-06-0177, 2025-06-0178, 2025-06-0179, 2025-06-0182
 
-## Series: 2025-07-0029 (10 of 15 patches, Vladimir Serbinenko) — KEEP
+## Series: 2025-07-0038 (3 of 15 patches, Vladimir Serbinenko) — libgcrypt v14 remaining — KEEP
 
 **Topic**: Import libgcrypt 1.11, b64dec, blake2, import script, coverity fixes, memory leak
 
@@ -387,7 +387,7 @@ All upstream. `GRUB_ENV_BTRFS_OFFSET` in fs.h:135 and btrfs.c:2358-2360.
 **Decision**: DROP — already upstream.
 **Dropped branches**: 2025-10-0266, 2025-10-0271, 2025-10-0270
 
-## Series: 2025-10-0294 (6 of 12, Michael Chang) — grub-editenv v6 — KEEP
+## Series: editenv-v6 (dissolved — all members upstream)
 
 | Branch | Commit content | Verdict |
 |--------|---------------|---------|

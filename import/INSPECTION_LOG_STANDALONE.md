@@ -1421,3 +1421,38 @@ Commit `ea0b76dc4`. Found during evaluation double-check.
 
 **Subject**: util/grub-editenv: wire unset_variables to optional fs_envblk
 **Evidence**: master `unset_variables()` already has 3 `fs_envblk` references.
+
+## 2025-07-0029 — DROP (series context)
+
+**Subject**: Import b64dec from gpg-error
+**Evidence**: master `b64dec.c` (279L). Already upstream. Libgcrypt series member.
+
+## 2025-07-0031 — DROP (series context)
+
+**Subject**: Adjust import script, definitions and API users for libgcrypt 1.11
+**Evidence**: master `autogen.sh` (165L) has the adjustments. Already upstream.
+
+## 2025-07-0032 — DROP (series context)
+
+**Subject**: Add DSA and RSA SEXP tests
+**Evidence**: master `Makefile.core.def` has the test definitions. Already upstream.
+
+## 2025-07-0033 — DROP (series context)
+
+**Subject**: Import libgcrypt 1.11
+**Evidence**: master libgcrypt VERSION = 1.11.0. Already upstream.
+
+## 2025-07-0040 — DROP (series context)
+
+**Subject**: libgcrypt: Import blake family of hashes
+**Evidence**: master `06_blake.patch` (80L). Already upstream.
+
+## 2025-10-0294 — DROP (series context)
+
+**Subject**: util/grub-editenv: add fs_envblk open helper
+**Evidence**: master `grub-editenv.c` has `fs_envblk_open` (3 refs). Already upstream.
+
+## 2025-10-0296 — DROP (series context)
+
+**Subject**: util/grub-editenv: add fs_envblk write helper
+**Evidence**: master `grub-editenv.c` has `fs_envblk_write` (3 refs). Already upstream.

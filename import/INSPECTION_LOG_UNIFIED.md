@@ -7,7 +7,7 @@ Pipeline documentation: [FINAL_REPORT.md](FINAL_REPORT.md).
 
 ## KEEP — Series
 
-8 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
+7 series. Series files in [`series/`](series/), overview in [`SERIES.md`](SERIES.md).
 
 ## Series: [2025-04-0266](series/2025-04-0266) (7 of 7, Brown/Philipson/Żygowski) — KEEP
 
@@ -73,7 +73,7 @@ Not upstream — no `unexport` command, no `grub_env_set_export_mode`, no `-g` f
 **Decision**: KEEP.
 
 
-## Series: [2025-07-0029](series/2025-07-0029) (10 of 15 patches, Vladimir Serbinenko) — KEEP
+## Series: [2025-07-0038](series/2025-07-0038) (3 of 15 patches, Vladimir Serbinenko) — libgcrypt v14 remaining — KEEP
 
 **Topic**: Import libgcrypt 1.11, b64dec, blake2, import script, coverity fixes, memory leak
 
@@ -122,23 +122,6 @@ RFC patches. No `grub_list_append` on master. Xen LoadFile2 not in xen loader.
 
 Not upstream — no `datto`, no `DSL_CRYPTO`, no `grub_cpu_to_zfs` on master.
 **Decision**: KEEP.
-
-
-## Series: [2025-10-0294](series/2025-10-0294) (6 of 12, Michael Chang) — grub-editenv v6 — KEEP
-
-| Branch | Commit content | Verdict |
-|--------|---------------|---------|
-| 2025-10-0294 | FAILED.patch + code: fs_envblk open helper | Already upstream |
-| 2025-10-0296 | FAILED.patch + code: fs_envblk write helper | Already upstream |
-| 2025-10-0297 | FAILED.patch + code: wire set_variables to optional | Already upstream |
-| 2025-10-0299 | FAILED.patch + code: wire unset_variables to optional | Already upstream |
-| 2025-10-0304 | FAILED.patch + code: docs: Btrfs env block and special env vars | **NOT upstream** |
-| 2025-10-0305 | FAILED.patch + code: btrfs: update doc link for bootloader support | Already upstream |
-
-Code helpers (fs_envblk_open/write, set/unset/list wiring) on master. URL update
-(btrfs.readthedocs.io) on master. BUT btrfs environment block documentation in
-grub.texi (patch 11/12) is NOT on master.
-**Decision**: KEEP — docs not upstream.
 
 
 ## Series: [2026-03-0010](series/2026-03-0010) (5 of 9, Nicholas Vinson / Daniel Kiper) — KEEP
@@ -715,6 +698,22 @@ All upstream. `GRUB_ENV_BTRFS_OFFSET` in fs.h:135 and btrfs.c:2358-2360.
 **Decision**: DROP — already upstream.
 **Dropped branches**: 2025-10-0266, 2025-10-0271, 2025-10-0270
 
+## Series: editenv-v6 (dissolved — all members upstream)
+
+| Branch | Commit content | Verdict |
+|--------|---------------|---------|
+| 2025-10-0294 | FAILED.patch + code: fs_envblk open helper | Already upstream |
+| 2025-10-0296 | FAILED.patch + code: fs_envblk write helper | Already upstream |
+| 2025-10-0297 | FAILED.patch + code: wire set_variables to optional | Already upstream |
+| 2025-10-0299 | FAILED.patch + code: wire unset_variables to optional | Already upstream |
+| 2025-10-0304 | FAILED.patch + code: docs: Btrfs env block and special env vars | **NOT upstream** |
+| 2025-10-0305 | FAILED.patch + code: btrfs: update doc link for bootloader support | Already upstream |
+
+Code helpers (fs_envblk_open/write, set/unset/list wiring) on master. URL update
+(btrfs.readthedocs.io) on master. BUT btrfs environment block documentation in
+grub.texi (patch 11/12) is NOT on master.
+**Decision**: KEEP — docs not upstream.
+
 
 ## Series: 2025-10-0329 (7 of 10, Gary Lin) — x86_64 sha256 hw accel v3
 
@@ -800,7 +799,7 @@ All upstream. `fcp-targets` method (ofdisk.c:279), `nvme-discovery-controllers`
 
 ## DROP — Standalone
 
-169 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
+176 entries. Confirmed: [`confirmed.txt`](confirmed.txt).
 All in [`drop_new.txt`](drop_new.txt).
 
 ## 2025-01-0094 — DROP
@@ -2100,3 +2099,45 @@ Commit `ea0b76dc4`. Found during evaluation double-check.
 
 **Subject**: util/grub-editenv: wire unset_variables to optional fs_envblk
 **Evidence**: master `unset_variables()` already has 3 `fs_envblk` references.
+
+
+## 2025-07-0029 — DROP (series context)
+
+**Subject**: Import b64dec from gpg-error
+**Evidence**: master `b64dec.c` (279L). Already upstream. Libgcrypt series member.
+
+
+## 2025-07-0031 — DROP (series context)
+
+**Subject**: Adjust import script, definitions and API users for libgcrypt 1.11
+**Evidence**: master `autogen.sh` (165L) has the adjustments. Already upstream.
+
+
+## 2025-07-0032 — DROP (series context)
+
+**Subject**: Add DSA and RSA SEXP tests
+**Evidence**: master `Makefile.core.def` has the test definitions. Already upstream.
+
+
+## 2025-07-0033 — DROP (series context)
+
+**Subject**: Import libgcrypt 1.11
+**Evidence**: master libgcrypt VERSION = 1.11.0. Already upstream.
+
+
+## 2025-07-0040 — DROP (series context)
+
+**Subject**: libgcrypt: Import blake family of hashes
+**Evidence**: master `06_blake.patch` (80L). Already upstream.
+
+
+## 2025-10-0294 — DROP (series context)
+
+**Subject**: util/grub-editenv: add fs_envblk open helper
+**Evidence**: master `grub-editenv.c` has `fs_envblk_open` (3 refs). Already upstream.
+
+
+## 2025-10-0296 — DROP (series context)
+
+**Subject**: util/grub-editenv: add fs_envblk write helper
+**Evidence**: master `grub-editenv.c` has `fs_envblk_write` (3 refs). Already upstream.
