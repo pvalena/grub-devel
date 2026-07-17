@@ -1550,13 +1550,13 @@
        grub_pci_write_word: 13 file(s) on master
        grub_pci_address_t: 29 file(s) on master
 
-● Read(/home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md · lines 74-88)
+● Read(/home/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md · lines 74-88)
   ⎿  Read 15 lines
 
 ● Bash(grep -n 'Series: 2025-04-0266\|Series: 2025-04-0270' import/INSPECTION_LOG.md)
   ⎿  144:## Series: 2025-04-0266 + 2025-04-0270 (6 of 7, Brown/Philipson) — KEEP
 
-● Read(/home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md · lines 144-153)
+● Read(/home/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md · lines 144-153)
   ⎿  Read 10 lines
 
                                                                                                                             07:21 PM claude-opus-4-6
@@ -1607,7 +1607,7 @@
 
                                                                                                                             07:22 PM claude-opus-4-6
 
-● Update(/home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md)
+● Update(/home/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md)
   ⎿  Added 7 lines
       175  ## Series: 2025-05-0076 (2 patches, khaalid) — KEEP
       176
@@ -1649,7 +1649,7 @@
      grub_cmd_export
      GRUB_COMMAND_ACCEPT_DASH
 
-  Update(/home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md)
+  Update(/home/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG.md)
   ⎿  Added 7 lines
       212  ## Series: 2025-05-0201 (2 patches, Jiří Wolker) — KEEP
       213
@@ -8827,8 +8827,8 @@
 ● Bash(# Check: are these two separate series files?
       echo "=== Series files ==="…)
   ⎿  === Series files ===
-     -rw-r--r-- 1 lpcs lpcs 39 Jul  9 08:31 import/series/2025-04-0266
-     -rw-r--r-- 1 lpcs lpcs 39 Jul  9 08:31 import/series/2025-04-0270
+     -rw-r--r-- 1 pvalena pvalena 39 Jul  9 08:31 import/series/2025-04-0266
+     -rw-r--r-- 1 pvalena pvalena 39 Jul  9 08:31 import/series/2025-04-0270
      … +18 lines (ctrl+o to expand)
 
 ● They are two separate series files with different authors (Brown vs Philipson) but part of the same RFC v2 7-patch submission (parts 2/7-4/7 and
@@ -9694,8 +9694,8 @@
 ● Bash(# Check: are these two separate series files?
       echo "=== Series files ==="…)
   ⎿  === Series files ===
-     -rw-r--r-- 1 lpcs lpcs 39 Jul  9 08:31 import/series/2025-04-0266
-     -rw-r--r-- 1 lpcs lpcs 39 Jul  9 08:31 import/series/2025-04-0270
+     -rw-r--r-- 1 pvalena pvalena 39 Jul  9 08:31 import/series/2025-04-0266
+     -rw-r--r-- 1 pvalena pvalena 39 Jul  9 08:31 import/series/2025-04-0270
      … +18 lines (ctrl+o to expand)
 
 ● They are two separate series files with different authors (Brown vs Philipson) but part of the same RFC v2 7-patch submission (parts 2/7-4/7 and
@@ -10425,8 +10425,8 @@
 ● Bash(# Check: are these two separate series files?
       echo "=== Series files ==="…)
   ⎿  === Series files ===
-     -rw-r--r-- 1 lpcs lpcs 39 Jul  9 08:31 import/series/2025-04-0266
-     -rw-r--r-- 1 lpcs lpcs 39 Jul  9 08:31 import/series/2025-04-0270
+     -rw-r--r-- 1 pvalena pvalena 39 Jul  9 08:31 import/series/2025-04-0266
+     -rw-r--r-- 1 pvalena pvalena 39 Jul  9 08:31 import/series/2025-04-0270
      … +18 lines (ctrl+o to expand)
 
 ● They are two separate series files with different authors (Brown vs Philipson) but part of the same RFC v2 7-patch submission (parts 2/7-4/7 and
@@ -11098,7 +11098,7 @@
 ● Bash(chmod +x import/generate_unified.py && python3 import/generate_unified.py && python3 import/verify_unified.py)
   ⎿  Series KEEP: 12, DROP: 33
      Standalone KEEP: 34, DROP: 150
-     Written: /home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG_UNIFIED.md (718 lines)
+     Written: /home/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG_UNIFIED.md (718 lines)
      … +27 lines (ctrl+o to expand)
 
 ● Works. Generate + verify pipeline: zero errors.
@@ -11379,7 +11379,7 @@
   ⎿  Error: Exit code 1
      Series KEEP: 11, DROP: 34
      Standalone KEEP: 33, DROP: 150
-     Written: /home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG_UNIFIED.md (715 lines)
+     Written: /home/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG_UNIFIED.md (715 lines)
      === 1. KEEP — Standalone: unified vs standalone.txt ===
        ERROR: 2025-11-0027 in standalone.txt but not in KEEP-Standalone section
        OK: no KEEP-Standalone headings for dropped branches
@@ -11413,7 +11413,7 @@
 ● Bash(python3 import/generate_unified.py && python3 import/verify_unified.py)
   ⎿  Series KEEP: 11, DROP: 34
      Standalone KEEP: 34, DROP: 150
-     Written: /home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG_UNIFIED.md (718 lines)
+     Written: /home/test/rhel/packages/grub2/grub-devel/import/INSPECTION_LOG_UNIFIED.md (718 lines)
      … +27 lines (ctrl+o to expand)
 
 ● All checks pass. No more grouping opportunities — the only remaining file overlaps are between unrelated topics (hashsum vs libgcrypt, kernel size vs
