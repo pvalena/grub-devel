@@ -227,3 +227,78 @@ Conclusion: No issues found. The GRUB-specific patches are correct
 and well-motivated. The FIPS 204 compliance fix in 18_dilithium is
 the most significant change — it ensures GRUB verifies standard
 ML-DSA signatures correctly.
+
+
+Re-review (2026-07-21): 5 commits (was 3)
+==========================================
+
+Verification method: old commit hashes (aa061dcc6, 66b659a23,
+b715090b0) still exist in the repo. Compared old vs new using
+  diff <(git diff OLD^..OLD) <(git diff NEW^..NEW)
+for each commit pair. origin/master advanced by 2 commits between
+rebases (74a33ddd4 → 94a457f18), causing different blob hashes in
+Makefile.extra-dist but zero patch-level differences.
+
+Commits 1-2: identical (zero diff)
+Commit 4 (tests): substantially reworked — see below
+Commits 3, 5: new — see below
+
+11. Commit 3: mldsa_raw_verify (patch 21) — NEW
+-------------------------------------------------
+New function mldsa_raw_verify() in 21_add_mldsa_raw_verify.patch:
+- Takes raw data/data_len + ctx/ctx_len directly, bypassing the
+  S-expression 65535-byte length limit
+- Pubkey and signature still S-expression-encoded (small, within
+  limit) — extracted via sexp_extract_param / mpi_get_opaque
+- Length validation: info->pubkey_len == (n+7)/8 and
+  info->sig_len == (n+7)/8 (n is bit count from mpi_get_opaque)
+- When ctx == NULL, passes ctxlen=-1 to dilithium_verify regardless
+  of caller's ctx_len — correctly triggers FIPS 204 empty-context
+  prefix via patch 18
+- Cleanup: _gcry_mpi_release for pk_mpi and sig_mpi in leave label
+- raw_verify field added to gcry_pk_spec after get_curve_param,
+  before #ifdef GRUB_UTIL — correct placement
+- gcry_pk_raw_verify_t typedef in crypto.h matches implementation
+  signature
+
+12. Commit 4: tests — REWORKED
+-------------------------------
+Changes from previous version:
+- Renamed mldsa_sexp_test.c → mldsa_test.c
+- Test data split: mldsa_pubkeys.h/mldsa_signatures.h → testdata/
+  subdirectory with messages.h, contexts.h, pubkeys.h, signatures.h
+- New mldsa_raw_test() function using raw_verify with 65539-byte
+  messages (exercises the >65535 path)
+- Negative tests added: tampered message, tampered context string,
+  tampered public key — each asserts rc != 0
+- S-expressions now properly released with _gcry_sexp_release
+- Uses _gcry_pubkey_spec_mldsa.aliases[algo] for algorithm names
+  (was hardcoded strings like "dilithium2")
+- Total: 12 positive verify calls + 18 negative assertions
+- Minor: "tampered publioc key" typo in assertion messages (cosmetic)
+- Minor: s_tdata leaks when with_ctx=true (rebuilt for tampered
+  context without releasing the tampered-message version) — acceptable
+  in a GRUB functional test
+
+13. Commit 5: generate_testdata.sh.in — NEW
+---------------------------------------------
+Shell script for generating MLDSA test data via OpenSSL >= 3.5:
+- Generates keys for ML-DSA-44/65/87 + a "tampered" key (different
+  ML-DSA-65 key)
+- Extracts raw public keys via 'tail -c N' (N = pubkey size per algo)
+- Creates small ("hello") and large (65539-byte random) messages
+- Signs with and without context string for all combinations
+- Outputs C headers via xxd -i
+- Makefile.core.def: registered as transform_data with installdir =
+  noinst (not installed, development only)
+- .gitignore: generated script added
+
+Minor issues in script (not reported — development tool, not GRUB):
+- OpenSSL version check missing 'exit 1' after error message (script
+  still fails via set -euo pipefail on next openssl command)
+- awk version comparison uses string comparison (breaks for "3.10"
+  vs "3.5" but works for practical version ranges)
+- Unquoted $TARGET_DIR in cd command
+
+Conclusion: No issues found. New code is well-structured and test
+coverage is significantly improved.
