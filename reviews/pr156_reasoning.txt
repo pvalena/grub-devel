@@ -1,12 +1,81 @@
-PR !156 - NVMe native disk support - 1 commit - 3 issues found
+PR !156 - NVMe native disk support - 1 commit
+Re-review: previous 3 issues fixed, 1 new issue found
 
 Source files read during review and verification:
-  grub-core/disk/nvme.c (pr156 branch)
+  grub-core/disk/nvme.c (pr156 branch, full file, 695 lines)
   grub-core/commands/nativedisk.c (pr156 branch, diff only)
   include/grub/disk.h (pr156 branch, diff only)
   grub-core/Makefile.core.def (pr156 branch, diff only)
 
-== Issue 1: Wrong opcode and QID in delete_io_completion_queue (nvme.c) ==
+Previous issues 1-3: all FIXED in the rebased commit.
+  Issue 1 (wrong opcode/QID): dw[0] now 4, dw[10] now ioc>>1/ios>>1
+  Issue 2 (unchecked returns): chained with || and goto fail
+  Issue 3 (missing CSTS.RDY wait): polling loop added to restore_hw
+
+== Issue 1 (new): Admin queue state not reset in restore_hw ==
+
+Discovery:
+Reading grub_nvme_restore_hw() at lines ~490-524. The function
+re-enables the controller and immediately calls
+create_io_completion_queue / create_io_submission_queue. These
+send admin commands via nvme_cmd(). But nvme_cmd uses
+nvme->queue[ads].idx and nvme->queue[adc].idx to position the
+command and poll for completion. These indices are stale from
+the fini_hw shutdown sequence.
+
+Source trace:
+nvme_cmd() at lines ~118-143:
+  1. Writes command to SQ slot [queue[sq].idx]
+  2. Advances idx: (idx + 1) & (NVME_QUEUE_SIZE - 1)
+  3. Rings SQ tail doorbell with new idx value
+  4. Polls CQ slot [queue[cq].idx] for phase bit change
+  5. Advances CQ idx, rings CQ head doorbell
+
+pciinit issues 3 admin commands (create IO CQ, create IO SQ,
+identify). NVME_QUEUE_SIZE = 2, so idx alternates 0→1→0→1...
+After 3 commands: SQ idx=1, CQ idx=1, round=1.
+
+fini_hw issues 2 more admin commands (delete IO SQ, delete IO
+CQ). After 5 total: SQ idx=1, CQ idx=1, round=0.
+
+Controller re-enable (restore_hw sets CC.EN=1, waits for
+CSTS.RDY=1): controller resets its internal SQ head to 0 and
+CQ tail to 0. But host-side idx values are still 1.
+
+First admin command in restore_hw (create_io_completion_queue):
+  SQ: host writes command to slot 1, advances idx to 0, rings
+  doorbell = 0. Controller sees tail=0, same as its internal
+  value (0→0 = no advancement). Controller does not fetch.
+  **SQ hang.**
+
+  CQ: even if the SQ problem were avoided, host polls CQ entry
+  1, but controller writes completion to entry 0 (its internal
+  position after re-enable). Host never sees it. **CQ hang.**
+
+Consequence:
+After any preboot hook cycle (fini_hw + restore_hw), the first
+admin command in restore_hw hangs. The NVMe device becomes
+unusable after chainloading or kexec. The polling loop in
+nvme_cmd times out after 100ms and returns -1, but restore_hw
+treats this as an error and returns GRUB_ERR_BAD_DEVICE —
+effectively losing all NVMe disks.
+
+Fix assessment:
+restore_hw must reset admin queue state before sending commands:
+  (*pdev)->queue[ads].idx = 0;
+  (*pdev)->queue[adc].idx = 0;
+  (*pdev)->queue[adc].round = 0;
+  grub_memset((void *)grub_dma_get_virt((*pdev)->cq_buffer),
+              0, NVME_CQ_ENTRY_SIZE * NVME_QUEUE_SIZE);
+The CQ buffer must be zeroed so all phase bits are 0, matching
+round=0. Without this, stale phase bits from the last fini_hw
+session could cause the polling loop to exit immediately on
+stale data (if the stale phase differs from round) or hang
+(if it matches). AQA/ASQ/ACQ registers retain their values
+across CC.EN disable/enable (no NSSR controller reset), so they
+don't need reprogramming.
+
+== Previous Issue 1 (FIXED): Wrong opcode and QID ==
 
 Discovery:
 Reading delete_io_completion_queue() at lines ~298-304.

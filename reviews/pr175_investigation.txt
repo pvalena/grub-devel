@@ -1,0 +1,134 @@
+PR175 Investigation — efibootmenu runtime boot-option discovery
+================================================================
+
+2 commits, 12 files, 985 lines. AI-assisted (Claude Opus 4.8,
+Claude Fable 5) — heightened scrutiny applied per review skill.
+
+1. efibootnext.c — decode_option parser
+-----------------------------------------
+grub_efibootnext_decode_option() parses EFI_LOAD_OPTION:
+- Outputs cleared upfront (attrs, fpl, fpl_len all zeroed) so
+  every early return leaves the caller with defined state
+- Unaligned CHAR16 description: copied via grub_memcpy into an
+  aligned buffer, not cast in place. Correct for byte-offset
+  data inside a variable buffer
+- NUL terminator validation: rejects options where the
+  description runs to the end without a NUL
+- FilePathList bounds: off = hdr + (len+1)*sizeof(char16).
+  Since len < max16 and max16 = (size-hdr)/sizeof(char16),
+  (len+1)*sizeof(char16) <= max16*sizeof(char16) <= size-hdr,
+  so off <= size. No underflow in (size - off).
+- fpl_len (from the UINT16 in the header) is checked against
+  (size - off) — only exposed when it fits
+
+2. efibootnext_self.c — self-identification
+--------------------------------------------
+device_path_find():
+- Validates every node: header in bounds (p + 4 <= base + len),
+  body in bounds (p + nlen <= base + len), minimum length
+  (nlen >= 4)
+- Returns found node ONLY when an End node is reached — ensures
+  the entire path is well-formed before returning
+- Callers can safely pass the result to walkers like
+  grub_efi_get_filename
+
+vendor_from_filename():
+- Extracts first path component after "EFI" segment, lowercased
+- Handles leading/trailing/multiple slashes correctly
+- Returns malloc'd string or NULL
+
+grub_efibootnext_self_init():
+- Gets loaded image via grub_efi_get_loaded_image
+- Extracts partition signature from HD() device path node
+- Extracts vendor from filename of img->file_path
+- Partial results are fine — match requires both halves
+- grub_errno cleared after grub_efi_get_filename (best effort)
+
+grub_efibootnext_is_self():
+- Requires self_known (both have_part and vendor)
+- Matches partition signature type + content AND vendor string
+- fname and vendor both properly freed
+- Returns 0 on any failure (safe default: don't skip entry)
+
+3. efibootnext_menu.c — efibootmenu command
+---------------------------------------------
+get_boot_uint16():
+- Uses grub_memcpy for alignment-safe read of UINT16 from
+  EFI variable data. Frees data. Returns 0/1.
+
+derive_class():
+- First word of label, lowercased, trailing digits dropped,
+  non-alnum mapped to '_'. Returns NULL for empty result.
+  Malloc'd, freed by caller.
+
+add_bootnext_entry():
+- Reads Boot#### variable, calls decode_option for label +
+  attrs + FilePathList
+- Applies filters: HIDDEN, ACTIVE (if --omit-inactive),
+  CATEGORY_BOOT (if --category-boot-only)
+- Self-identification checked AFTER cheap filters (expensive
+  device path walk runs only for surviving entries)
+- Menu entry source built with grub_xasprintf: "if bootnext
+  XXXX; then [savedefault] reboot fi"
+- grub_normal_add_menu_entry called with classes derived from
+  label
+- All allocations freed via finish label (load_option, class,
+  title, id, src, label)
+- grub_errno cleared after decode_option and add_menu_entry
+  (best effort: skip bad entries, don't abort menu)
+
+parse_boot_varname():
+- Length check (exactly "Boot####"), prefix check, strtoul
+  with hex base, range check (v <= 0xffff)
+- Correctly clears grub_errno before calling grub_strtoul
+
+add_remaining_entries():
+- Enumerates all EFI variables via get_next_variable_name
+- Handles BUFFER_TOO_SMALL with grub_realloc + continue
+  (retries with same name per UEFI spec)
+- UTF-16 to UTF-8 conversion for variable name parsing
+- seen[] bitmap prevents duplicates with BootOrder entries
+- n16 bounds check: skips names too long to be "Boot####"
+
+grub_cmd_efibootmenu():
+- Allocates 8KB seen bitmap (0x10000/8 = 8192 bytes)
+- Processes BootOrder first (firmware order), then remaining
+- BootOrder entries used directly as uint16 without LE
+  conversion — consistent with existing GRUB EFI code (EFI
+  variables store data in native firmware endianness)
+- Cleanup: seen, order, self all freed/finalized
+
+4. api.h additions
+-------------------
+GRUB_EFI_LOAD_OPTION_ACTIVE = 0x01: bit 0
+GRUB_EFI_LOAD_OPTION_HIDDEN = 0x08: bit 3
+GRUB_EFI_LOAD_OPTION_CATEGORY = 0x1F00: bits 8-12 (5-bit mask)
+GRUB_EFI_LOAD_OPTION_CATEGORY_BOOT = 0x0000: boot category
+All match UEFI specification definitions.
+
+5. 31_efi_bootnext.in script changes
+--------------------------------------
+New GRUB_BOOTNEXT_DISCOVER_AT_BOOT=true path: emits a single
+efibootmenu command with --omit-inactive, --savedefault,
+--category-boot-only flags mapped from existing GRUB_BOOTNEXT_*
+variables. Exits early (exit 0) so the config-time enumeration
+below is skipped.
+
+6. Tests
+---------
+grub_cmd_efibootmenu_test.in: new test for the efibootmenu
+command. grub_mkconfig_bootnext_test.in: expanded to cover the
+runtime discovery path.
+
+7. AI-assistance assessment
+----------------------------
+Two Assisted-by tags (Claude Opus 4.8, Claude Fable 5). The code
+is well-structured with proper bounds checking, alignment
+handling, and cleanup patterns. The decode_option function handles
+all the subtle UEFI binary parsing correctly (unaligned access,
+bounds validation, NUL terminator check). The device path walker
+is defensive. No signs of common AI mistakes (missed edge cases,
+wrong API contracts, phantom references).
+
+Conclusion: No issues found. The AI-assisted code is well-written
+with proper UEFI parsing safety.

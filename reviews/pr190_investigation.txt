@@ -1,0 +1,88 @@
+PR190 Investigation — connectefi EFI command
+=============================================
+
+1 commit, 5 files (229-line new C module + Makefile + docs).
+New EFI command for recursively connecting device handles.
+
+1. Core loop logic (connectefi.c lines ~125-200)
+-------------------------------------------------
+Three modes: pciroot, disk, all.
+
+For pciroot/disk: iterates items[] array. Each item has a GUID,
+flags (SEARCH_LOOP, SEARCH_RECURSIVE), and a name. Inner do-while
+loop:
+- Locates handles by protocol GUID via grub_efi_locate_handle
+- For each handle: skips if in already_handled list, calls
+  connect_controller, adds to already_handled
+- If any connection succeeded AND item has SEARCH_LOOP flag,
+  continue_search = true → retries (new handles may appear
+  after connecting a parent)
+- MAX_SEARCH_LOOPS (100) caps the outer loop
+
+For "all" mode: items == NULL, nitems = 1. Single iteration.
+grub_efi_locate_handle with GRUB_EFI_ALL_HANDLES. No loop flag.
+
+2. Operator precedence in connect_controller call
+--------------------------------------------------
+Expression:
+  (items == NULL) || items[i].flags & SEARCH_RECURSIVE ? 1 : 0
+
+C precedence: & (bitwise AND) binds tighter than || (logical OR),
+and || binds tighter than ?: (ternary). So this parses as:
+  ((items == NULL) || (items[i].flags & SEARCH_RECURSIVE)) ? 1 : 0
+
+When items == NULL ("all" mode): always recursive. Correct.
+When items != NULL: recursive only if SEARCH_RECURSIVE flag set.
+Correct.
+
+The disk_items array has SEARCH_LOOP on PCI root and SCSI/DISK
+protocols, SEARCH_RECURSIVE on none. pciroot_items has
+SEARCH_RECURSIVE on the PCI root protocol. Matches the intended
+behavior: PCI root is connected recursively to discover all
+children, then SCSI/DISK handles are connected non-recursively
+in a loop until no new handles appear.
+
+3. Memory management
+---------------------
+handles:
+- Allocated by grub_efi_locate_handle each iteration
+- Freed at end of inner for loop (grub_free(handles); handles=NULL)
+- Also freed in fail label
+
+already_handled:
+- Linked list, one entry per processed handle
+- Each entry malloc'd and pushed to list
+- Freed per-item via free_handle_list(&already_handled) after
+  the do-while loop
+- Also freed in fail label via free_handle_list
+
+fail label:
+- grub_free(handles) — safe even if NULL
+- free_handle_list(&already_handled) — walks list, frees each
+  item, sets head to NULL
+
+Traced all paths: no leaks. grub_malloc failure for a list item
+sets err = grub_errno and goes to fail.
+
+4. is_in_list function
+-----------------------
+Linear scan of the already_handled list. O(n) per handle per
+iteration. With MAX_SEARCH_LOOPS=100 and typical handle counts
+(dozens), this is fine for a bootloader context.
+
+5. grub_efidisk_reenumerate_disks call
+---------------------------------------
+Called after the main loop if any connection succeeded. This
+function (in kern/efi/efi.c) frees the old device lists and
+re-enumerates. The command is best-effort: if re-enumeration
+fails, the old devices remain. Correct for a bootloader
+discovery tool.
+
+6. Makefile and docs
+---------------------
+Module registered as efi-only (enable = efi). grub.texi entry
+documents all three modes with examples.
+
+Conclusion: No issues found. Resource management is clean, the
+loop cap prevents unbounded iteration, and the operator precedence
+produces the intended behavior.

@@ -1,0 +1,91 @@
+PR184 Investigation — relocator preamble page table FreeBSD-only
+================================================================
+
+3 commits, 4 files, 55 lines. Low-level x86_64 page table math.
+
+1. What changed
+----------------
+The preamble page table (identity-mapping physical memory via 2M
+pages so the relocated kernel can execute before setting up its
+own CR3) was previously built for ALL x86_64 EFI relocations.
+This caused regressions on Xen and multiboot2 (two prior patches
+tried to fix by broadening the mapping — now reverted).
+
+The fix: page table is now opt-in via grub_relocator_use_preamble().
+Only grub_freebsd_boot() in loader/i386/bsd.c calls it.
+
+2. Page table math verification
+---------------------------------
+Given: find_max_size() returns the highest physical address.
+
+nentries = (max_size + PS_PAGE_SIZE - 1) >> PAGE_PS_SHIFT
+  = number of 2M pages to cover all RAM. Ceiling division.
+
+npt2pages = (nentries + PAGE_NUM_ENTRIES - 1) >> PAGE_IDX_SIZE
+  = number of PT2 (page directory) pages needed.
+  Each PT2 page holds 512 entries, each entry maps one 2M page.
+
+npt3pages = (npt2pages + PAGE_NUM_ENTRIES - 1) >> PAGE_IDX_SIZE
+  = number of PT3 (page directory pointer) pages needed.
+  Each PT3 page holds 512 entries, each entry points to one PT2
+  page.
+
+Example: 8 GiB RAM = 0x200000000 bytes.
+  nentries = 0x200000000 / 0x200000 = 4096
+  npt2pages = 4096 / 512 = 8
+  npt3pages = 8 / 512 = 1 (ceiling)
+  total = 1 (code) + 1 (PT4) + 1 (PT3) + 8 (PT2) = 11 pages
+
+Example: 512 GiB RAM = 0x8000000000 bytes.
+  nentries = 0x8000000000 / 0x200000 = 262144
+  npt2pages = 262144 / 512 = 512
+  npt3pages = 512 / 512 = 1
+  total = 1 + 1 + 1 + 512 = 515 pages
+
+Example: 1 TiB RAM = 0x10000000000 bytes.
+  nentries = 524288
+  npt2pages = 1024
+  npt3pages = 2
+  total = 1 + 1 + 2 + 1024 = 1028 pages
+
+Old code had: npt2pages = npt3pages << PAGE_IDX_SIZE, which
+would give npt2pages = 512 even for 8 GiB (wasteful — allocates
+512 PT2 pages when only 8 are needed). The new code computes
+npt2pages from actual nentries, then npt3pages from npt2pages.
+Correct.
+
+3. Reverted patches
+--------------------
+Commit 2 reverts "map entire 512G in every replaced PML4 entry"
+— this was an attempt to fix a Xen regression by broadening the
+PT2 mapping to cover full 512G regions, but it broke other boot
+targets.
+
+Commit 3 reverts "inherit firmware PML4 in preamble page table"
+— this copied the firmware's page table into the new PT4 to
+preserve high mappings (EFI runtime, MMIO). This was an incorrect
+approach because the firmware's page table uses its own PT3/PT2
+pages which may be overwritten after ExitBootServices.
+
+4. Alignment
+-------------
+grub_relocator_align was previously 4096 for all x86_64 EFI.
+Now: grub_relocator_align = 1 (default), and the alignment is
+set to 4096 only when use_preamble is true (in
+grub_relocator_prepare_relocs). This avoids unnecessary alignment
+overhead for non-FreeBSD boot targets.
+
+5. use_preamble guard
+----------------------
+grub_relocator_use_preamble() is idempotent (returns early if
+already set). It adds grub_relocator_preamble_size to
+relocators_size. Both grub_cpu_relocator_preamble() and the
+size computation are guarded by rel->use_preamble.
+
+The preamble code is still compiled into the relocator
+(conditionally on __x86_64__ && GRUB_MACHINE_EFI), but it's
+only executed when FreeBSD calls use_preamble. Other boot
+targets (Xen, multiboot2, Linux) skip it entirely.
+
+Conclusion: No issues found. Page table math is correct.
+The opt-in approach cleanly isolates the preamble to FreeBSD.

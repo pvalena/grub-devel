@@ -1,0 +1,79 @@
+PR !160 - Btrfs commands - 5 commits - 2 issues found
+
+Source files read during review:
+  grub-core/fs/btrfs.c (pr160 branch, full new code ~710 lines)
+  include/grub/btrfs.h (pr160 branch, diff only)
+  docs/grub.texi (pr160 branch, diff only)
+
+== Issue 1: Device not closed on mount failure (btrfs.c) ==
+
+Discovery:
+Reading grub_cmd_btrfs_list_subvols() error paths. After
+grub_device_open succeeds but grub_btrfs_mount fails, the
+function returns directly instead of going through the out
+label.
+
+Source trace:
+grub_cmd_btrfs_list_subvols(), lines ~2718-2729:
+  dev = grub_device_open (devname);   // line ~2723, succeeds
+  ...
+  data = grub_btrfs_mount(dev);       // line ~2728, fails
+  if (!data)
+      return grub_error (...);        // line ~2729, dev not closed
+
+The out label at line ~2811 has:
+  if (dev)
+      grub_device_close (dev);
+
+But the early return bypasses it. Later error paths (get_fs_root
+failure, lower_bound failure) correctly use goto out.
+
+Consequence:
+On a non-btrfs device or one with a corrupted superblock, the
+device handle leaks. Each invocation leaks one device handle.
+
+Fix assessment:
+Adding grub_device_close(dev) before the return, or changing to
+goto out, is correct. The out label already handles dev == NULL.
+
+== Issue 2: output string leaked (btrfs.c) ==
+
+Discovery:
+Reading grub_cmd_btrfs_list_subvols() cleanup. The output
+variable is built via grub_xasprintf in the loop body when
+-o is used, but is never freed.
+
+Source trace:
+grub_cmd_btrfs_list_subvols(), lines ~2796-2815:
+Inside the do-while loop (when print == 0):
+  char *old = output;
+  output = grub_xasprintf("%s...", old ?: "", ...);
+  if (old)
+      grub_free(old);
+
+After the loop:
+  if (output)
+      grub_env_set(varname, output);
+  out:
+    free_iterator(&desc);
+    if (data) grub_btrfs_unmount(data);
+    if (dev) grub_device_close(dev);
+    return GRUB_ERR_NONE;
+
+grub_env_set copies the string internally. The original
+output allocation is never freed.
+
+Cross-reference: grub_cmd_btrfs_get_default_subvol (line ~2951)
+correctly calls grub_free(output) after grub_env_set and
+grub_printf. This confirms the omission is unintentional.
+
+Consequence:
+Every invocation of btrfs-list-subvols with -o leaks the
+output string. The leak size grows with the number of
+subvolumes.
+
+Fix assessment:
+Adding grub_free(output) in the out label is correct.
+output is NULL when -o is not used (print mode), and
+grub_free(NULL) is a no-op. This also handles the error
+paths (goto out) which may have partially built output.
