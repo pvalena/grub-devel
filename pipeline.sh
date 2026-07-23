@@ -92,7 +92,7 @@ while :; do
 
     [[ -z "${CON}" ]] && {
 
-        run "${H}mr-new.sh"
+        run "${H}watch-label.sh"
 
         # Fails on no new MRs
         run "${H}mr-status-new.sh" || continue
