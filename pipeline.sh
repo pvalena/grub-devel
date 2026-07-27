@@ -1,4 +1,14 @@
 #!/usr/bin/env zsh
+#
+#       (specify in alphabetical order; can't be joined)
+#
+#   -c      Continue from AI-breakpoint; expect everything is prepared
+#   -l      Run in a loop
+#   -n      Dry run (doesn't execute anything)
+#   -s      Skip confirmations for non-essential steps
+#   -v      Verbosity (specify up to two times)
+#   -w      Wait before next loop iteration (default: 1h)
+#
 
 set -e
 
