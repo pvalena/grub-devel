@@ -1,0 +1,198 @@
+pr196: Appendedsig ML-DSA / PKCS#7 refactor (11 commits)
+
+Source files read during review:
+  grub-core/commands/appendedsig/appendedsig.c  (at pr196)
+  grub-core/commands/appendedsig/appendedsig.h  (at pr196)
+  grub-core/commands/appendedsig/asn1_util.c    (at pr196)
+  grub-core/commands/appendedsig/asn1_util.h    (at pr196)
+  grub-core/commands/appendedsig/pkcs7.c        (at pr196)
+  grub-core/commands/appendedsig/pkcs7.h        (at pr196)
+  grub-core/commands/appendedsig/util.c         (at pr196)
+  grub-core/commands/appendedsig/util.h         (at pr196)
+  grub-core/commands/appendedsig/x509.c         (at pr196)
+  grub-core/commands/appendedsig/x509.h         (at pr196)
+  conf/Makefile.extra-dist                       (diff only)
+  grub-core/Makefile.core.def                    (diff only)
+  docs/grub.texi                                 (diff only)
+
+
+== Issue 1: Double-free in remove_hash_from_db (appendedsig.c) ==
+
+Discovery:
+Reading the linked list transition in commit 6f7c5e765. The old code used
+separately-allocated pointer arrays (`grub_uint8_t **hashes`), where each
+hash was a `grub_malloc`'d buffer. The new code uses an embedded fixed-size
+array in `struct hash_list`:
+
+  struct hash_list {
+    grub_uint8_t hash[GRUB_MAX_HASH_LEN];
+    grub_size_t hash_size;
+    struct hash_list *next;
+  };
+
+In `remove_hash_from_db()`, lines ~516-517:
+
+  grub_free (curr_hash->hash);
+  grub_free (curr_hash);
+
+This caught attention because `hash` is no longer a separately allocated
+buffer -- it is an inline array.
+
+Source trace:
+1. `struct hash_list` is defined in appendedsig.h. The `hash` field is the
+   FIRST member of the struct: `grub_uint8_t hash[GRUB_MAX_HASH_LEN]`.
+2. In C, the address of the first member of a struct equals the address of
+   the struct itself. Therefore `curr_hash->hash` (which decays to
+   `&curr_hash->hash[0]`) has the same numeric value as `curr_hash`.
+3. `grub_free(curr_hash->hash)` passes the same pointer as `curr_hash` to
+   the allocator. Then `grub_free(curr_hash)` frees that pointer again.
+4. Cross-reference: `free_db_list()` at lines ~1260-1266 handles the same
+   struct correctly:
+
+     grub_memset (curr_hash->hash, 0x00, sizeof (curr_hash->hash));
+     grub_free (curr_hash);
+
+   It zeros the embedded array for security, then frees the struct once.
+   `free_dbx_list()` follows the same correct pattern.
+
+Consequence:
+Calling `grub_free` twice on the same pointer is heap corruption. The first
+free returns the block to the allocator; the second corrupts allocator
+metadata. In GRUB's allocator (grub_mm), this can corrupt the free-list,
+leading to unpredictable behavior on subsequent allocations -- anything from
+silent data corruption to a crash.
+
+The function is reachable via `grub_cmd_add_dbx_hash` (the `append_add_dbx_hash`
+command) when a matching hash is found in the db list:
+
+  remove_hash_from_db (hash_data, hash_data_size,
+                       (ctxt->state[OPTION_BINARY_HASH].set) ? true : false);
+
+So this can be triggered by a user running `append_add_dbx_hash` with a
+binary hash that exists in the db list.
+
+Fix assessment:
+Replacing `grub_free(curr_hash->hash)` with
+`grub_memset(curr_hash->hash, 0x00, sizeof(curr_hash->hash))` matches the
+pattern used by `free_db_list()` and `free_dbx_list()`. The memset zeros
+sensitive hash material before freeing the struct. The fix does not alter
+control flow or return values.
+
+
+== Issue 2: Memory leak in x509_get_serial (x509.c) ==
+
+Discovery:
+Reading `x509_get_serial()` at lines ~378-390. The function allocates a raw
+binary serial number buffer via `grub_asn1_allocate_and_read`, then converts
+it to a hex string via `grub_util_buffer2hex`. The hex string is stored in
+`cert->serial`, but the original raw buffer is never freed.
+
+Source trace:
+1. `grub_asn1_allocate_and_read` at asn1_util.c lines ~246-280 allocates
+   memory via `grub_malloc(tmpstr_size)` and returns the pointer.
+2. `grub_util_buffer2hex` at util.c lines ~30-43 allocates a NEW buffer via
+   `grub_zalloc(data_len * 2 + 1)` for the hex string.
+3. `x509_get_serial` does:
+
+     serial = grub_asn1_allocate_and_read (...);
+     return grub_util_buffer2hex (serial, serial_size, ...);
+
+   The `serial` pointer is never freed. The hex string is a separate
+   allocation stored in `cert->serial`.
+4. `x509_cert_release` frees `cert->serial` (the hex string) but cannot
+   free the raw serial buffer because no reference to it is retained.
+
+Consequence:
+One allocation of the raw serial number (typically 1-20 bytes) is leaked per
+certificate parsed. In the normal GRUB boot flow, the number of certificates
+is small (tens at most), so the total leaked memory is small. But it is a
+correctness defect: every call to `x509_cert_parse_der` leaks.
+
+Fix assessment:
+Storing the return value of `grub_util_buffer2hex` in a local, calling
+`grub_free(serial)`, then returning the stored result is straightforward.
+The raw serial is not used after the hex conversion, so freeing it is safe.
+
+
+== Issue 3: Memory leak in pkcs7_get_signerinfo_version (pkcs7.c) ==
+
+Discovery:
+Reading `pkcs7_get_signerinfo_version()` at lines ~150-172. The function
+allocates `version_path` via `grub_xasprintf` but never calls `grub_free`
+on it.
+
+Source trace:
+1. Line ~157: `version_path = grub_xasprintf("signerInfos.?%d.version", ...)`
+   allocates a string.
+2. Line ~162: `asn1_read_value(pkcs7_asn1, version_path, ...)` uses the path.
+3. Lines ~163, ~168, ~172: all three return statements (ASN1 error, version
+   mismatch, success) return without freeing `version_path`.
+4. Compare with `pkcs7_get_signerinfo_digalgo()` at lines ~215-240 which
+   correctly frees `digest_algo_path` on both error and success paths.
+
+Consequence:
+One allocation (typically ~25 bytes) leaked per signer parsed. With one
+signer per signature (the typical case), one leak per signature verification.
+
+Fix assessment:
+Adding `grub_free(version_path)` after `asn1_read_value` (on both the error
+and success paths) is straightforward. The path string is not used after the
+read.
+
+
+== Issue 4: Memory leak in pkcs7_get_signerinfo_issuer_and_serial (pkcs7.c) ==
+
+Discovery:
+Reading `pkcs7_get_signerinfo_issuer_and_serial()` at lines ~176-213. The
+function allocates `signer_id` via `grub_asn1_allocate_and_read` but never
+frees it.
+
+Source trace:
+1. Line ~197: `signer_id = grub_asn1_allocate_and_read(...)` allocates a
+   string buffer.
+2. Line ~198: `grub_free(sid_path)` -- the path is freed, but not signer_id.
+3. Line ~201: `if (grub_strncmp(signer_id, "issuerAndSerialNumber", ...) == 0)`
+   uses signer_id for comparison, then proceeds to parse issuer and serial.
+4. All return statements after line 201 (inside and outside the if block)
+   return without freeing `signer_id`.
+
+Consequence:
+One allocation leaked per signer parsed. The buffer typically contains the
+string "issuerAndSerialNumber" (~21 bytes).
+
+Fix assessment:
+Adding `grub_free(signer_id)` before each return after the allocation. The
+function has multiple return points inside the `if` block (for issuer_path
+allocation failure, serial_path allocation failure, serial read failure, and
+the successful return). A `goto cleanup` pattern with a single
+`grub_free(signer_id)` at the bottom would be cleaner than adding the free
+before each return, but either approach is correct.
+
+
+== Issue 5: Debug message says "failed" on success path (pkcs7.c) ==
+
+Discovery:
+Reading `pkcs7_signed_data_verify()` at lines ~660-685. Both the
+GRUB_ERR_NONE (success) and failure paths print the same "failed" debug
+message.
+
+Source trace:
+1. Line ~665: `ret = signer->sig_algo.verify(data, data_len, signer, pk)`
+2. Line ~666: `if (ret == GRUB_ERR_NONE)` -- this is the success path.
+3. Lines ~668-673: the grub_dprintf inside the success block prints
+   "...failed\n".
+4. Lines ~676-681: the grub_dprintf on the failure path (after the if
+   block) also prints "...failed\n".
+5. The old code (removed in commit 235f0e187) correctly printed
+   "succeeded" on the GRUB_ERR_NONE path and "failed" otherwise.
+
+Consequence:
+Debug output (`grub_dprintf`) for signature verification always says
+"failed" regardless of outcome. This produces misleading diagnostic output
+when debugging signature verification. No functional impact -- the return
+value is correct, only the log message is wrong.
+
+Fix assessment:
+Changing the success-path message from "failed" to "succeeded" is a one-word
+change. The debug format string is otherwise identical between the two paths
+(both include algorithm, issuer, and serial details).
