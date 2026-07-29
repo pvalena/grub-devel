@@ -1,1 +1,8 @@
- - analysis doc should not contain duplicate entries
+  - analysis doc should not contain duplicate entries
+  - scripts for using cd ... && git show ... | sed -n ...
+  - sanity-check scripts
+  - gitsu / view should use $EDITOR
+  - 120-char-check should be a script
+  - script: check for re-reviews
+  - resilience: nothing should fail after reviews are "done"
+  - agent: format review header "# AI Review: MR !xxx"

@@ -6,7 +6,7 @@
 #   -l      Run in a loop
 #   -n      Dry run (doesn't execute anything)
 #   -s      Skip confirmations for non-essential steps
-#   -v      Verbosity (specify up to two times)
+#   -v      Verbosity
 #   -w      Wait before next loop iteration (default: 1h)
 #
 

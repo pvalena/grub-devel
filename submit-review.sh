@@ -4,6 +4,14 @@ set -e
 
 zsh -n "$0"
 
+fail () {
+
+    echo -n "FAIL($(basename "$0")): "
+    echo "$@"
+
+    exit 2
+}
+
 [[ "$1" == '-d' ]] && { DEBUG="$1"; set -x; shift||: ; } || DEBUG=
 [[ "$1" == '-n' ]] && { DRY="$1"; shift||: ; } || DRY=
 [[ "$1" == '-v' ]] && { V="$1"; shift||: ; } || V="$DRY"
@@ -37,7 +45,13 @@ read_new () {
 
         # sanity checks
 
-            [[ "$m" == "$(head -n 1 "$F" | grep '^# AI Review: MR' | cut -d'!' -f2 | cut -d' ' -f1)" ]]
+            g='^# AI Review: MR !'
+
+            G="$(head -n 1 "$F" | grep "$g")"
+
+            [[ -n "$G" ]] || fail "Wrong review [$m] header: '$(head -n 1 "$F")'"
+
+            [[ "$m" == "$(echo "$G" | cut -d'!' -f2 | cut -d' ' -f1)" ]]
 
             grep -qE "^${m}$" "$D" && continue
 
@@ -71,7 +85,7 @@ read_new () {
         sleep 5
     done
 
-    exit
+    exit 0
 }
 
 # LEGACY: Let's just go through all of them
