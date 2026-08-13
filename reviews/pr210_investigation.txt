@@ -1,0 +1,154 @@
+PR !210 - Filesystem fuzzing fixes (7 commits)
+AI-assisted: Claude Opus 4.8 (6 commits), Claude Sonnet 5 (1 commit)
+
+Source files read:
+  grub-core/fs/archelp.c
+  grub-core/fs/cpio_common.c
+  grub-core/fs/squash4.c
+  grub-core/fs/tar.c
+  include/grub/archelp.h
+  include/grub/disk.h (GRUB_DISK_SIZE_UNKNOWN, GRUB_DISK_SECTOR_BITS)
+
+== Commit 1: squash4 OOB memcpy (401040303) ==
+
+struct grub_fshelp_node ends with stack[1]. sizeof(*dir) already
+includes one stack entry. A node with stsize entries occupies:
+  sizeof(*dir) + (stsize - 1) * sizeof(stack[0])
+
+The allocation size sz is computed as:
+  grub_mul(stsize, sizeof(stack[0]), &sz)
+  grub_add(sz, sizeof(*node), &sz)
+= sizeof(*node) + stsize * sizeof(stack[0])
+
+This allocates one stack entry MORE than dir occupies (correct
+for the destination, which will grow). But the copies used sz
+(or sz - sizeof(stack[0]) at one site) as the memcpy size,
+reading one entry past dir.
+
+Fix: all three memcpy sites now use
+  sizeof(*dir) + (dir->stsize - 1) * sizeof(dir->stack[0])
+which is exactly what dir occupies. The destination is still
+allocated with the larger sz, so the extra slot is available
+for the new entry pushed afterward (stsize++).
+
+Verified: grub_squash_iterate_dir() has three memcpy sites
+(the "." hook, the ".." hook, and the directory entry hook).
+All three are fixed consistently.
+
+== Commit 2: squash4 memory leaks (4c6c1e911) ==
+
+Two fixes:
+
+1. grub_squash_dir() never freed fdiro returned by
+   grub_fshelp_find_file(). The guard "fdiro != &root" is
+   correct because for path "/" the find function returns
+   the on-stack root node, which must not be freed.
+   grub_squash_open() already freed fdiro unconditionally,
+   which is safe because it searches for GRUB_FSHELP_REG
+   (never the root directory).
+
+2. Both grub_squash_dir() and grub_squash_open() returned on a
+   make_root_node() failure without calling squash_unmount(),
+   leaking the grub_squash_data. Fix adds squash_unmount(data)
+   before the error return.
+
+== Commit 3: squash4 uninitialized metadata buffers (87f4d046c) ==
+
+read_chunk() decompresses metadata blocks. Decompressors may
+produce fewer than the requested csize bytes (legitimate short
+reads at metadata block boundaries). Two complementary fixes:
+
+1. read_chunk(): grub_memset(buf, 0, csize) before decompression.
+   For zlib/xz (which write a contiguous prefix), untouched tail
+   bytes become zero instead of uninitialized.
+
+2. lzo_decompress(): the original grub_memcpy(outbuf, udata+off, len)
+   read past decompressed data when off+len > usize. Fix computes
+   avail = min(usize-off, len), copies only avail bytes, and
+   zeroes the remainder. The off >= usize case (avail = 0)
+   correctly zeroes the entire buffer.
+
+The two fixes provide defense in depth: read_chunk covers
+zlib/xz, and the lzo fix handles lzo's own OOB read.
+
+== Commit 4: squash4 symlink size bound (501904a9a) ==
+
+symlink.namelen is uint32_t from the untrusted inode. The existing
+overflow check on "+1" passed for ~2 GiB values. Fix rejects
+namelen > 4096 (Linux PATH_MAX) before allocating. A real SquashFS
+symlink target is a path and cannot reasonably exceed this.
+
+== Commit 5: cpio GRUB_ARCHELP_ATTR_END collision (1c807c849) ==
+
+GRUB_ARCHELP_ATTR_END is 0xffffffff. archelp.c uses it as an
+out-of-band "no more entries" signal: when find_file returns this
+mode value, the caller stops iterating WITHOUT touching the *name
+buffer that find_file allocated.
+
+modeval is parsed from the header as uint32_t with no range
+restriction, so a crafted entry can produce exactly 0xffffffff.
+Result: memory leak of the entry's name buffer, and all subsequent
+entries become invisible.
+
+Fix rejects modeval == GRUB_ARCHELP_ATTR_END before allocating
+the name buffer. Mirrors the existing namesize corruption guard.
+Commit is AI-assisted by Claude Sonnet 5 (all others by Opus 4.8).
+
+== Commit 6: tar / archelp memory leaks (692e3dc96) ==
+
+tar.c (grub_cpio_find_file):
+
+The function has three exit modes: success (return inside the
+loop), end-of-archive (empty name+prefix), and error. Before the
+fix, multiple paths returned directly, leaking a partially built
+*name from a prior 'L' (long-name) header.
+
+Fix routes all error/end exits through a single "fail:" label:
+  fail:
+    grub_free(*name);
+    *name = NULL;
+    return grub_errno;
+
+Key behavioral changes:
+  - Second 'L' header: grub_free(*name) before re-allocating
+    (was overwriting without freeing).
+  - End-of-archive: *mode set to ATTR_END, then goto fail.
+    grub_errno is GRUB_ERR_NONE (no error), so caller gets
+    err == 0 with mode == ATTR_END -- correct end signal with
+    *name safely NULLed.
+  - Reread limit exhaustion (3 L/K headers, no real entry):
+    now treated as an error instead of returning with *mode unset.
+
+Oversized allocation bound: uses grub_disk_native_sectors() to
+cap name/link sizes. A name stored in the archive cannot exceed
+the device. GRUB_DISK_SIZE_UNKNOWN (0xffffffffffffffff) disables
+the bound. GRUB_DISK_MAX_SECTORS is 2^51, so the shift
+(disk_sectors << 9) fits in uint64_t.
+
+archelp.c (handle_symlink):
+  - get_link_target() returns a malloc'd string. Three early
+    returns (empty target, length overflow, allocation failure)
+    now free it. Normal path already freed it.
+
+archelp.c (grub_archelp_open):
+  - "Too deep nesting of symlinks" now frees fn before goto fail.
+
+== Commit 7: archelp.h type mismatch (aa67d09bc) ==
+
+The find_file callback declared mode as grub_archelp_mode_t *
+but all implementations and the caller use grub_uint32_t *.
+The enum's enumerators (0040000, 0120000, 0x80000000, 0xffffffff)
+force a 32-bit unsigned underlying type on GRUB's targets, so
+the representations are identical. But calling through a
+mistyped pointer is UB (flagged by UBSan -fsanitize=function).
+Fix changes the prototype to grub_uint32_t * to match.
+
+== AI-assistance scrutiny ==
+
+6 commits by Claude Opus 4.8, 1 by Claude Sonnet 5. Code quality
+is consistent: comments accurately describe the bugs, fixes are
+minimal and targeted, and error handling follows existing patterns.
+The tar.c restructuring is the most complex change; the single
+fail: label pattern is cleaner than the original scattered returns
+and correctly handles all combinations of state (long name built
+or not, error or end-of-archive).

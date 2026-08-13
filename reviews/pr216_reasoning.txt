@@ -1,0 +1,71 @@
+PR !216 - grub-mkconfig: avoid temp-file races (1 commit)
+
+Source files read during review:
+- util/grub-mkconfig.in (at pr216 branch)
+- util/grub-mkconfig.in (at origin/master, for comparison)
+
+== Issue 1: mv replaces file metadata (grub-mkconfig.in) ==
+
+Discovery:
+The MR replaces `cat ${grub_cfg}.new > ${grub_cfg}` with
+`mv "${grub_cfg}".new.$$ "${grub_cfg}"` for non-symlink targets.
+The `cat >` approach opens the existing file for writing (truncate),
+which preserves the inode number and all associated metadata. The
+`mv` approach calls `rename()`, which atomically swaps the
+directory entry to point to the source inode (the temp file),
+unlinking the old inode.
+
+Source trace:
+Old code (origin/master, lines ~330-334):
+  oldumask=$(umask)
+  umask 077
+  cat ${grub_cfg}.new > ${grub_cfg}
+  umask $oldumask
+  rm -f ${grub_cfg}.new
+
+The `umask 077` before `cat >` is a no-op for writing to an
+existing file (umask only affects creation). The existing file's
+inode stays the same, so permissions, ownership, xattrs, and
+SELinux labels are preserved.
+
+New code (pr216 branch, lines ~335-337):
+  else
+    mv "${grub_cfg}".new.$$ "${grub_cfg}"
+  fi
+
+The temp file was created with `exec > "${grub_cfg}.new.$$"` under
+`umask 077`, giving it mode 0600 and the credentials of the running
+process (typically root:root). The `mv` (rename) replaces the
+target with this inode.
+
+Consequence:
+If grub.cfg previously had permissions other than 0600 (e.g.,
+0644 for scripts or monitoring tools that read it as non-root),
+those permissions are silently lost. The same applies to ownership,
+POSIX ACLs, and SELinux context.
+
+The most common setup (grub.cfg owned by root:root, mode 0600)
+is unaffected because the temp file happens to match. But
+distributions or administrators that set different permissions will
+see them reset on every grub-mkconfig run.
+
+Fix assessment:
+No single-line fix exists that preserves both atomicity and
+metadata. The core trade-off is:
+1. `cat > target` preserves metadata but is not atomic (target is
+   temporarily empty during the write).
+2. `mv source target` is atomic but replaces all metadata.
+
+A possible middle ground is `mv` followed by `chmod` (and
+optionally `chown`), saving the original mode before the mv:
+  if test -f "${grub_cfg}"; then
+    saved_mode=$(stat -c %a "${grub_cfg}" 2>/dev/null)
+  fi
+  mv "${grub_cfg}".new.$$ "${grub_cfg}"
+  if test -n "$saved_mode"; then
+    chmod "$saved_mode" "${grub_cfg}" 2>/dev/null || true
+  fi
+
+This restores mode but relies on GNU `stat -c %a`, which is not
+POSIX. ACLs and SELinux context would still be lost. The author
+should decide what level of metadata preservation is required.

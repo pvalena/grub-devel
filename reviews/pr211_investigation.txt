@@ -1,0 +1,168 @@
+PR !211 - Disk subsystem fuzzing fixes (9 commits)
+AI-assisted: Claude Opus 4.8
+
+Source files read:
+  grub-core/disk/AFSplitter.c
+  grub-core/disk/cryptodisk.c
+  grub-core/disk/diskfilter.c
+  grub-core/disk/luks2.c
+  grub-core/disk/lvm.c
+  grub-core/partmap/gpt.c
+  include/grub/disk.h (GRUB_DISK_SECTOR_BITS, GRUB_DISK_MAX_SECTORS)
+
+== Commit 1: luks2 uninitialized debug print (b1f179505) ==
+
+k->idx is seeded with keyslot_json_idx before parsing starts.
+The real index is read by grub_json_getuint64(&k->idx, ...) in
+the parsing chain; if any preceding step fails and returns early,
+k->idx was previously undefined. The seed value is the array
+position, which is a reasonable fallback for the "Failed to get
+keyslot..." diagnostic. No correctness impact beyond the debug
+print.
+
+== Commit 2: luks2 shift UB (e22ba45b0) ==
+
+luks2_parse_digest() builds segment and keyslot bitmasks from
+JSON-controlled grub_uint64_t indices. Original code:
+  out->segments |= (1 << bit);
+The literal 1 is int (32-bit). For bit >= 32 the shift is UB.
+Fix uses ((grub_uint64_t) 1 << bit) with a bit >= 64 guard.
+
+In luks2_get_keyslot(), the matching checks:
+  if (k->idx < 64 && (d->keyslots & ((grub_uint64_t) 1 << k->idx)))
+The idx < 64 guard is correct: an index >= 64 can never have a
+corresponding bit set in a 64-bit mask, so the comparison is
+correctly false and the loop continues to the not-found path.
+
+== Commit 3: AFSplitter zero stripe count (8c408a719) ==
+
+AF_merge() loop: for (i = 0; i < blocknumbers - 1; i++).
+blocknumbers is grub_size_t. If zero, "blocknumbers - 1" wraps to
+SIZE_MAX. The src buffer read (src + blocksize * i) would read far
+past allocation. Fix rejects blocknumbers == 0 before the loop,
+returning GPG_ERR_INV_ARG alongside the existing mdlen checks.
+Valid LUKS1 uses stripes = 4000.
+
+== Commit 4: cryptodisk NULL deref (dbcd5ec8e) ==
+
+Original guard: if (argc < 1 && !state[ALL].set && !state[BOOT].set)
+This allows argc == 0 when -a or -b is given. But the -u path
+unconditionally does grub_cryptodisk_get_by_uuid(args[0]) which
+dereferences args[0]. So "cryptomount -a -u" passes the guard and
+crashes on NULL args[0].
+
+Fix: if (argc < 1 && (state[UUID].set || (!state[ALL].set && !state[BOOT].set)))
+Now -u always requires argc >= 1. The check is before any option
+parsing/allocation, so no resources leak on early return. Correct.
+
+== Commit 5: lvm metadata bounds (2cca94fcd) ==
+
+grub_lvm_check_flag() scanned for quotes and brackets with no end
+bound. Fix adds an explicit "end" parameter and bounds every
+dereference:
+  - p >= end check after grub_strstr
+  - end - p < sizeof(" = [") - 1 before grub_memcmp
+  - while (q < end && grub_isspace(*q))
+  - end - q > len_flag before grub_memcmp + q[len_flag]
+  - while (q < end && *q != '"')
+  - q >= end || *q == ']'
+
+VG/PV/LV id copies now check mda_end - p >= GRUB_LVM_ID_STRLEN
+before the 38-byte grub_memcpy. The PV and LV loops swap
+"grub_isspace(*p) && p < mda_end" to "p < mda_end && grub_isspace(*p)"
+(short-circuit order fix). The raid stripe list scan now bounds
+the closing-quote search with "q < mda_end" and checks q == mda_end
+after the loop.
+
+== Commit 6: lvm VG/node leak fixes (5a230bef2) ==
+
+Adds grub_lvm_free_lv() and grub_lvm_free_vg() cleanup helpers.
+Routes all error paths through them. Key details:
+
+1. grub_lvm_free_vg() frees pvs (name, id.uuid, internal_id) and
+   lvs (via grub_lvm_free_lv), plus vg->uuid and the vg itself.
+   vg->name is NOT freed: it aliases the separately-tracked
+   "vgname" that fail3 frees.
+
+2. VG allocated with grub_zalloc so pvs/lvs/uuid are NULL on
+   early error paths where the helpers would walk them.
+
+3. Node names freed in free_array() and
+   grub_lvm_free_ignored_feature_lvs(). RAID arrays from
+   grub_diskfilter_make_raid() use grub_calloc for nodes, so
+   node names are NULL -- grub_free(NULL) is a no-op. Verified
+   by reading grub_diskfilter_make_raid() which only sets
+   nodes[i].pv, never nodes[i].name.
+
+4. Ignored-feature deep copy now grub_strdup()s node names
+   instead of aliasing the origin LV's pointers. After
+   memcpy of segments, each segment's nodes pointer is NULLed
+   before fresh arrays are allocated, so a mid-copy failure can
+   be cleaned by grub_lvm_free_ignored_feature_lvs() without
+   touching the origin LV's memory.
+
+5. After the VG is registered with the diskfilter framework, the
+   id->uuid error path no longer does "goto fail4" (which would
+   free the now-framework-owned VG). Instead it just frees
+   metadatabuf and returns NULL.
+
+6. pvs_fail now frees pv->id.uuid (previously leaked when
+   pv->name was allocated but a later field failed).
+
+== Commit 7: ignored-feature list scope (3cab538b3) ==
+
+ignored_feature_lvs moved from the new-VG block to function scope
+and freed at fail4. Previously it was only freed on the success
+path, so any error after collecting entries leaked the entire list.
+The success path sets ignored_feature_lvs = NULL after freeing, so
+a subsequent vg_register() failure at fail4 does not double-free.
+
+After the ignored_feature shallow copy, segments and segment_count
+are now zeroed so the ignored feature copy neither shares nor
+double-frees the skipped LV's segment array.
+
+== Commit 8: diskfilter recursion (e4d6442f2) ==
+
+validate_lv/validate_segment/validate_node are mutually recursive.
+Node -> LV references are resolved by name from on-disk metadata,
+so a crafted VG can create cycles. Fix threads a depth counter:
+  validate_lv(lv, depth)  -- checks depth > 32
+  validate_segment(seg, depth)  -- passes depth through
+  validate_node(node, depth)  -- calls validate_lv(lv, depth + 1)
+  grub_diskfilter_vg_register  -- calls validate_lv(lv, 0)
+
+Limit 32 is well above real LVM/RAID stacking depth.
+
+== Commit 9: GPT hang and overflow (219b24e98) ==
+
+Two problems fixed:
+
+1. partentry_size == 0 makes last_offset stuck at 0, so entries
+   never advances. Loop runs gpt.maxpart (up to 2^32) times
+   re-reading the same sector -- a DoS hang.
+
+2. last_offset was int. The "if (last_offset == GRUB_DISK_SECTOR_SIZE)"
+   exact test missed sizes that don't evenly divide 512 (or
+   exceed it, e.g. spec-legal 1024/2048). last_offset grew
+   without bound until signed overflow (UB).
+
+Fix:
+  - Validate partentry_size >= sizeof(entry) and divisible by it
+  - last_offset is now grub_uint64_t
+  - Carry loop: while (last_offset >= GRUB_DISK_SECTOR_SIZE)
+    subtracts 512 and increments entries
+
+The carry loop correctly handles any entry size, including
+non-512-aligned sizes and sizes >= 512. For the standard 128-byte
+entry, the loop body executes at most once (when 4 entries fill
+a sector). The (int) cast on part.index preserves the existing
+API contract.
+
+== AI-assistance scrutiny ==
+
+All 9 commits are AI-assisted (Claude Opus 4.8). The code quality
+is high throughout: comments accurately describe the bugs and
+fixes, error handling is consistent with existing patterns, and
+the memory management is careful about ownership. The LVM cleanup
+helpers mirror the existing free_array() structure. No signs of
+hallucinated function names or incorrect API usage.

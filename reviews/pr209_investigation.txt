@@ -1,0 +1,129 @@
+PR209 Investigation — _FORTIFY_SOURCE bounds checking
+=====================================================
+
+4 commits, 17 files, 1088 lines. AI-assisted (Claude Opus 5).
+Security hardening — heightened scrutiny applied.
+
+1. misc.h — fortified macros
+------------------------------
+Each fortified function follows the same pattern:
+- GRUB_FORTIFY_STATIC_CHECK: compile-time check via
+  __attribute__((error)) function — only fires when both n
+  and dest_size are compile-time constants and n > dest_size.
+  Guarded by __OPTIMIZE__ (dead-branch elimination needed).
+- grub_fortify_check: runtime check — if size != -1 and
+  n > size, calls grub_fatal with function name and sizes.
+- The macro captures GRUB_OBJECT_SIZE at the call site (before
+  the value crosses a function boundary), passes it to the
+  inline wrapper, which delegates to the real function via
+  (grub_memcpy) syntax (parenthesized to bypass the macro).
+
+Object size flavours:
+- GRUB_OBJECT_SIZE0 (type 0): whole enclosing object. Used for
+  mem* functions — writing past a struct field into adjacent
+  fields is a legitimate pattern in GRUB's parsers.
+- GRUB_OBJECT_SIZE (type 1): closest subobject. Used for string
+  functions — a strcpy past a char[] field is always a bug.
+Matches glibc's _FORTIFY_SOURCE split exactly.
+
+Dynamic vs static object size:
+- HAVE_BUILTIN_DYNAMIC_OBJECT_SIZE → level 3: tracks runtime
+  allocation sizes from alloc_size()-annotated allocators
+- HAVE_BUILTIN_OBJECT_SIZE → level 2: compile-time constants
+  only
+- Neither → no fortification (GRUB_OBJECT_SIZE undefined)
+
+Checked each fortified function:
+- grub_memcpy: checks n vs GRUB_OBJECT_SIZE0(dest). Correct.
+- grub_memmove: same. Correct.
+- grub_memset: checks n vs GRUB_OBJECT_SIZE0(s). Correct.
+- grub_strcpy: byte-by-byte copy with bounds check. Falls back
+  to real grub_strcpy when size is -1. Correct.
+- grub_stpcpy: same pattern, returns dest+i. Correct.
+- grub_strncpy: checks (grub_size_t)c vs dest_size. Cast from
+  int makes negative c very large → triggers check. Correct.
+- grub_strlcpy: checks size vs dest_size. Correct.
+- grub_snprintf: checks n vs GRUB_OBJECT_SIZE(str). Correct.
+- grub_vsnprintf: same. Correct.
+
+2. mm.h — allocator annotations
+---------------------------------
+alloc_size attribute added to:
+- grub_malloc(size): arg 1
+- grub_zalloc(size): arg 1
+- grub_calloc(nmemb, size): args 1,2
+- grub_realloc(ptr, size): arg 2
+- grub_memalign(align, size): arg 2
+- All debug variants: offset by file/line params
+
+Annotation gated by HAVE_FORTIFY_SOURCE — when off, no
+alloc_size is emitted, preventing -Warray-bounds false
+positives from on-disk-format parsers. Correct.
+
+3. compiler.h — GRUB_ATTRIBUTE_ALLOC_SIZE
+------------------------------------------
+GCC >= 4.3 and Clang >= 1.0. Expands to
+__attribute__((alloc_size(...))). Correct.
+
+4. kern/misc.c — #undef
+-------------------------
+#undef for grub_memcpy, grub_memmove, grub_memset,
+grub_strcpy, grub_snprintf, grub_vsnprintf. This prevents
+the implementation file from seeing its own fortified macros,
+which would recursively expand and break. Correct.
+
+5. minilib.c — #undef
+-----------------------
+Same pattern for decompressor stub's grub_memset, grub_memmove,
+grub_memcpy. This file provides the real implementations for the
+decompressor, which doesn't link kern/misc.c. Correct.
+
+6. zfscrypt.c — iv initialization
+-----------------------------------
+grub_uint8_t iv[16] = {0} added. The three subsequent stores
+cover all 16 bytes, so the zeroing is redundant for correctness.
+It suppresses a -Wuninitialized false positive from GCC's
+modeling of __builtin_dynamic_object_size(iv + 1, 1) as a read
+of uninitialized storage. Correct and well-documented.
+
+7. configure.ac
+----------------
+Read the 137-line addition. Checks for:
+- __builtin_object_size (always available on modern GCC/Clang)
+- __builtin_dynamic_object_size (GCC >= 12, Clang >= 9)
+- __attribute__((error)) (for static overflow checks)
+- Sets HAVE_FORTIFY_SOURCE, HAVE_BUILTIN_OBJECT_SIZE,
+  HAVE_BUILTIN_DYNAMIC_OBJECT_SIZE, HAVE_ATTRIBUTE_ERROR
+- Disables -Warray-bounds when fortification is on (the
+  alloc_size annotations cause false positives otherwise)
+- Feature disabled by default (--enable-fortify-source)
+
+8. Tests
+---------
+Three test files:
+- fortify_test.h (343 lines): shared test body covering each
+  fortified function with known-size, dynamic-size, and
+  unknown-size destinations. Checks that known overflow is
+  caught (via grub_fatal wrapper) and that correct copies
+  succeed.
+- fortify_test.c: functional test (TARGET_CFLAGS, -Os) — tests
+  dynamic tracking from allocator to copy.
+- fortify_unit_test.c: host unit test (HOST_CFLAGS, no -O) —
+  tests wrappers without optimizer folding checks away.
+- fortify_abort_test.in (70 lines): QEMU test that verifies a
+  real overflowing copy halts GRUB.
+
+9. config.h.in
+---------------
+27-line addition with #undef stubs for all HAVE_* macros,
+following autoconf convention.
+
+10. docs/grub.texi
+-------------------
+55-line addition documenting: what it protects (copy
+overflows), what it doesn't (logic bugs, integer overflows),
+the two levels, approximate size cost, experimental status.
+
+Conclusion: No issues found. Well-engineered security
+hardening with correct glibc-matching design, proper
+self-wrapping prevention, and thorough testing.

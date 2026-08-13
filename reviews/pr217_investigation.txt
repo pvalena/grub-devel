@@ -1,0 +1,129 @@
+MR !217 - Import zstd 1.5.7 (3 commits, ~28k lines, 46 files)
+Author: Thomas Grainger <tagrain at gmail dot com>
+
+Files read during review:
+  conf/Makefile.common (CPPFLAGS_ZSTD definition)
+  grub-core/Makefile.core.def (zstd module source list)
+  Makefile.util.def (libgrubmods.a source list)
+  docs/grub-dev.texi (import documentation)
+  grub-core/lib/zstd/module.c (GRUB module wrapper)
+  grub-core/lib/zstd/common/zstd_deps.h (platform abstraction)
+  grub-core/lib/zstd/common/zstd_trace.h (tracing hooks)
+  grub-core/lib/zstd/common/portability_macros.h (ZSTD_DISABLE_ASM)
+  grub-core/lib/zstd/decompress/zstd_decompress_block.c (seq_t patch)
+  config.h.in (_GNU_SOURCE definition)
+
+== Sanity Check (Phase 0) ==
+
+Automated pattern scan completed before any raw content was ingested.
+Flags raised:
+  - "override" in code comments (vectorization, block size) -- CLEAR
+  - Base64-like strings (xxHash prime constants in binary) -- CLEAR
+  - URLs in code comments (cppreference, github, gcc bugzilla) -- CLEAR
+  - "secret" keyword (xxHash API parameter name) -- CLEAR
+  - curl command (downloads from official github.com/facebook/zstd) -- CLEAR
+  - Build files changed (expected for library import) -- CLEAR
+Verdict: PASS, no suspicious patterns.
+
+== Commit Structure ==
+
+Commit 1 (9ccf731d9): Verbatim upstream import + build integration
+  - Old flat-layout files deleted (compiler.h, debug.c/h, entropy_common.c,
+    error_private.h, fse_decompress.c, huf.h, huf_decompress.c, xxhash.c/h,
+    zstd_decompress.c, zstd_internal.h)
+  - New common/ and decompress/ subdirectories created, mirroring upstream
+    lib/ layout
+  - Files moved with rename detection: bitstream.h, cpu.h, error_private.c,
+    fse.h, mem.h, zstd_common.c
+  - zstd.h and zstd_errors.h updated in place (top-level zstd directory)
+  - Verified: import commit does NOT contain the seq_t change (line 1231
+    has uninitialized "seq_t seq;" as in upstream)
+
+Commit 2 (c17cf84a9): GRUB-specific patch
+  - Single-line change: "seq_t seq;" -> "seq_t seq = {0};"
+  - Carries forward Coverity CID 292440 fix (original commit 2777cf446)
+  - seq_t is a struct with 3 size_t fields (litLength, matchLength, offset)
+  - The {0} initialisation is correct C99+ aggregate initialisation
+  - Upstream moved ZSTD_decodeSequence() from zstd_decompress.c to
+    zstd_decompress_block.c, so the patch location changed
+
+Commit 3 (f0fd62b7b): Documentation
+  - Adds "zstd" section to the "Updating external code" chapter
+  - Documents which files to import, why the directory layout matters,
+    and how to reapply GRUB-specific patches
+
+== Build Integration (CPPFLAGS_ZSTD) ==
+
+CPPFLAGS_ZSTD is defined in conf/Makefile.common and applied in both
+Makefile.core.def (module build) and Makefile.util.def (libgrubmods.a).
+
+Three flags:
+
+1. -DZSTD_DISABLE_ASM=1
+   portability_macros.h checks: if !defined(ZSTD_DISABLE_ASM) && ...
+   then ZSTD_ENABLE_ASM_X86_64_BMI2=1. The flag prevents this, which
+   is correct because huf_decompress_amd64.S is not imported.
+
+2. -D_GNU_SOURCE=1
+   config.h.in line 71 defines _GNU_SOURCE as 1. zstd_deps.h line 35
+   does a bare "#define _GNU_SOURCE" (no value). Without predefining
+   it, both would be active with different forms, causing a compiler
+   warning or error depending on the toolchain. Predefining with =1
+   makes zstd_deps.h's "#if !defined(_GNU_SOURCE)" test false, so the
+   bare define is skipped.
+
+3. -DZSTD_TRACE=0
+   zstd_trace.h line 43: "#define ZSTD_TRACE ZSTD_HAVE_WEAK_SYMBOLS"
+   would enable tracing on ELF platforms with GCC. The GRUB module
+   loader cannot resolve undefined weak symbols, so genmoddep.awk
+   would reject the module. Setting ZSTD_TRACE=0 makes the "#ifndef
+   ZSTD_TRACE" on line 42 take the predefined value, skipping the
+   weak symbol declarations.
+
+== File List Verification ==
+
+Makefile.core.def and Makefile.util.def list the same 10 upstream .c
+files plus module.c:
+  common/debug.c, common/entropy_common.c, common/error_private.c,
+  common/fse_decompress.c, common/xxhash.c, common/zstd_common.c,
+  decompress/huf_decompress.c, decompress/zstd_ddict.c,
+  decompress/zstd_decompress.c, decompress/zstd_decompress_block.c,
+  module.c
+
+These match all .c files present under grub-core/lib/zstd/ on the
+branch. Header files (.h) are included via #include and do not need
+Makefile entries.
+
+== Include Path ==
+
+The -I$(srcdir)/lib/zstd (Makefile.core.def) and
+-I$(srcdir)/grub-core/lib/zstd (Makefile.util.def) include paths are
+preserved from before. Since zstd.h remains at grub-core/lib/zstd/zstd.h,
+the existing #include <zstd.h> in btrfs, zfs, and zstdio continues to
+work. Internal includes use relative paths ("../common/mem.h") which
+resolve from the common/ and decompress/ subdirectories.
+
+== Commit Message Verification ==
+
+All three commit messages accurately describe their changes:
+  - Commit 1 correctly states the import source, SHA256, and reasons
+    for the layout change
+  - Commit 2 correctly references commit 2777cf446 and CID 292440
+  - Commit 3 correctly describes what is documented
+  - Both referenced commits (2777cf446, f725fa7cb) verified present
+    in the tree via git log --grep
+
+== Files NOT Imported (by design) ==
+
+The commit message and documentation explain these exclusions:
+  - huf_decompress_amd64.S (x86-64 BMI2 assembly, disabled via flag)
+  - pool.c, threading.c (multi-threading, not needed in GRUB)
+  - Compression-only files (GRUB only decompresses)
+
+== Upstream Code ==
+
+The ~26k lines of upstream library code (xxhash, FSE, Huffman, zstd
+decompress) were not reviewed for correctness -- this is upstream code
+from the official zstd 1.5.7 release. The review focused on
+GRUB-specific integration, build system changes, and the GRUB-specific
+patch.
