@@ -1,0 +1,48 @@
+PR !225 - PKCS#7 signedAttrs, cert lookup, sig validation
+3 commits, 1 issue found
+
+Source files read:
+  grub-core/commands/appendedsig/pkcs7.c (pr225 branch)
+  grub-core/commands/appendedsig/pkcs7.h (pr225 branch)
+
+== Issue 1: signed_attrs.raw leaked (pkcs7.c) ==
+
+Discovery:
+Reading pkcs7_free_signers() cleanup. The function frees
+serial, issuer, sig, and zeroes md_algo/sig_algo structs.
+The new signed_attrs struct is zeroed with grub_memset but
+its raw pointer is not freed first.
+
+Source trace:
+pkcs7_get_signerinfo_signed_attrs(), line ~330:
+  attr_raw = grub_malloc (attr_raw_len);
+  ...
+  signer->signed_attrs.raw = attr_raw;
+  signer->signed_attrs.raw_len = attr_raw_len;
+
+pkcs7_free_signers(), line ~812:
+  grub_free (signers->serial);       // freed
+  grub_free (signers->issuer);       // freed
+  grub_memset (&signers->md_algo, ...);
+  grub_memset (&signers->signed_attrs, 0x00, ...);  // zeroed
+  // signed_attrs.raw NOT freed before zeroing
+  grub_memset (&signers->sig_algo, ...);
+  grub_free (signers->sig);          // freed
+
+Cross-reference: serial and issuer (both malloc'd pointers in
+the signer struct) are properly grub_free'd before the struct
+is freed. signed_attrs.raw follows the same ownership pattern
+but was missed.
+
+Consequence:
+Each PKCS#7 signer with signedAttrs leaks one allocation of
+the raw DER-encoded signedAttrs block. The leak occurs on
+every signature verification (both success and failure paths)
+because pkcs7_free_signers is always called eventually.
+
+Fix assessment:
+Adding grub_free(signers->signed_attrs.raw) before the
+grub_memset is correct. grub_free(NULL) is a no-op, so it
+is safe for signers without signedAttrs (where raw is NULL
+from grub_zalloc initialization). The order (free then
+memset) matches the pattern used for serial/issuer/sig.
