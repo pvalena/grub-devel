@@ -1,6 +1,6 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-07-07
+**Last updated**: 2026-08-21
 
 Quick reference for working in this repository. See `CLAUDE.md` for repository overview
 and `docs/REVIEW_PROCESS.md` for detailed procedures.
@@ -9,15 +9,17 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 
 ## Current Status
 
-- **Total MRs tracked**: 84 (24 open + 60 closed)
-- **Total MRs reviewed**: 114
-- **Open MRs**: 24
-- **Closed/Merged MRs**: 60
+- **Total MRs tracked**: 84 (24 open + 60 closed) — *not re-verified against GitLab this
+  update; open/closed counts are carried over from the last reconciliation*
+- **Total MRs reviewed**: 149
+- **Open MRs**: 24 (unverified, see above)
+- **Closed/Merged MRs**: 60 (unverified, see above)
 - **Active authors**: ~20
 
 **Review files**:
-- Complete reviews: 114 (.md files)
-- Reasoning files: 38 (_reasoning.txt files, only for reviews with issues)
+- Complete reviews: 149 (.md files)
+- Reasoning files: 44 (_reasoning.txt files, only for reviews with issues)
+- Investigation files: 10 (_investigation.txt files, only for large/complex clean reviews)
 
 ---
 
@@ -32,6 +34,9 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 - `reviews/YYYY-MM-NNNN.md` - Code reviews (older branches, named by mailing list date)
 - `reviews/prNN.md` - Code reviews (new MRs, named by MR number)
 - `reviews/*_reasoning.txt` - Deep technical justifications (only for reviews with issues)
+- `reviews/*_investigation.txt` - Verification trail for large/complex CLEAN reviews
+  (library imports, new modules, low-level memory math) — proof of thoroughness, not
+  needed for small/simple clean reviews
 
 **Documentation**:
 - `CLAUDE.md` - Repository instructions and essentials
@@ -95,6 +100,12 @@ a straightforward fix.
 Discovery / Analysis / Step-by-step / Consequence sections for each issue.
 Add "For more details" link in the review .md file pointing to the reasoning file.
 
+**For large/complex CLEAN reviews** (library imports, new modules, low-level
+memory/page-table math), create `reviews/prNN_investigation.txt` instead, documenting
+what was checked and why nothing was found. Keep the review's "Additional findings"
+section to 3-6 lines and link to the investigation file. Small/simple clean reviews
+don't need one — see global review skill v3.9.0+ for the exact criteria.
+
 ### Phase 5: Format and Verify
 
 120 character line width (mandatory). Verify commit count matches review.
@@ -108,6 +119,27 @@ Independent re-verification after all review artifacts are written.
 Re-read source for each finding, verify draft fix correctness, look
 for missed issues. Final quality gate — added after re-verification
 caught a real bug (PR155 Issue 3) that the initial review missed.
+
+### Re-reviewing Updated MRs
+
+When `reviews/prNN.md` already exists, treat it as a re-review — don't start from
+scratch. Verify old commit hashes still exist (`git cat-file -t OLD_HASH`), then diff
+patch content ignoring rebase noise: `diff <(git diff OLD^..OLD) <(git diff NEW^..NEW)`.
+Zero output means that commit is unchanged in substance even if its hash changed (e.g.
+because `origin/master` moved). Update the review with a "Re-review" header stating
+what changed; only fully re-review reworked/new commits. See global review skill
+v3.10.0+ for the full procedure.
+
+### Reviewing MRs via Agent Batches
+
+For large `data/new.txt` queues, split by complexity: large/complex MRs (library
+imports, new modules, hundreds+ lines) reviewed standalone; small/medium MRs (a few
+commits, under ~300 lines) batched 3-6 per background Agent call. **Always personally
+re-verify agent results against actual source before reporting them** — agents reliably
+follow the phase structure but do not reliably create investigation files for complex
+clean reviews, and can produce wrong repo URLs in "For more details" links (GitLab, not
+GitHub: `https://gitlab.freedesktop.org/pvalena/grub/-/blob/main/reviews/FILE`). See
+global review skill v3.11.0+ for the mandatory post-agent audit checklist.
 
 ### MR Status Update Workflow
 
@@ -169,6 +201,47 @@ fclose(fp). The fclose was found during verification pass, not initial review.
 **Issue**: Review was incomplete (listed 3 commits, actually 6)
 **Lesson**: Verify commit count before finalizing review.
 
+### MR !196 - Appendedsig ML-DSA/PKCS#7 refactor (pr196)
+**Issues**: 5 found (agent-reviewed, all independently verified) -- double-free in
+`remove_hash_from_db` (embedded array `hash[N]` is the struct's first field, so
+`grub_free(x->hash)` then `grub_free(x)` frees the same address twice), 3 memory
+leaks in ASN.1/PKCS#7 parsing helpers, one debug message printing "failed" on the
+success path.
+**Lesson**: Before reporting a double-free on `x->field` then `x`, check whether
+`field` is an embedded array (address == struct address) rather than a separate
+allocation.
+
+### MR !156 - NVMe native disk support (pr156, re-review)
+**Issue**: `grub_nvme_restore_hw()` reuses the admin queue after `fini_hw` shut it
+down without resetting `queue[ads].idx`/`queue[adc].idx`/`queue[adc].round`, causing
+SQ/CQ doorbell desync and a hang on any preboot hook cycle (chainload/kexec).
+**Lesson**: All 3 issues from the original review were fixed in the rebase; this new
+issue was only found because the double-check phase re-read the full restore path
+after confirming the fixes, instead of stopping once the known issues were closed.
+
+### MR !226 - EFI set loaded image device path when missing (pr226)
+**Issues**: 2 found (linux.c + chainloader.c). On the `handle_protocol()` failure path
+the override buffer (`mempath` / `fp`) is leaked and `loaded_image->file_path` is left
+dangling into freed/leaked memory when `grub_efi_unload_image()` runs, because the
+override-cleanup is gated on an `override_dp`/`file_path=NULL` flag set only *after* the
+error branch.
+**Lesson**: When code temporarily overrides an EFI-owned pointer with a `grub_malloc`'d
+buffer, every early-exit *between* the assignment and the "commit" flag must restore the
+original (NULL here) and free the buffer — the firmware frees `file_path` with the EFI
+pool allocator, so a `grub_malloc`'d pointer left there is a mismatched-free/UAF, not
+just a leak.
+
+### MR !232 - appendedsig X.509 validity checking (pr232)
+**Issue**: `x509_check_validity()` calls `grub_get_datetime(&current_dt)` ignoring its
+return, then reads `current_dt`. On `powerpc_ieee1275` (one of only two platforms that
+build appendedsig; the other is `emu`) `grub_get_datetime()` returns `GRUB_ERR_IO`
+*without writing `*datetime`* when the RTC can't be opened — so validity is checked
+against stack garbage (nondeterministic accept/reject of a signed kernel).
+**Lesson**: `grub_get_datetime()` returns `grub_err_t` and leaves its out-param
+untouched on failure — always check the return before use. libtasn1 note: for
+UTCTime/GeneralizedTime, `PUT_AS_STR_VALUE` sets `*len = data_size + 1` and appends a
+NUL, so `raw_time_len - 1` at the call site is correct, not an off-by-one.
+
 ---
 
 ## Quick Reference
@@ -199,12 +272,12 @@ diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
 
 ## Statistics
 
-**Current (2026-07-07)**:
-- Open MRs: 24
+**Current (2026-08-21)**:
+- Open MRs: 24 (unverified against GitLab this update)
 - Active authors: ~20
 - Largest contributor: Vladimir Serbinenko (6 MRs)
-- Closed rate: 71% (60/84)
-- Review files: 114 reviews, 38 reasoning files
+- Closed rate: 71% (60/84, unverified)
+- Review files: 149 reviews, 44 reasoning files, 10 investigation files
 
 **Historical**:
 - Initial branches: 176 (from mailing lists)

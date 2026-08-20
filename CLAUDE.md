@@ -21,12 +21,15 @@ This repository analyzes GRUB2 patches from mailing lists, identifies duplicates
 - **Key files**: `branches.txt`, `mrs.txt`, `MRS_BY_AUTHOR.md`
 
 ### Phase 4: Code Review & Quality Assurance (COMPLETED)
-- **Reviews**: 114 complete (.md) + 38 reasoning files (_reasoning.txt)
+- **Reviews**: 149 complete (.md) + 44 reasoning files (_reasoning.txt) + 10
+  investigation files (_investigation.txt, for large/complex clean reviews)
 - **Quality**: Zero false positives, all commits reviewed, 120 char width
-- **Key files**: `reviews/*.md`, `reviews/*_reasoning.txt`, `docs/REVIEW_PROCESS.md`
+- **Key files**: `reviews/*.md`, `reviews/*_reasoning.txt`, `reviews/*_investigation.txt`,
+  `docs/REVIEW_PROCESS.md`
 
 ### Phase 5: MR Status Tracking (ONGOING)
-- **Status**: 24 open, 60 closed (71% closure rate)
+- **Status**: 24 open, 60 closed (71% closure rate) — not re-verified against GitLab
+  as of last update
 - **Key files**: `data/open.txt`, `data/closed.txt`, `MRS_BY_AUTHOR.md`
 
 ---
@@ -60,12 +63,14 @@ Before marking branches as duplicates, always document explicit reasons and veri
 - `closed.sh`: MR status checking script
 
 ### data/
-- `open.txt`: 26 open MR numbers (source of truth)
-- `closed.txt`: 56 closed MR numbers
+- `open.txt`: 24 open MR numbers (source of truth, not re-verified against GitLab
+  as of last update)
+- `closed.txt`: 60 closed MR numbers
 
 ### reviews/
-- `YYYY-MM-NNNN.md`: Complete code reviews (90 files)
-- `YYYY-MM-NNNN_reasoning.txt`: Brief technical justifications (31 files)
+- `prNN.md` / `YYYY-MM-NNNN.md`: Complete code reviews (143 files total)
+- `*_reasoning.txt`: Deep technical justifications for reviews WITH issues (42 files)
+- `*_investigation.txt`: Verification trail for large/complex CLEAN reviews (9 files)
 - All files comply with 120 char line width
 
 ### docs/
@@ -120,4 +125,4 @@ Before marking branches as duplicates, always document explicit reasons and veri
 
 ---
 
-**Last updated**: 2026-07-07
+**Last updated**: 2026-08-21
