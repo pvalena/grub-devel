@@ -1,0 +1,132 @@
+Reasoning: MR !226 - efi: set loaded image device path when missing (3 commits)
+
+Source files read during review and verification:
+- grub-core/loader/efi/linux.c (grub_arch_efi_linux_boot_image)
+- grub-core/loader/efi/chainloader.c (grub_chainloader_unload, grub_cmd_chainloader,
+  make_file_path)
+- include/grub/efi/api.h (GRUB_EFI_LOADED_IMAGE_DEVICE_PATH_PROTOCOL_GUID,
+  GRUB_EFI_NEXT_DEVICE_PATH, GRUB_EFI_END_ENTIRE_DEVICE_PATH,
+  GRUB_EFI_DEVICE_PATH_VALID/LENGTH/TYPE/SUBTYPE)
+
+Design context (verified correct, not an issue):
+Both files, when they override loaded_image->file_path and the LOADED_IMAGE_DEVICE_PATH
+protocol, keep the original interface and restore it before grub_efi_unload_image(). This is
+required because the overriding buffer (mempath / file_path) is grub_malloc'd, while the
+image's own loader would free loaded_image->file_path with the EFI pool allocator. Restoring
+the original before unload prevents the firmware from FreePool-ing a grub_malloc pointer.
+The success paths (start_image / start_image not returning) never restore, which is correct:
+the OS has taken over and nothing frees the buffer.
+
+Note on saved_file_path: in both files saved_file_path/ctx->saved_file_path is never assigned
+(stays NULL). This is harmless: the override is guarded by "loaded_image->file_path == NULL",
+so the original value is NULL and restoring NULL is correct. The field is effectively dead
+but not a bug.
+
+
+== Issue 1: mempath leaked on protocol-missing error path (linux.c) ==
+
+Discovery:
+Reading grub_arch_efi_linux_boot_image() override block (linux.c:257-276). Sequence:
+  259: loaded_image->file_path = (grub_efi_device_path_t *) mempath;
+  261: status = b->handle_protocol (image_handle, &loaded_image_device_path_guid,
+                                    (void **) &saved_device_path);
+  263: if (status != GRUB_EFI_SUCCESS)
+  265:   grub_error (GRUB_ERR_BAD_FIRMWARE, "missing protocol ...");
+  267:   goto unload;
+  ...
+  268: b->reinstall_protocol_interface (...);
+  273: override_dp = true;
+override_dp is set only at line 273, AFTER the error branch.
+
+Source trace:
+The unload: label cleanup (linux.c:300-309):
+  301: if (override_dp)
+  303:   loaded_image->file_path = saved_file_path;
+  304:   b->reinstall_protocol_interface (..., mempath, saved_device_path);
+  308:   grub_free (mempath);
+All mempath cleanup is gated on override_dp. On the line-267 goto, override_dp is false, so
+the block is skipped: mempath is not freed and loaded_image->file_path is left pointing at
+mempath.
+
+mempath lifecycle on all other paths was checked and is correct:
+- load_image failure (233) and loaded_image==NULL (244): grub_free(mempath) then return/goto;
+  at unload override_dp is false so no double free.
+- else branch (276, file_path already non-NULL): grub_free(mempath), override_dp stays false.
+- override success: mempath owned by the protocol/loaded_image, freed at unload (308) on the
+  failure-return path, or kept by the running OS on success.
+So the only leaking path is the handle_protocol failure at line 261-267.
+
+Consequence:
+One mempath allocation (2 * sizeof(grub_efi_memory_mapped_device_path_t), ~32-48 bytes) is
+leaked, and a dangling loaded_image->file_path = mempath is passed to grub_efi_unload_image().
+The trigger is the LOADED_IMAGE_DEVICE_PATH protocol being entirely absent from the image
+handle (handle_protocol returns non-success). LOADED_IMAGE_DEVICE_PATH is mandatory in modern
+UEFI, so this is a rare broken-firmware/shim path, but the cleanup is still incorrect.
+
+Fix assessment:
+Adding "loaded_image->file_path = NULL; grub_free (mempath);" before the goto unload frees
+the allocation and removes the dangling pointer. loaded_image->file_path's original value was
+NULL (guard), so NULL is the correct restore value. mempath is not used again after this
+point on the error path (override_dp stays false, so the unload block won't touch it). No
+double free is introduced.
+
+
+== Issue 2: loaded_image->file_path dangling into freed buffer before unload (chainloader.c) ==
+
+Discovery:
+Reading grub_cmd_chainloader() override block (chainloader.c:452-470):
+  453: ctx->file_path = file_path;
+  455: loaded_image->file_path = fp;           /* fp points inside file_path */
+  458: status = b->handle_protocol (image_handle, &loaded_image_device_path_guid,
+                                    (void **) &ctx->saved_device_path);
+  460: if (status != GRUB_EFI_SUCCESS)
+  462:   grub_error (GRUB_ERR_BAD_FIRMWARE, "missing protocol ...");
+  464:   goto fail;
+  ...
+  470: file_path = NULL;   /* only reached after a successful reinstall */
+
+Source trace:
+The fail: block (chainloader.c:490-499):
+  492: grub_free (file_path);                  /* frees the buffer fp points into */
+  493: grub_free (ctx);                         /* does NOT free ctx->file_path */
+  499: if (image_handle != NULL) grub_efi_unload_image (image_handle);
+On the line-464 goto, file_path is still non-NULL (line 470 not reached), so line 492 frees
+it. loaded_image->file_path (== fp) still points into that freed buffer when
+grub_efi_unload_image() runs at line 499.
+No double free occurs: file_path is freed once (492); grub_free(ctx) frees only the ctx
+struct, not ctx->file_path.
+
+Consequence:
+loaded_image->file_path is a dangling pointer into freed memory at the moment UnloadImage is
+invoked. If the firmware reads or frees LoadedImage->FilePath during UnloadImage, it operates
+on freed grub heap memory (use-after-free / mismatched free). Whether firmware touches
+FilePath on unload is implementation-defined, so the concrete corruption is firmware
+dependent, but leaving a dangling pointer in a live firmware structure across an unload call
+is a defect regardless. Same rare trigger as Issue 1 (protocol absent).
+
+Fix assessment:
+Setting "loaded_image->file_path = NULL;" before goto fail restores the original value (NULL,
+per the guard) so UnloadImage sees a clean pointer. file_path is still freed by the fail path
+(no leak), and ctx->file_path == file_path is a dangling copy but ctx is freed immediately and
+never dereferenced. No double free or new leak is introduced.
+
+
+== Observation (not reported as an issue): device-path walk lacks an END-node guard ==
+
+chainloader.c:449-454 walks file_path to find the first MEDIA/FILE_PATH node:
+  while (fp != NULL
+         && (fp->type != GRUB_EFI_MEDIA_DEVICE_PATH_TYPE
+             || fp->subtype != GRUB_EFI_FILE_PATH_DEVICE_PATH_SUBTYPE))
+    fp = GRUB_EFI_NEXT_DEVICE_PATH (fp);
+The loop does not test GRUB_EFI_END_ENTIRE_DEVICE_PATH(fp). At the end node (type 0x7F,
+length 4) GRUB_EFI_NEXT_DEVICE_PATH advances 4 bytes PAST the buffer rather than stopping, so
+a device path with no FILE_PATH node would be walked out of bounds.
+
+Why this is not reachable in practice: file_path here is always a make_file_path() result
+(chainloader.c:304; the override is guarded by file_path != NULL). make_file_path()
+(chainloader.c:166-230) copies dp up to and including its END node, then overwrites the END
+position with a directory FILE_PATH node followed by a file FILE_PATH node. So a
+MEDIA/FILE_PATH node is always present before the end, and the loop terminates within the
+buffer. Adding a GRUB_EFI_END_ENTIRE_DEVICE_PATH(fp) guard would make the walk robust against
+future callers, but there is no concrete out-of-bounds read with the current caller, so it is
+noted here rather than reported as a bug.

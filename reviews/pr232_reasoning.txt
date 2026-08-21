@@ -1,0 +1,101 @@
+Reasoning: MR !232 - appendedsig X.509 certificate validity checking (3 commits)
+
+Source files read during review and verification:
+- grub-core/commands/appendedsig/x509.c (x509_get_time, x509_get_validity,
+  x509_check_validity, x509_cert_parse_der, x509_cert_release, _grub_x509_spec)
+- grub-core/commands/appendedsig/x509.h (grub_x509_cert_t, grub_x509_spec_t,
+  grub_x509_time_t, grub_x509_validity_t)
+- grub-core/commands/appendedsig/pkcs7.c (pkcs7_get_signer_cert,
+  pkcs7_signed_data_verify)
+- grub-core/commands/appendedsig/asn1_util.c (grub_asn1_allocate_and_read)
+- grub-core/lib/libtasn1/lib/element.c (asn1_read_value, PUT_AS_STR_VALUE macro)
+- grub-core/lib/ieee1275/datetime.c (grub_get_datetime)
+- include/grub/datetime.h (grub_get_datetime, grub_datetime2unixtime prototypes)
+- grub-core/Makefile.core.def (appendedsig module: enabled on emu + powerpc_ieee1275)
+
+
+== Issue 1: grub_get_datetime() return ignored; current_dt used uninitialized (x509.c) ==
+
+Discovery:
+Reading the new x509_check_validity() at x509.c:1012. The function declares a plain local
+"struct grub_datetime current_dt;" (line 1014, no initializer) and then calls
+"grub_get_datetime (&current_dt);" (line 1022) discarding the return value. The three
+grub_datetime2unixtime() calls that follow read current_dt (line 1036) to compute
+current_epoch and compare it against the certificate's parsed notBefore/notAfter.
+
+The 3627367b commit removed a comment in x509_cert_parse_der() that had explicitly said:
+"We can't validate this reasonably, we have no true time source on several platforms. For
+now we do not parse them." That is a direct signal that the clock is not always available on
+the platforms this module runs on.
+
+Source trace:
+1. Prototype: include/grub/datetime.h:37 declares
+   "grub_err_t EXPORT_FUNC(grub_get_datetime) (struct grub_datetime *datetime);"
+   So the function has a grub_err_t return that x509_check_validity ignores.
+
+2. Platform set: grub-core/Makefile.core.def "module = { name = appendedsig; ... enable =
+   emu; enable = powerpc_ieee1275; ...}". Only these two platforms build the module.
+
+3. powerpc_ieee1275 implementation: grub-core/lib/ieee1275/datetime.c grub_get_datetime():
+     if (grub_ieee1275_open (rtc, &ihandle)); status == -1 ->
+         return grub_error (GRUB_ERR_IO, "couldn't open RTC");   [*datetime untouched]
+     ...
+     if (status == -1 || args.catch_result)
+         return grub_error (GRUB_ERR_IO, "get-time failed");     [*datetime untouched]
+     datetime->year = args.year; ... (only reached on success)
+   Both early error returns leave the caller's current_dt completely unwritten. (The
+   no_ieee1275_rtc / !rtc paths delegate to grub_get_datetime_cmos, which can likewise
+   fail.) So a failure of grub_get_datetime leaves current_dt = stack garbage.
+
+4. Consumption: x509.c:1036 "if (!grub_datetime2unixtime (&current_dt, &current_epoch))".
+   include/grub/datetime.h:55 declares grub_datetime2unixtime returning int (0 on invalid
+   range). With garbage fields the call either returns 0 (out-of-range) -> function returns
+   GRUB_ERR_BAD_NUMBER, or returns non-zero with a bogus current_epoch.
+
+Consequence:
+On a powerpc_ieee1275 system whose RTC cannot be opened or whose get-time call fails,
+x509_check_validity runs on uninitialized memory:
+  - If grub_datetime2unixtime rejects the garbage: x509_check_validity returns
+    GRUB_ERR_BAD_NUMBER. In pkcs7_get_signer_cert (pkcs7.c:729) this is assigned to ret and
+    returned; pkcs7_signed_data_verify (pkcs7.c) does "if (ret != GRUB_ERR_NONE) continue;"
+    so the signer is skipped and, with no other valid signer, verification fails. A
+    correctly-signed kernel is rejected and the machine will not boot.
+  - If the garbage happens to be in-range: current_epoch is a meaningless value and the
+    notBefore/notAfter comparison yields a non-deterministic accept/reject -- it could
+    accept an expired certificate or reject a valid one depending on prior stack contents.
+Either outcome is a real defect: undefined behaviour (read of uninitialized object) plus a
+security-relevant nondeterministic verification result, precisely on the "no true time
+source" platform the deleted comment referenced.
+
+Fix assessment:
+The minimal, unambiguous fix is to check grub_get_datetime's return before using current_dt.
+That alone removes the uninitialized read. The draft returns GRUB_ERR_IO (fail closed),
+which is the safe default for a security check. Caveat, called out in the review: failing
+closed means an RTC-less powerpc system can no longer verify any appended signature, whereas
+before this MR validity was not checked at all (fail open). Whether the intended behaviour on
+"no clock" is reject-all or skip-validity is a policy decision for the author; the draft
+fixes the concrete UB while making that policy explicit for discussion. The draft does not
+introduce new problems: it adds an early return before any of the epoch math, and matches the
+existing dprintf-on-failure style already used throughout the function.
+
+
+== Verification notes (no issue) : ASN.1 time length handling is correct ==
+
+x509_get_time is called as x509_get_time (raw_time, raw_time_len - 1, &dt). Confirmed the -1
+is correct, not an off-by-one:
+- grub_asn1_allocate_and_read (asn1_util.c) returns content_size = the size reported by
+  libtasn1's asn1_read_value.
+- For UTCTime/GeneralizedTime, element.c:1008-1010 uses PUT_AS_STR_VALUE, whose macro body
+  (element.c:714) sets "*len = data_size + 1" and appends a trailing '\0'. data_size is the
+  raw DER content length (13 for "YYMMDDHHMMSSZ", 15 for "YYYYMMDDHHMMSSZ").
+- Therefore raw_time_len = 14 (UTCTime) or 16 (GeneralizedTime); raw_time_len - 1 = 13 / 15,
+  matching x509_get_time's "len == 13" / "len == 15" checks. Indices read stay within the
+  allocated buffer (max index 11 for UTCTime in a 14-byte buffer; 13 for GeneralizedTime in
+  a 16-byte buffer). Non-13/15 lengths return "Unsupported ASN.1 time format" before any
+  digit is read, so malformed times cannot cause an out-of-bounds read.
+
+grub_x509_spec_t field ordering: the new check_validity function pointer is inserted after
+print and before parse_der in both the typedef (x509.h:119) and the sole initializer
+_grub_x509_spec (x509.c:1196-1207); grub_x509_spec points only at that instance
+(x509.c:1208) and there is no other/mock spec, so the positional initializer stays aligned
+and check_validity is never NULL at the call site (pkcs7.c:729).

@@ -1,0 +1,134 @@
+Investigation: MR !227 - grub-protect TPM2 authorized policy support (7 commits, clean)
+
+Source files read during review and verification:
+- util/grub-protect.c (protect_tpm2_get_key_name, protect_tpm2_get_policy_digest,
+  protect_tpm2_import_nvindex, protect_tpm2_export_nvindex, protect_tpm2_nv_undefine,
+  protect_tpm2_update_tpm2key_signature, protect_tpm2_sign_tpm2key, protect_tpm2_sign_policy,
+  protect_tpm2_generate_authkey, protect_tpm2_add, protect_tpm2_args_verify, protect_argp_parser,
+  option table, protect_args/protect_tpm2key_loc structs, action/arg/opt enums)
+- grub-core/lib/tss2/tpm2_cmd.c (grub_tpm2_verifysignature, grub_tpm2_sign)
+- grub-core/lib/tss2/tpm2_cmd.h (grub_tpm2_sign prototype)
+- grub-core/lib/tss2/tss2_mu.c (TPMU_ASYM_SCHEME Marshal/Unmarshal, TPMT_SIG_SCHEME_Marshal,
+  TPMT_TK_HASHCHECK_Marshal, TPMT_RSA_SCHEME_Marshal, TPMS_RSA_PARMS_Marshal)
+- grub-core/lib/tss2/tss2_mu.h, tss2_structs.h (TPMT_SIG_SCHEME / TPMU_SIG_SCHEME), tss2_types.h
+  (new TPM_ALG_*, TPM_ST_VERIFIED/HASHCHECK, TPM_CC_Sign)
+- grub-core/commands/tpm2_key_protector/module.c (sole grub_tpm2_verifysignature caller)
+- tests/tpm2_key_protector_test.in (new auth-policy add + sign-policy testcases)
+- docs/grub.texi (option/action documentation, glanced for consistency with the option table)
+
+
+== Why this review is clean ==
+
+This is a host-side build tool (grub-protect) plus supporting TSS2 marshalling. The runtime
+attack surface is small; the review focused on host-tool defects: resource leaks, handle
+lifetime (TPM contexts/sessions), TPM2 command wire-format correctness, and the authorized-policy
+data flow. No concrete defect was found. Detail below.
+
+
+== 1. TPM2_VerifySignature marshalling fix (692310f14) -- correct, no current impact ==
+
+Old order marshalled authCommand before keyHandle; the fix packs keyHandle first, matching the
+TPM2 command layout (handle area precedes the authorization area). Traced the only in-tree caller,
+tpm2_key_protector/module.c:726, which calls grub_tpm2_verifysignature(pubkey_handle, NULL, ...)
+with authCommand == NULL. With NULL auth the auth-marshal block is skipped in both old and new
+code, so keyHandle is the only field emitted and the produced bytes are identical -- the reorder
+changes nothing at runtime for the current caller. It only matters if a future caller passes a
+non-NULL authCommand. The commit message states precisely this ("no existing caller currently
+passes a non-NULL authCommand"), so the message is accurate and not overstated.
+
+
+== 2. grub_tpm2_sign + new marshallers (8b06d7766) -- wire order and field selection correct ==
+
+grub_tpm2_sign marshals: keyHandle (u32) -> authCommand (if non-NULL) -> digest (TPM2B) ->
+inScheme (TPMT_SIG_SCHEME) -> validation (TPMT_TK_HASHCHECK). This matches the TPM2_Sign command
+schematic (handle, auth area, then the digest/inScheme/validation parameters). Tag is
+TPM_ST_SESSIONS iff authCommand != NULL, and the response unmarshal reads parameterSize only when
+tag == TPM_ST_SESSIONS, then TPMT_SIGNATURE, then the auth response -- consistent with the request
+tag. NULL-arg guards (digest/inScheme/signature) return TPM_RC_VALUE; a NULL validation is
+synthesised as an empty TPM_ST_HASHCHECK/TPM_RH_NULL ticket, which is the correct "no ticket"
+value for signing an externally supplied (NULL-hierarchy) hash.
+
+TPMT_SIG_SCHEME_Marshal packs scheme (u16) and, when scheme != TPM_ALG_NULL, details.anySig.hashAlg
+(u16). For the only scheme used here, RSASSA (TPMS_SIG_SCHEME_RSASSA == a single hashAlg), that is
+the correct encoding. TPMT_TK_HASHCHECK_Marshal packs tag (u16), hierarchy (u32), digest (TPM2B):
+matches the ticket layout. TPMU_SIG_SCHEME is aliased to TPMU_ASYM_SCHEME and details.anySig
+.hashAlg reads the common hashAlg member -- consistent with how the union is used elsewhere.
+
+
+== 3. TPMU_ASYM_SCHEME RSAES deviation -- spec-nonconforming but unreachable ==
+
+The generic TPMU_ASYM_SCHEME (un)marshaller was changed from "only TPM_ALG_NULL, everything else
+error" to packing/unpacking anySig.hashAlg for RSASSA, RSAPSS, RSAES, OAEP, ECDSA, SM2, ECSCHNORR,
+ECMQV, ECDH. In the TPM 2.0 structure tables the union member selected by RSAES is
+TPMS_ENC_SCHEME_RSAES, which is TPMS_EMPTY (no hashAlg); the other selectors in the list resolve to
+a hash-bearing member. So emitting/consuming a hashAlg for the RSAES case is a spec deviation.
+
+Reachability: this marshaller is reached only via TPMT_RSA_SCHEME_Marshal -> TPMS_RSA_PARMS_Marshal
+(key template creation) and the corresponding unmarshal on readpublic. In-tree the RSA schemes used
+are RSASSA (generate-authkey template, SRK RSA scheme is TPM_ALG_NULL) -- no path constructs or
+reads an RSAES scheme. So the deviation cannot be triggered by any current caller and has no
+concrete impact; recorded as an observation, not an issue. (This is based on the in-tree structure
+definitions, not a fetched copy of the TPM 2.0 spec.)
+
+
+== 4. Authorized-policy data flow (fc009dfd9) -- consistent ==
+
+protect_tpm2_get_policy_digest(args, authorized, digest):
+- Builds the PCR selection/bitmask, reads PCRs, concatenates, TPM2_Hash -> pcr_digest.
+- Trial session -> TPM2_PolicyPCR -> TPM2_PolicyGetDigest -> policy_digest (the policy to authorize).
+- If authorized: resolves the authority key Name via TPM2_LoadExternal (get_key_name), starts a
+  fresh trial session, TPM2_PolicyAuthorize(policy_digest, empty policyRef, keySignName,
+  checkTicket{TPM_ST_VERIFIED, TPM_RH_OWNER}), then TPM2_PolicyGetDigest -> final authorized digest.
+
+protect_tpm2_sign_tpm2key signs the *pre*-authorize digest: it calls get_policy_digest(..., false)
+to obtain the plain PCR policy, TPM2_Hash's it (aHash = H(approvedPolicy || policyRef) with empty
+policyRef), then TPM2_Sign with RSASSA/SHA256. That matches what TPM2_PolicyAuthorize verifies at
+unseal time. The add path seals against the authorized digest (authorized=true) and then signs the
+pre-authorize digest -- the two are the correct complementary values.
+
+protect_tpm2_update_tpm2key_signature rewrites the tpm2key ASN.1: it caps authPolicy elements at 1
+(libtasn1 cannot delete SEQUENCE OF members, so >1 stale element is refused rather than silently
+kept), appends only when empty, sets Name="Default", ensures exactly TPM2KEY_AUTHPOLICY_CMDS(=2)
+Policy commands (PolicyPCR then PolicyAuthorize), marshals PolicyAuthorize params
+(TPM2B_PUBLIC || TPM2B(policyRef) || TPMT_SIGNATURE), then DER-encodes and stores to out_file
+and/or nvindex. The libtasn1 comments accurately describe the append-only limitation.
+
+
+== 5. NV-index re-define (6cd407772) -- correct ==
+
+protect_tpm2_export_nvindex now retries define after TPM_RC_NV_DEFINED by calling
+protect_tpm2_nv_undefine(nvindex) (readpublic to confirm the handle, then
+TPM2_NV_UndefineSpace under TPM_RH_OWNER) and re-issuing DefineSpace. protect_tpm2_import_nvindex
+reads back via NV_ReadPublic + NV_Read (dataSize bytes) into a grub_malloc'd buffer. Both take
+the args->tpm2_nvindex through explicit parameters now (the old code used args->tpm2_nvindex
+directly); the protect_tpm2_add call sites were updated to pass args->tpm2_nvindex / nvindex
+accordingly. Traced: no dangling use of the old signature.
+
+
+== 6. Resource / handle lifetime -- traced, no leak or UAF ==
+
+- get_key_name: auth_key freed on the size-check path and again after loadexternal on every path;
+  pubkey_handle flushed on success (0 and not flushed on loadexternal failure, since none created).
+- import_nvindex: allocates *data only on success; caller (update_tpm2key_signature) frees in_buf.
+- update_tpm2key_signature: in_buf and out_buf freed at the error label; tpm2key and asn1_def
+  ASN.1 structures deleted; early returns for read/import failure happen before any allocation.
+- sign_tpm2key: auth_key freed at exit1; loaded key_handle flushed at exit2 (guarded != 0).
+- generate_authkey / sign_policy / add: SRK flushed (guarded srk != 0), device closed on all
+  exits; sessions flushed in get_policy_digest's error label (guarded session != 0). The
+  unconditional flush of a possibly-persistent SRK handle is the pre-existing pattern (harmless
+  TPM_RC_HANDLE), not introduced here.
+
+Edge note (not an issue): import_nvindex does grub_malloc(nv_data.size); a zero-size NV index would
+make grub_malloc(0) potentially return NULL and be reported as OOM. Requires an empty NV index and
+is a benign misreport, not a memory-safety defect.
+
+
+== 7. Argument validation + test/docs ==
+
+protect_tpm2_args_verify gained generate-authkey (requires --tpm2-outfile; defaults SRK to ECC
+P-256) and sign-policy (requires --tpm2-authkey and --tpm2key; nvindex XOR keyfile/outfile;
+defaults PCR 7, ECC P-256 SRK, SHA256 bank) cases, and an add-time rule that --tpm2-authkey
+requires --tpm2key. --tpm2-authkey is guarded against being specified twice. The emu test exercises
+generate-authkey -> add(authkey) -> sign-policy after a PCR extend, asserting unseal succeeds; it
+follows the existing srktests harness conventions (a "Authoirzed" typo in a comment is cosmetic).
+Docs additions match the option table wording. No behavioural mismatch found.
