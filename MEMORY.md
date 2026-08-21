@@ -42,6 +42,11 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 - `CLAUDE.md` - Repository instructions and essentials
 - `MEMORY.md` - This file - workflows and current state
 - `docs/REVIEW_PROCESS.md` - Detailed review procedures
+- `docs/BUG_PATTERNS.md` - Recurring bug classes from past reviews (signatures + false-positive
+  guards + subsystem map); consult in Phase 1, append to when new patterns are found
+
+**Helpers**:
+- `helpers/lint-reviews.sh prNN [...]` - Pre-finalization checks for new reviews (Phase 5)
 
 **Data**:
 - `grub/` - Git repo with all branches (**DO NOT MODIFY**)
@@ -64,6 +69,11 @@ See global `sanity-check` skill. If REJECT: stop immediately, do not proceed.
 ### Phase 1: Perform Code Review
 
 **Critical principle**: NEVER report a bug without verifying it by reading actual code.
+
+0. **Consult the bug-pattern KB**: before reading source, look up the touched subsystem in
+   `docs/BUG_PATTERNS.md` (Subsystem → classes map) and read those class entries — signatures to
+   look for and the false-positive guards to apply before reporting. Append new patterns there
+   when a review finds one not already represented.
 
 1. **Count commits** (use correct base):
    ```bash
@@ -108,9 +118,12 @@ don't need one — see global review skill v3.9.0+ for the exact criteria.
 
 ### Phase 5: Format and Verify
 
-120 character line width (mandatory). Verify commit count matches review.
+120 character line width (mandatory). Verify commit count matches review. Run the linter on the
+new review(s) — it checks width across all artifacts, GitLab (not GitHub) links, reasoning-file ⇔
+issues consistency, and that companion-file links resolve:
 ```bash
 awk 'length > 120' reviews/prNN.md
+helpers/lint-reviews.sh prNN            # pass every new/updated review id
 ```
 
 ### Phase 6: Double-Check
