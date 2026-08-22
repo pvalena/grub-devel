@@ -116,11 +116,15 @@ what was checked and why nothing was found. Keep the review's "Additional findin
 section to 3-6 lines and link to the investigation file. Small/simple clean reviews
 don't need one — see global review skill v3.9.0+ for the exact criteria.
 
+A re-review that became clean is a special case (fixed prior issue, keep old reasoning
+file, add a new investigation file) — see "Re-reviewing Updated MRs" below.
+
 ### Phase 5: Format and Verify
 
 120 character line width (mandatory). Verify commit count matches review. Run the linter on the
 new review(s) — it checks width across all artifacts, GitLab (not GitHub) links, reasoning-file ⇔
-issues consistency, and that companion-file links resolve:
+issues consistency (with the re-review-became-clean exception below), and that companion-file links
+resolve:
 ```bash
 awk 'length > 120' reviews/prNN.md
 helpers/lint-reviews.sh prNN            # pass every new/updated review id
@@ -142,6 +146,23 @@ Zero output means that commit is unchanged in substance even if its hash changed
 because `origin/master` moved). Update the review with a "Re-review" header stating
 what changed; only fully re-review reworked/new commits. See global review skill
 v3.10.0+ for the full procedure.
+
+**When a re-review becomes clean** (the prior issue is fixed and no new issue is found,
+often because the whole area was reworked — so re-review it fully, not just the fix):
+
+- **Keep the prior round's `prNN_reasoning.txt` unchanged** — it is the traceability
+  record of the issue that was found and fixed. Do not edit or delete it (deleting
+  loses history; editing rewrites what a past review actually said).
+- **Add a new `prNN_investigation.txt`** for the current clean re-verification — this
+  is the customary companion for an issue-free review (Phase 4). Put the reworked-code
+  re-verification (bounds, memory, enforcement, any latent bugs the rework also fixed)
+  there.
+- **Write `prNN.md` in the clean format**: a "## Re-review" section stating the prior
+  issue is fixed (show the applied fix), then "No issues found" + "## Additional
+  findings" + a link to the *investigation* file (not the reasoning file).
+- The linter accepts this exact shape: a clean review that retains a `_reasoning.txt`
+  is a WARN (not a FAIL) **only when** an `_investigation.txt` is also present; a clean
+  review with a lone `_reasoning.txt` is still a FAIL (a genuine leftover to remove).
 
 ### Reviewing MRs via Agent Batches
 
