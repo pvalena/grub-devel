@@ -1,0 +1,133 @@
+Investigation: MR !232 - appendedsig X.509 certificate validity checking (re-review, 3 commits)
+
+This file replaces the earlier pr232_reasoning.txt. The single issue that reasoning file
+documented (grub_get_datetime return ignored / current_dt read uninitialized) has been fixed
+in the current revision, so the review is now clean; this investigation records the re-review
+of the reworked code and the verification that nothing new was introduced.
+
+Source files read during review and verification:
+- grub-core/commands/appendedsig/x509.c (x509_str2digit, x509_days_in_month, x509_get_time,
+  x509_get_validity, x509_check_validity, x509_cert_parse_der, x509_cert_release,
+  _grub_x509_spec)
+- grub-core/commands/appendedsig/x509.h (grub_x509_cert_t, grub_x509_spec_t,
+  grub_x509_time_t, grub_x509_validity_t)
+- grub-core/commands/appendedsig/pkcs7.c (pkcs7_get_signer_cert, pkcs7_signed_data_verify)
+- grub-core/commands/appendedsig/appendedsig.c (add_certificate)
+- grub-core/commands/appendedsig/asn1_util.c (grub_asn1_allocate_and_read)
+- grub-core/lib/ieee1275/datetime.c (grub_get_datetime)
+- include/grub/datetime.h (struct grub_datetime, grub_get_datetime, grub_datetime2unixtime)
+- grub-core/Makefile.core.def (appendedsig module: enable = emu; enable = powerpc_ieee1275)
+
+
+== What changed vs the previously reviewed revision ==
+
+diff of (origin/master..3627367bc) against (origin/master..pr232) shows:
+1. x509_check_validity: grub_get_datetime return is now checked; failure returns GRUB_ERR_IO
+   (fail closed). This is the fix for the sole previously-reported issue.
+2. x509_get_time UTCTime year mapping changed from "1950 + year" to "1900 + year".
+3. flat "dt->day > 31" replaced by "dt->day > x509_days_in_month (dt->year, dt->month)";
+   new helper x509_days_in_month added.
+4. appendedsig.c add_certificate now calls check_validity at load time (new enforcement
+   site, in addition to the verify-time site in pkcs7_get_signer_cert).
+5. dprintf messages now include the certificate CN (cert->subject).
+
+
+== Previously-reported issue: confirmed fixed ==
+
+x509_check_validity now begins:
+  if (cert == NULL)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "bad input certificate");
+  if (grub_get_datetime (&current_dt) != GRUB_ERR_NONE)
+    { grub_dprintf (...); return GRUB_ERR_IO; }
+No path reads current_dt without grub_get_datetime having returned GRUB_ERR_NONE (which, per
+grub-core/lib/ieee1275/datetime.c, is the only path on which *datetime is fully written).
+The uninitialized read is gone. Policy is fail-closed and now applied at both the load site
+(add_certificate) and the verify site (pkcs7_get_signer_cert); the author has stated this is
+intended.
+
+
+== UTCTime 2-digit year (RFC 5280 4.1.2.5.1) ==
+
+Current code:
+  int year = x509_str2digit (time_str);
+  dt->year = (year < 50) ? (2000 + year) : (1900 + year);
+RFC 5280: YY < 50 => 20YY; YY >= 50 => 19YY. year in [0,49] -> [2000,2049]; year in [50,99]
+-> [1950,1999]. Correct. The earlier "1950 + year" mapped year=50 to 2000 (wrong); this was
+not flagged in the first review and is now corrected in the rework, so it is moot for the
+current revision but noted for completeness.
+
+
+== x509_days_in_month bounds ==
+
+  static const grub_uint8_t days[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };  /* 12 entries */
+  if (month == 2 && (year%4==0) && (year%100!=0 || year%400==0)) return 29;
+  return days[month - 1];
+Called only from the range check in x509_get_time:
+  if (dt->month < 1 || dt->month > 12 || dt->day < 1 ||
+      dt->day > x509_days_in_month (dt->year, dt->month) || ...)
+Because "dt->month < 1 || dt->month > 12" precedes the call and "||" short-circuits, the
+helper is only reached with month in [1,12], so days[month-1] indexes [0,11] -- in bounds.
+Leap-year rule is the standard Gregorian one and dt->year is the full year (2000+yy / 1900+yy
+for UTCTime, 4-digit for GeneralizedTime), so February gets 29 correctly (e.g. 2000, 2024).
+
+
+== x509_get_time buffer bounds ==
+
+grub_asn1_allocate_and_read(node, name, friendly, &content_size):
+  - asn1_read_value(node, name, NULL, &tmpstr_size) -> size needed
+  - grub_malloc(tmpstr_size); asn1_read_value(node, name, tmpstr, &tmpstr_size)
+  - *content_size = tmpstr_size; return tmpstr
+For UTCTime/GeneralizedTime values libtasn1 uses PUT_AS_STR_VALUE, which sets
+*len = data_size + 1 and appends a trailing '\0'. So:
+  - UTCTime  "YYMMDDHHMMSSZ":  data_size 13 -> buffer 14 bytes, content_size 14.
+  - GenTime  "YYYYMMDDHHMMSSZ": data_size 15 -> buffer 16 bytes, content_size 16.
+x509_get_validity passes len = raw_time_len - 1 (= data_size):
+  - UTCTime: len 13. x509_get_time checks "len == 13 && time_str[12] == 'Z'"; reads digit
+    pairs at offsets up to 10..11 after time_str += 2 (i.e. original indices <= 11). Max
+    index touched 12 (< 14). In bounds.
+  - GenTime: len 15. checks "len == 15 && time_str[14] == 'Z'"; after time_str += 4 reads up
+    to original index 13. Max index touched 14 (< 16). In bounds.
+"len == 13"/"len == 15" are evaluated before the time_str[12]/time_str[14] reads (&& short-
+circuit), so a short/long value is rejected ("Unsupported ASN.1 time format") before any
+out-of-range access. len <= 0 (e.g. content_size 0/1) also falls through to the reject.
+
+
+== Digit parsing robustness (not an issue) ==
+
+x509_str2digit does (str[0]-'0')*10 + (str[1]-'0') with no is-digit check. A non-digit byte
+can yield a value that the subsequent range check then rejects (month/day/hour/minute/second
+all validated; struct grub_datetime fields are unsigned so a negative intermediate wraps to a
+large value and is caught by the upper-bound test). The only way a non-digit survives is if
+it still lands inside the valid range (e.g. "0:" -> 10), which mis-parses but cannot cause
+OOB or a security-relevant misvalidation of time ordering. libtasn1 having already typed the
+value as UTCTime/GeneralizedTime makes non-digit content unlikely. Left as-is; noted only.
+
+
+== Enforcement logic ==
+
+pkcs7_get_signer_cert: on a serial+issuer match it does
+  ret = pkcs7_check_aginst_rcl (rcl, pk);
+  if (ret == GRUB_ERR_NONE) { ret = check_validity (pk); if (ret == GRUB_ERR_NONE) *cert = pk; }
+  else *cert_revoked = true;
+  return ret;
+If validity fails, *signer_cert is left unset and ret carries the error. The caller
+pkcs7_signed_data_verify declares "pk" uninitialized but guards every use with
+"if (ret != GRUB_ERR_NONE) continue;", so the unset pointer is never dereferenced. On success
+it returns GRUB_ERR_NONE immediately. (A stale grub_errno can linger after a recovered
+failure, but that matches existing GRUB convention throughout this file and callers key off
+the return value; not treated as a defect.)
+
+add_certificate: after the existing checks it does
+  rc = check_validity (cert); if (rc != GRUB_ERR_NONE) goto fail;
+cert is fully parsed at this point (x509_cert_parse_der now calls x509_get_validity, which
+populates valid_from/valid_to, or fails the parse), so valid_from/valid_to are populated
+before check_validity reads them.
+
+grub_x509_spec_t wiring: check_validity is inserted between print and parse_der in both the
+typedef (x509.h) and the single initializer _grub_x509_spec (x509.c); grub_x509_spec points
+only at that instance, so the positional initializer stays aligned and the pointer is never
+NULL at either call site.
+
+x509_get_validity memory: type, validity_path, and raw_time are each freed on every path
+(success and error). No leaks. x509_cert_release memsets valid_from/valid_to to 0 (harmless
+cleanup of embedded structs, not allocations).

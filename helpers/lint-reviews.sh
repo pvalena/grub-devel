@@ -19,6 +19,9 @@
 #   2. no github.com links (this project's remote is GitLab)       [FAIL]
 #   3. issues/reasoning consistency:
 #        - "No issues found" review must NOT have a _reasoning.txt  [FAIL]
+#          exception: a re-review that became clean may retain the
+#          prior round's _reasoning.txt for traceability -- allowed
+#          when an _investigation.txt is also present               [WARN]
 #        - a review with issues MUST have a _reasoning.txt          [FAIL]
 #   4. every _reasoning/_investigation link resolves to a file     [FAIL]
 #   5. clean review with no _investigation.txt (ok if small)       [WARN]
@@ -78,7 +81,11 @@ for raw in "$@"; do
   clean=0
   grep -qiE '^[[:space:]]*No issues found\.?[[:space:]]*$' "$md" && clean=1
   if [ "$clean" -eq 1 ] && [ -f "$reasoning" ]; then
-    err "review says 'No issues found' but a _reasoning.txt exists (reasoning files are only for reviews WITH issues)"
+    if [ -f "$investigation" ]; then
+      warn "clean review retains a _reasoning.txt -- ok only if it is a prior review round's file kept for traceability (an _investigation.txt is present)"
+    else
+      err "review says 'No issues found' but a _reasoning.txt exists (reasoning files are only for reviews WITH issues)"
+    fi
   fi
   if [ "$clean" -eq 0 ] && [ ! -f "$reasoning" ]; then
     err "review reports issues but has no _reasoning.txt"

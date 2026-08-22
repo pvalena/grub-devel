@@ -1,0 +1,109 @@
+Reasoning: MR !233 - ieee1275/ofdisk: fix NULL deref and UAF in ofdisk_hash_add (1 commit)
+
+Source files read during review and verification:
+- grub-core/disk/ieee1275/ofdisk.c (ofdisk_hash_add, ofdisk_hash_add_real,
+  check_string_removable, dev_iterate_real)
+
+
+== Issue 1: curcan leaked on the ofdisk_hash_add_real(curcan) failure path (ofdisk.c) ==
+
+Discovery:
+The commit fixes a NULL deref by moving the "if (!pcan)" check earlier and returning early:
+
+  if (!pcan)
+    pcan = ofdisk_hash_add_real (curcan);
+  else
+    {
+      grub_free (curcan);
+      curcan = NULL;
+    }
+
+  if (!pcan)
+    {
+      grub_errno = GRUB_ERR_NONE;
+      return p;
+    }
+
+The new "return p" is a fresh exit path that did not exist before (the original code fell
+through to the is_removable/shortest handling, where it would have NULL-dereferenced pcan).
+The question is whether curcan is correctly disposed of on this new path.
+
+Ownership trace:
+1. Caller dev_iterate_real() (ofdisk.c:~215):
+     char *name_dup = grub_strdup (name);
+     char *can = grub_strdup (path);
+     if (!name_dup || !can) { grub_errno = GRUB_ERR_NONE; grub_free (name_dup);
+                              grub_free (can); return; }
+     op = ofdisk_hash_add (name_dup, can);
+     return;
+   After the call, dev_iterate_real does NOT free can. So ofdisk_hash_add owns curcan and
+   must free it or store it on every path.
+
+2. ofdisk_hash_add honours that contract on the other paths:
+   - "if (!curcan)" early branch: nothing to free (curcan is NULL).
+   - "else" branch (pcan found via ofdisk_hash_find): grub_free (curcan); curcan = NULL.
+   - success of ofdisk_hash_add_real (curcan): ownership transferred -- see step 3.
+
+3. ofdisk_hash_add_real(devpath) (ofdisk.c:~84):
+     p = grub_zalloc (sizeof (*p));
+     if (!p) return NULL;
+     p->devpath = devpath;                 /* stores the pointer (no copy) */
+     ... on overflow/alloc failure:
+       grub_free (p->grub_devpath); grub_free (p); return NULL;   /* p->devpath NOT freed */
+       grub_free (p); return NULL;                                /* p->devpath NOT freed */
+   So on success the passed string becomes p->devpath (owned by the new entry). On failure
+   the function frees only its own p (and grub_devpath), never the passed-in string.
+
+4. Therefore, when "pcan = ofdisk_hash_add_real (curcan)" returns NULL, curcan is neither
+   stored nor freed by the callee, and the new "if (!pcan) { ...; return p; }" in
+   ofdisk_hash_add returns without freeing it. curcan leaks.
+
+False-positive guards applied (docs/BUG_PATTERNS.md resource-leak-error-path):
+- Embedded array vs allocation: curcan is a grub_strdup() heap string, a real allocation,
+  not an embedded array field -- freeing it is a leak fix, not a double-free.
+- fd==0 sentinel: N/A (pointer, not a descriptor).
+- Sink takes ownership? ofdisk_hash_add_real takes ownership only on SUCCESS; on failure it
+  does not free the argument (verified in step 3). So the leak is real.
+- Cleanup outside the diff hunk? Read the full function via git show pr233:...ofdisk.c; the
+  "return p" has no later free of curcan. No out-label cleanup exists.
+- Sibling pattern: the same function's other two disposals of curcan (grub_free in the else
+  branch; storage on add_real success) confirm the omission on the failure path is
+  unintentional.
+
+Consequence:
+On a powerpc/ieee1275 system under heap pressure, each ofdisk_hash_add() call whose
+canonical-path insertion hits OOM leaks one grub_strdup'd canonical device-path string.
+It is an OOM-only path so impact is low, but it is a leak newly introduced by a patch whose
+stated purpose is fixing memory-safety defects in exactly this function. The pre-existing
+crash on this path (NULL deref) is what the patch removes; the residual is the leak.
+
+Fix assessment:
+Adding "grub_free (curcan);" before "grub_errno = GRUB_ERR_NONE; return p;" restores the
+ownership contract. curcan is guaranteed non-NULL and un-freed on this branch (the else
+branch that frees/NULLs curcan runs only when pcan was found, in which case pcan is non-NULL
+and this block is not entered). grub_free(NULL) is a no-op regardless, so the fix is safe
+even if that reasoning is ever violated by future edits. The fix introduces no new problems:
+p is already linked into the hash by ofdisk_hash_add_real(devpath) and is still returned.
+
+
+== Verification notes (no issue) : the two targeted fixes are correct ==
+
+UAF on curcan:
+Original code did "else grub_free (curcan);" then later "check_string_removable (curcan)",
+reading freed memory. The patch sets curcan = NULL after the free, and the new NULL guard in
+check_string_removable ("if (!str) return 0;") makes the later call return 0 instead of
+dereferencing a dangling pointer. Note the canonical-name removable check is now skipped for
+already-cached entries (curcan == NULL) but still runs for freshly added entries (curcan
+stays valid because ofdisk_hash_add_real took ownership without freeing). The prior behaviour
+on the cached-entry path was undefined (UAF), so skipping it is the correct resolution.
+
+NULL deref on pcan:
+Original code executed "if (check_string_removable (...)) pcan->is_removable = 1;" before the
+"if (!pcan)" test, dereferencing pcan when ofdisk_hash_add_real(curcan) returned NULL. The
+patch moves the "if (!pcan)" test ahead of all pcan dereferences and returns early, so
+pcan is guaranteed non-NULL at the is_removable/shortest code below.
+
+check_string_removable NULL guard:
+"if (!str) return 0;" added before grub_strrchr (str, '/'). This both enables the curcan=NULL
+UAF fix above and defends the function generally. grub_strrchr on NULL would otherwise
+dereference NULL.
