@@ -1,0 +1,122 @@
+Investigation: MR !226 - efi: set loaded image device path when missing (re-review, 3 commits)
+
+Companion to the clean re-review. The prior round's pr226_reasoning.txt (the two issues that
+were found and are now fixed) is kept unchanged for traceability; this file records the
+re-verification of the reworked code and the two non-failing observations.
+
+Source files read during review and verification:
+- grub-core/loader/efi/linux.c (grub_arch_efi_linux_boot_image)
+- grub-core/loader/efi/chainloader.c (grub_chainloader_context, grub_chainloader_unload,
+  grub_chainloader_boot, grub_cmd_chainloader)
+- include/grub/efi/api.h (GRUB_EFI_LOADED_IMAGE_DEVICE_PATH_PROTOCOL_GUID)
+- grub-core/kern/dl.c (grub_dl_register_symbol)
+
+
+== What changed vs the previously reviewed revision ==
+
+Old tips: 74b6b14de (api), 819b9a680 (chainloader), 679169c40 (linux).
+New tips: 195ea7e98 (linux), 9dc7e1578 (chainloader), 74b6b14de (api).
+
+- api commit 74b6b14de: byte-identical (same hash present in both branches).
+- linux.c: diff of (master..679169c40) vs (master..195ea7e98) shows only the added error-path
+  cleanup "loaded_image->file_path = NULL; grub_free (mempath);" (the prior Issue 1 fix).
+- chainloader.c: reworked more broadly. Restore moved out of the fail path into
+  grub_chainloader_unload() via a heap ctx passed through grub_loader_set_ex(); the prior
+  Issue 2 fix ("loaded_image->file_path = NULL;" on the handle_protocol failure path) is
+  present.
+
+
+== Prior issues: confirmed fixed ==
+
+linux.c (grub_arch_efi_linux_boot_image), handle_protocol failure path:
+  status = b->handle_protocol (image_handle, &loaded_image_device_path_guid, &saved_device_path);
+  if (status != GRUB_EFI_SUCCESS)
+    {
+      grub_error (...);
+      loaded_image->file_path = NULL;   /* was left dangling into mempath */
+      grub_free (mempath);              /* was leaked */
+      goto unload;                       /* override_dp still false */
+    }
+At unload with override_dp == false: only grub_efi_unload_image runs; file_path is NULL and
+mempath is freed. No dangling, no leak.
+
+chainloader.c (grub_cmd_chainloader), handle_protocol failure path:
+  status = b->handle_protocol (image_handle, &loaded_image_device_path_guid,
+                               &ctx->saved_device_path);
+  if (status != GRUB_EFI_SUCCESS)
+    {
+      grub_error (...);
+      loaded_image->file_path = NULL;   /* was left pointing into fp before unload */
+      goto fail;
+    }
+file_path has not yet been transferred to ctx at this point, so the fail path's
+grub_free (file_path) frees it (no leak) and loaded_image->file_path is NULL before
+grub_efi_unload_image.
+
+
+== Reworked chainloader lifecycle: correct ==
+
+Override branch (only when file_path != NULL && loaded_image->file_path == NULL):
+  ctx->file_path = file_path;                 /* ownership moves to ctx */
+  walk fp to the MEDIA/FILE_PATH node; loaded_image->file_path = fp;  /* points into file_path */
+  handle_protocol(... &ctx->saved_device_path);
+  reinstall_protocol_interface(handle, guid, ctx->saved_device_path /*old*/, file_path /*new*/);
+  file_path = NULL;                           /* so the tail grub_free(file_path) is a no-op */
+After this block there is no "goto fail" before "return 0", so once ownership moves to ctx the
+function always succeeds -- no double free of file_path and no ctx leak.
+
+Success tail: grub_free (file_path) (NULL if override taken; otherwise frees the built path
+that LoadImage already copied), grub_loader_set_ex(..., ctx, 0), return 0.
+
+grub_chainloader_unload(ctx):
+  loaded_image = grub_efi_get_loaded_image (ctx->image_handle);
+  if (loaded_image) { grub_free(load_options);
+     if (ctx->file_path) { loaded_image->file_path = ctx->saved_file_path;
+        reinstall_protocol_interface(handle, guid, ctx->file_path /*old=installed*/,
+                                     ctx->saved_device_path /*new=restore*/); } }
+  grub_efi_unload_image(ctx->image_handle);
+  grub_free(ctx->file_path); grub_free(ctx); grub_dl_unref(my_mod);
+Ordering is correct: the device-path protocol is swapped back to saved_device_path and
+loaded_image->file_path is cleared BEFORE unload_image; ctx->file_path is freed AFTER
+unload_image, so nothing the firmware might touch during unload points at freed memory.
+Symmetric with the install in grub_cmd_chainloader. reinstall old/new arguments match
+(install put file_path in; unload takes file_path out, puts saved_device_path back).
+
+Non-override path: ctx zalloc'd, ctx->file_path == NULL, ctx->saved_device_path == NULL; unload
+skips the restore block, frees ctx. loaded_image->file_path (firmware's own) is untouched.
+
+Allocator discipline: mempath (linux.c) and file_path (chainloader.c) are grub_malloc/
+make_file_path allocations, freed with grub_free, and are always removed from
+loaded_image->file_path / the device-path protocol before the image's loader (which frees
+those with the EFI pool allocator) runs. The grub-owned buffers are never handed to FreePool.
+
+
+== Observation 1: loaded_image_device_path_guid is non-static in chainloader.c ==
+
+chainloader.c:49  grub_guid_t loaded_image_device_path_guid = GRUB_EFI_..._GUID;   (no static)
+linux.c:58        static grub_guid_t loaded_image_device_path_guid = GRUB_EFI_..._GUID;
+The sibling GUIDs (load_file2_guid, device_path_guid) are static too. grub_dl_register_symbol
+(kern/dl.c) does not reject duplicate names -- it prepends to grub_symtab, so a second
+definition would shadow rather than hard-fail. Today linux.c's copy is static, so only
+chainloader exports the name and nothing collides; hence no current failure. It remains a real
+defect: an unnecessary global export from chainloader.mod and a latent shadow/coupling risk if
+any other module ever defines the same name. Fix: add static (see review .md).
+
+
+== Observation 2: saved_file_path is never captured (both files) ==
+
+linux.c declares a local saved_file_path = NULL and, at unload, does
+"loaded_image->file_path = saved_file_path;". chainloader.c carries ctx->saved_file_path
+(zalloc'd NULL) and, at unload, does "loaded_image->file_path = ctx->saved_file_path;".
+Neither is ever assigned the pre-override value. This is correct only because the override is
+guarded by "loaded_image->file_path == NULL", so the value to restore is always NULL. Harmless
+but misleading given the "originals are kept" comments; either remove the dead field/variable
+or actually capture loaded_image->file_path before overwriting it.
+
+
+== load_options / cmdline on the chainloader fail path (pre-existing, not this MR) ==
+
+On the fail path, grub_free(cmdline) runs while loaded_image->load_options may still point at
+it, then grub_efi_unload_image is called. This handling predates this MR (the cmdline block
+and the fail-path free are outside the diff); UnloadImage does not read load_options, and
+loaded_image is gone afterward. Noted only to record it was considered and is out of scope.
