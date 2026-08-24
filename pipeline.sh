@@ -149,7 +149,7 @@ while :; do
     run "cd grub && gitc main && ./sync.sh"
     ( cd grub && git show )
     con "Push the reviews to git (gitlab)"
-    run "cd grub && git push"
+    run "cd grub && git push && gitc master"
 done
 
 echo '=> DONE'
