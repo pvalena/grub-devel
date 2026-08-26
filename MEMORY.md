@@ -164,6 +164,24 @@ often because the whole area was reworked — so re-review it fully, not just th
   is a WARN (not a FAIL) **only when** an `_investigation.txt` is also present; a clean
   review with a lone `_reasoning.txt` is still a FAIL (a genuine leftover to remove).
 
+### Review Delegation Model (default)
+
+Reviews are done by **Sonnet 5 agents**, not by the main model directly:
+1. **Review agent** (Sonnet 5, one agent may handle several MRs) runs Phases 0-6 and writes
+   the review artifacts — including the companion file when warranted (reasoning for reviews
+   with issues; investigation for large/complex clean reviews). Creating companions is the
+   agent's job, not the main model's.
+2. **Adversarial agent** (Sonnet 5, *separate/fresh context*) double-checks: re-verifies every
+   finding against source, hunts for false positives and missed issues, checks the linter.
+3. **Main model** reads the review and **approves** — it does NOT re-verify against source
+   itself. Spot-check source only on a red flag (a claim likely beyond agent competence:
+   subtle low-level/UB, crypto, or spec/platform assertions), not routinely. If a needed
+   companion file is missing, bounce the task back to the review agent (SendMessage) to
+   produce it rather than writing it yourself. Run `helpers/lint-reviews.sh` before approving.
+
+Spawn agents with `model: sonnet` (the Agent tool rejects explicit ids like `claude-sonnet-5`;
+the `sonnet` alias resolves to Sonnet 5 with the session subagent-model config).
+
 ### Reviewing MRs via Agent Batches
 
 For large `data/new.txt` queues, split by complexity: large/complex MRs (library
