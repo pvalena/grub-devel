@@ -1,0 +1,100 @@
+Reasoning: MR !238 - CI: Create a 'Release' Pipeline (1 commit)
+
+Files read during review and verification:
+- .gitlab-ci.yml (include + stages)
+- .gitlab-ci/yml/release.yml (trigger-release, child pipeline trigger)
+- .gitlab-ci/yml/release-artifacts.yml (create/sign/upload/release jobs + images)
+- .gitlab-ci/yml/global.yml (default image bump)
+- .gitlab-ci/script/create-artifacts.sh
+- .gitlab-ci/script/sign-artifacts.sh
+- .gitlab-ci/script/upload-artifacts.sh
+- .gitlab-ci/script/create-release.sh
+- verified .gitlab-ci/yml/matrix.yml exists (release-artifacts.yml includes it)
+
+
+== Issue 1: set -x leaks GPG private key, passphrase, and job token (sign/upload scripts) ==
+
+Discovery:
+sign-artifacts.sh line 3 is "set -xeu -o pipefail". Line 6 imports the signing key and lines
+12-14 sign with a passphrase passed on the gpg command line. upload-artifacts.sh line 3 is
+also "set -xeu -o pipefail" and lines 12/19 pass CI_JOB_TOKEN in a curl header.
+
+Mechanism:
+Bash xtrace (set -x) writes each command to stderr AFTER parameter expansion, prefixed with
+"+". So the shell emits, into the CI job log:
+  + echo <expanded $GPG_PRIVATE_KEY>              (line 6; the base64 signing key)
+  + base64 -d
+  + gpg --batch --import -
+  + gpg --batch --pinentry-mode loopback --passphrase <expanded $GPG_PASSPHRASE> --detach-sign ...
+                                                   (lines 12-14; the passphrase)
+  + curl --header "JOB-TOKEN: <expanded $CI_JOB_TOKEN>" ...   (upload lines 12/19)
+The pipeline "echo "$GPG_PRIVATE_KEY" | base64 -d | gpg" still traces the echo simple command
+with the key expanded, regardless of the later decode.
+
+Why GitLab masking does not save this:
+GitLab masks only variables explicitly marked "Masked" in project settings, and only when the
+value satisfies masking rules (single line, >= 8 chars, restricted character set, no leading/
+trailing whitespace). A human-chosen GPG passphrase frequently contains characters outside the
+maskable set, and masking is opt-in per variable. Relying on it is fragile; the robust control
+is to not xtrace secret-handling commands.
+
+Consequence:
+CI job logs are visible to project members (and can be public for public projects, or leak via
+forks/artifacts). Exposing the long-lived GPG *signing* private key plus its passphrase is the
+most severe outcome: it enables forging valid signatures on GRUB release tarballs, defeating
+the whole point of the signing step. The CI_JOB_TOKEN leak is lower severity (job-scoped,
+short-lived) but still should not be printed.
+
+Fix assessment:
+Dropping -x from sign-artifacts.sh and upload-artifacts.sh (set -eu -o pipefail) removes the
+trace entirely and keeps errexit/nounset/pipefail. It does not change behaviour otherwise.
+create-artifacts.sh keeps -x safely (no secrets there). A finer-grained option is to bracket
+only the secret lines with "set +x" / "set -x". Passing the passphrase via --passphrase-fd or
+a file (instead of argv) additionally removes it from the process argument list; not strictly
+required to fix the log leak but good hardening for a signing job.
+
+
+== Issue 2: create-release.sh uses bash-only syntax under #!/bin/sh ==
+
+Discovery:
+create-release.sh line 1 is "#!/bin/sh", but line 3 is "set -xeu -o pipefail" and line 45 is
+"if [[ "$CI_COMMIT_TAG" =~ $RC ]]; then".
+
+Source trace:
+- "set -o pipefail" is a bash/ksh/zsh (and recent busybox ash) option; it is NOT in POSIX sh.
+  dash rejects it ("set: Illegal option -o pipefail") and exits.
+- "[[ ... ]]" and the "=~" regex operator are bash keywords; POSIX sh and busybox ash have no
+  "[[" at all.
+- The job runs in registry.gitlab.com/gitlab-org/release-cli:latest (release-artifacts.yml
+  line 33). release-cli is a Go binary usually packaged on alpine, whose /bin/sh is busybox
+  ash. On alpine, "[[" is unknown -> line 45 fails; on a dash-based /bin/sh, line 3 fails.
+- The other new scripts (create/sign/upload) use "#!/bin/bash" and run in the debian-trixie
+  image (has bash), so their pipefail/bash usage is fine. create-release.sh is the only one
+  declaring sh while using bash syntax.
+
+Consequence:
+Under set -e, a failure at line 3 or line 45 aborts the job, so no GitLab release is created
+(the final "release-cli create" is never reached). At minimum the RC-vs-final note logic is
+broken. The failure is deterministic for a non-bash /bin/sh, which the release-cli image very
+likely has.
+
+Fix assessment:
+Make the script POSIX: drop "-o pipefail" (keep "set -xeu") and replace the regex test with a
+POSIX equivalent, e.g. 'if echo "$CI_COMMIT_TAG" | grep -q "$RC"; then' or
+'case "$CI_COMMIT_TAG" in *"$RC"*) ... ;; esac'. This is safe regardless of which shell the
+image provides. Switching the shebang to #!/bin/bash would also work but only if that image
+ships bash, which is not established here; POSIX is the lower-risk fix. -x is fine to keep in
+this script (GPG_FINGERPRINT is public; release-cli reads CI_JOB_TOKEN from the environment,
+not from a traced command line).
+
+
+== Notes (no issue) ==
+
+- release.yml trigger-release runs only "if: $CI_COMMIT_TAG", i.e. on tag pushes, and triggers
+  the release-artifacts child pipeline. The child jobs have no own rules but only run because
+  the parent triggers them on a tag, so they do not fire on normal pushes.
+- create-artifacts.sh does its work under /tmp and copies the "artifacts" dir back to
+  $CI_PROJECT_DIR for GitLab to collect; artifacts: paths: [artifacts] matches.
+- Unquoted $CI_PROJECT_DIR / $GRUB_CI_COMMIT_TAG expansions are safe in practice (CI paths and
+  version strings contain no whitespace); noted but not flagged.
+- "uplaod" typo and the reused "tee upload.txt" target in upload-artifacts.sh are cosmetic.
