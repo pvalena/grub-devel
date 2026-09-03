@@ -1,0 +1,281 @@
+pr256 investigation — I/O read coalescing across fs/fshelp.c, fs/fat.c, disk/diskfilter.c
+
+This review covered a 4-commit series adding read coalescing at three layers of the storage stack
+(~+240/-85 lines). Read the actual source at the branch (git show pr256:<file>) and traced concrete
+examples through each code path.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+COMMIT SUMMARY
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+1. a6b30628 fs/fshelp: Coalesce contiguous file blocks
+   - grub-core/fs/fshelp.c: +43/-2 lines
+   - Merges consecutive physical blocks from filesystems into larger disk requests
+
+2. 9aea21f3 fs/fat: Factor out cluster-chain traversal
+   - grub-core/fs/fat.c: +67/-57 lines
+   - Extracts FAT-entry decoding/validation into grub_fat_next_cluster() helper
+
+3. c765dc03 fs/fat: Coalesce adjacent cluster reads
+   - grub-core/fs/fat.c: +65/-1 lines
+   - Uses the helper to merge contiguous FAT clusters into single reads
+
+4. 49562e27 disk/diskfilter: Coalesce linear and mirror reads
+   - grub-core/disk/diskfilter.c: +65/-25 lines
+   - Merges adjacent LVM linear segments; simplifies mirror failover to whole-request retry
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+ANALYSIS APPROACH
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+For each subsystem, verified:
+1. Contiguity checks (block/cluster address arithmetic, segment physical adjacency)
+2. Partial-block/cluster boundary handling (first block offset, final block size)
+3. Edge cases (holes/sparse blocks, end-of-chain, cyclic FAT chains, mirror failover)
+4. Size arithmetic (overflow guards via max_read limits, total bounded by request len)
+5. Return value semantics (error propagation, grub_errno handling)
+
+Traced concrete examples through each coalescing loop with real offsets/sizes/addresses.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+fs/fshelp.c — BLOCK COALESCING
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+grub_fshelp_read_file() now merges consecutive physical blocks from the filesystem's get_block()
+callback. The loop starts with one block, then extends the run if subsequent blocks are
+physically adjacent and not holes.
+
+CONTIGUITY CHECK (line 474):
+  if (! next || next != blknr + (run_blocks << log2blocksize))
+    break;
+
+- Stops on holes (next == 0)
+- Verifies physical adjacency: next must equal blknr + (accumulated run size in sectors)
+- blknr is already shifted by log2blocksize (line 423), so run_blocks shift converts blocks→sectors
+
+EXAMPLE: 3 contiguous 512-byte blocks at disk sectors 100,101,102; read 1536 bytes from offset 0
+  i=0: blknr=100, blockend=512, run_length=512, run_blocks=1
+  Coalescing: get_block(1)=101, check 101 == 100+(1<<0)? Yes → run_length=1024, run_blocks=2
+              get_block(2)=102, check 102 == 100+(2<<0)? Yes → run_length=1536, run_blocks=3
+              i+run_blocks (3) < blockcnt (3)? No → exit loop
+  Read 1536 bytes from sector 100, advance buf+=1536, i+=3
+  Result: Single 3-block read instead of 3 separate reads.
+
+FINAL BLOCK (lines 459-464):
+  if (i + run_blocks == blockcnt - 1)
+    {
+      next_length = (len + pos) & (blocksize - 1);
+      if (! next_length)
+        next_length = blocksize;
+    }
+
+- When coalescing reaches the last block, next_length = partial size mod blocksize
+- If exactly aligned (mod = 0), use full blocksize
+- Example: len=1000, blocksize=512 → final block next_length=(1000&511)=488 ✓
+
+FIRST BLOCK (lines 436-440):
+  if (i == (pos >> (log2blocksize + GRUB_DISK_SECTOR_BITS)))
+    {
+      skipfirst = blockoff;
+      blockend -= skipfirst;
+    }
+
+- Reduces blockend by the intra-block offset, used as grub_disk_read(..., skipfirst, ...) offset
+- run_length initialized to blockend (line 442), so first-block offset is correct
+
+HOLE HANDLING (line 446-491):
+  if (blknr) { /* coalescing + read */ }
+  else grub_memset(buf, 0, blockend);
+  buf += run_length; i += run_blocks;
+
+- Holes (blknr==0) skip coalescing, zero-fill blockend bytes, advance by run_length (==blockend)
+- run_blocks stays at 1, so loop advances by 1 block
+- Holes do NOT merge with non-holes (! next check in line 474 breaks on next hole)
+
+SIZE BOUNDS:
+- Line 466 checks: if (max_read && run_length + next_length > max_read) break;
+- Prevents exceeding disk driver's aggregation limit
+- Total run_length ≤ len (request size), which is grub_size_t already clamped to filesize
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+fs/fat.c — FAT HELPER REFACTOR + CLUSTER COALESCING
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+REFACTOR (commit 2): grub_fat_next_cluster() helper
+  Returns: 1 (valid successor in *next_cluster), 0 (end-of-chain), -1 (error)
+
+Compared original inline FAT-traversal code (origin/master lines 514-570) with the helper:
+
+  ORIGINAL                          | HELPER (lines 454-505)
+  ----------------------------------+---------------------------------------
+  Calculate fat_offset              | Same (lines 460-472)
+  Read FAT entry                    | Same (line 474-476)
+  Mask by fat_size (12/16/32-bit)   | Same (lines 478-490)
+  Check >= cluster_eof_mark         | return 0 (caller returns ret)
+  Check invalid cluster < 2 or ≥num | return -1 (caller returns -1)
+  Update cur_cluster, cur_cluster_num| Caller does this (lines 582-583, 625-626)
+  Check cyclic chain                | Caller does this (lines 585-590, 628-633)
+
+SEMANTICS PRESERVED: The helper extracts only "decode next FAT entry"; state updates and cyclic
+detection stay in the caller. Return-value contract matches original: err<0 → read error,
+err==0 → EOF (return accumulated bytes), err>0 → valid cluster (continue reading).
+
+CLUSTER COALESCING (commit 3, lines 593-654):
+
+Starts with one cluster, extends the run if FAT chain is contiguous (cluster+1 addressing).
+
+EXAMPLE: File with clusters 5→6→7 (contiguous), read 12KB at cluster_bits=3 (4KB/cluster)
+  sector = cluster_sector + ((5-2)<<3) = cluster_sector + 24
+  size = (1<<12) - 0 = 4096, run_length=4096, run_clusters=1, cluster=5
+  Coalescing:
+    grub_fat_next_cluster(5) → next=6, check 6 == 5+1? Yes → run_length=8192, run_clusters=2
+    grub_fat_next_cluster(6) → next=7, check 7 == 6+1? Yes → run_length=12288, run_clusters=3
+    run_length (12288) < len (12288)? No → exit
+  Read 12KB from sector (cluster_sector+24), update logical_cluster += 3
+  Result: Single 3-cluster read instead of 3 separate reads.
+
+END-OF-CHAIN (lines 622-623):
+  if (! err) break;
+
+- grub_fat_next_cluster returns 0 when next_cluster ≥ cluster_eof_mark
+- Coalescing breaks, outer loop returns accumulated ret (line 579-580)
+
+CYCLIC CHAIN DETECTION (lines 628-633, duplicates 585-590):
+  if (node->cur_cluster_num >= node->data->num_clusters)
+    { grub_error(..., "cyclic FAT cluster chain"); return -1; }
+
+- cur_cluster_num = hops taken in the chain; num_clusters = total clusters on disk
+- If hops ≥ total clusters, must have visited a cluster twice (pigeonhole principle)
+- Check appears in both outer traversal loop and inner coalescing loop
+
+CLUSTER→SECTOR (line 599-600):
+  sector = node->data->cluster_sector + ((cluster - 2) << node->data->cluster_bits);
+
+- Standard FAT arithmetic: cluster 2 is first data cluster, shift by cluster_bits for sector offset
+- Correct for FAT12/16/32 (verified against original code, which uses same formula)
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+disk/diskfilter.c — MIRROR FAILOVER + LVM LINEAR SEGMENT COALESCING
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+MIRROR READ (lines 628-646):
+
+BEFORE: GRUB_DISKFILTER_MIRROR fell through to RAID10 complex striping logic
+AFTER:  Separate case does simple whole-request failover across mirror members
+
+  for (i = 0; i < seg->node_count; i++)
+    {
+      if (grub_errno == GRUB_ERR_READ_ERROR || grub_errno == GRUB_ERR_UNKNOWN_DEVICE)
+        grub_errno = GRUB_ERR_NONE;
+      err = grub_diskfilter_read_node(&seg->nodes[i], sector, size, buf);
+      if (! err) return GRUB_ERR_NONE;
+      if (err != GRUB_ERR_READ_ERROR && err != GRUB_ERR_UNKNOWN_DEVICE) return err;
+    }
+  return err;
+
+LOGIC:
+- Clear stale READ_ERROR/UNKNOWN_DEVICE from previous iteration
+- Try each mirror member with the FULL request (sector, size)
+- Return immediately on success
+- Return immediately on non-recoverable error (not READ_ERROR/UNKNOWN_DEVICE)
+- If all mirrors fail with recoverable errors, return the last error
+
+CORRECTNESS: Every mirror member contains identical data, so any one can satisfy the full request.
+The original code did per-stripe failover (complex for mirrors); new code does per-request failover
+(correct and simpler). No offset math errors — sector/size passed directly to each node.
+
+LINEAR SEGMENT COALESCING (lines 914-935, 973-984):
+
+LVM segments map logical extents to physical sectors. Two segments can be coalesced if they are
+logically adjacent AND physically adjacent on the same PV.
+
+linear_segments_are_contiguous() checks (lines 917-935):
+  1. Both STRIPED type with node_count==1 (i.e., linear, not truly striped)
+  2. Logically adjacent: first->start_extent + first->extent_count == second->start_extent
+  3. Same PV and LV: first_node->pv == second_node->pv && first_node->lv == second_node->lv
+  4. Physically adjacent: second_node->start == first_node->start + first->extent_count * extent_size
+
+EXAMPLE: LV with 2 segments, extent_size=1 sector for simplicity
+  seg1: extents 0-9, maps to PV sectors 100-109
+  seg2: extents 10-19, maps to PV sectors 110-119
+  Read sector 5, size 10 (spans both segments)
+
+  extent = 5/1 = 5, find seg1 (start_extent=0, extent_count=10)
+  first = seg1, to_read = ((0+10)*1) - 5 = 5
+  Coalescing: to_read (5) < size (10)? Yes
+    linear_segments_are_contiguous(seg1, seg2)?
+      Logical: 0+10 == 10? Yes
+      Same PV/LV? Yes
+      Physical: seg2.start (110) == seg1.start (100) + 10*1? Yes → contiguous
+    next_size = seg2.extent_count * 1 = 10, cap to size-to_read = 5
+    to_read += 5 = 10, seg++
+  read_segment(first=seg1, sector - 0*1 = 5, to_read=10, buf)
+
+OFFSET MATH (line 986-988):
+  err = read_segment(first, sector - first->start_extent * vg->extent_size, to_read, buf);
+
+- sector is in 512-byte sectors (current LV position)
+- first->start_extent * vg->extent_size = LV sector where this segment starts
+- sector - (start LV sector) = offset within the segment
+- to_read spans multiple coalesced segments, but they're physically contiguous on the PV
+- read_segment for STRIPED node_count==1 calls grub_diskfilter_read_node(node, offset, size)
+- Since segments are physically adjacent, reading past seg1's logical boundary reads seg2's physical
+  location, which is correct because seg2 starts exactly where seg1 ends (verified by check #4 above)
+
+BOUNDS: to_read is capped at size (line 970-971) and at each segment's remaining extent_count
+(line 979-980). No overflow — total to_read ≤ size (grub_size_t).
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+OVERFLOW ANALYSIS
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+CHECKED: Whether coalescing arithmetic could overflow without grub_mul/grub_add guards.
+
+diskfilter.c already uses grub_mul elsewhere (line 1160-1161), but extent arithmetic
+(extent_count * vg->extent_size) appears throughout the ORIGINAL code without overflow checks
+(e.g., original line 924-925). The new coalescing code follows the same pattern (line 934, 977, 987).
+
+CONCLUSION: Not a NEW issue introduced by this MR. extent_size is typically small (4MB = 8192
+sectors), and extent_count is bounded by LV size / extent_size. Overflow would require impossibly
+large LVs (e.g., extent_count * 8192 overflowing grub_uint64_t). Out-of-scope for this review —
+would require tree-wide diskfilter audit.
+
+fshelp.c and fat.c: run_length accumulation is bounded by len (request size, grub_size_t) and
+max_read (driver limit). Line 466 (fshelp) and 615 (fat) prevent run_length + next_size > max_read.
+The total read cannot exceed the clamped file size.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+RETURN VALUE / ERROR HANDLING
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+fshelp.c (line 420, 470): Checks grub_errno after get_block(), returns -1 on error. Correct.
+
+fat.c (lines 577-580, 620-623): Checks grub_fat_next_cluster() return:
+  - err < 0 → return -1 (disk read error)
+  - err == 0 → break/return ret (end-of-chain)
+  - err > 0 → continue (valid cluster)
+  Matches helper's contract. Correct.
+
+diskfilter.c (lines 639-643): Checks grub_diskfilter_read_node() return:
+  - !err → immediate success return
+  - err != READ_ERROR/UNKNOWN_DEVICE → immediate error return (non-recoverable)
+  - Otherwise → try next mirror
+  Correct whole-request failover.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+CONCLUSION
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+Read the actual source at the branch (not just diffs) for all three files. Traced concrete examples
+through block/cluster/segment coalescing loops with specific addresses, sizes, and offsets. Verified:
+
+✓ Contiguity checks (block address math, FAT cluster+1, LVM physical adjacency) are correct
+✓ Partial-block boundaries (first block skipfirst, final block size mod blocksize) are correct
+✓ Holes, EOF, cyclic chains, and mirror failover are correctly handled
+✓ Size arithmetic is bounded by request len and max_read limits
+✓ Return values and error propagation are correct
+
+No issues found. The refactored FAT helper preserves original semantics. The coalescing logic
+correctly merges only contiguous runs and stops at boundaries (holes, non-adjacent blocks/clusters,
+segment transitions, driver aggregation limit). The mirror read path is simplified from complex
+RAID10 logic to straightforward whole-request failover, which is correct for mirrors.
