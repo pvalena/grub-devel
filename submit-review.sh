@@ -41,7 +41,7 @@ read_new () {
         b="pr${m}"
 
         F="${R}${b}.md"
-        [[ -r "$F" ]]
+        [[ -r "$F" ]] || continue #fail "Review does not exist: '$F'"
 
         # sanity checks
 
@@ -57,8 +57,8 @@ read_new () {
 
             echo -e "\n\n>>> $b: $m\n"
 
-            C="$(cat "$F")"
-            [[ -n "$C" ]]
+            C="$(cat "$F")" || fail "Failed to cat: '$F'"
+            [[ -n "$C" ]] || fail "File empty: '$F'"
 
         [[ -n "$V" ]] && echo "$C" && echo
 

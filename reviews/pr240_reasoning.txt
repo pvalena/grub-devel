@@ -1,0 +1,86 @@
+MR !240 - Rework linux,linux16 commands - 1 commit
+
+Source files read:
+- grub-core/loader/i386/linux.c (pr240, origin/master)
+- grub-core/loader/i386/pc/linux.c (pr240, origin/master)
+
+== Issue 1: Missing underflow check causes buffer over-read (linux.c) ==
+
+Discovery:
+Reviewing the refactoring from file reads to memcpy operations. The old code at origin/master:757 did:
+
+  prot_file_size = grub_file_size (file) - real_size - GRUB_DISK_SECTOR_SIZE;
+  ...
+  grub_file_seek (file, real_size + GRUB_DISK_SECTOR_SIZE);
+  len = prot_file_size;
+  if (grub_file_read (file, prot_mode_mem, len) != len && !grub_errno)
+    grub_error (GRUB_ERR_BAD_OS, N_("premature end of file %s"), argv[0]);
+
+The new code at pr240:757, 1049:
+
+  prot_file_size = grub_file_size (file) - real_size - GRUB_DISK_SECTOR_SIZE;
+  ...
+  kernel_offset = real_size + GRUB_DISK_SECTOR_SIZE;
+  len = prot_file_size;
+  grub_memcpy (prot_mode_mem, kernel + kernel_offset, len);
+
+The old code had implicit bounds checking: grub_file_read() would return fewer bytes than requested if the
+file was shorter than expected, triggering the error check. The new code has no such check - memcpy just
+reads whatever is at that offset.
+
+Source trace:
+Verified the calculation can underflow by tracing the value flow:
+
+1. real_size = setup_sects << GRUB_DISK_SECTOR_BITS (line 757)
+   - setup_sects comes from the file header (line 732: lh.setup_sects)
+   - Capped at GRUB_LINUX_MAX_SETUP_SECTS (line 734-738)
+
+2. prot_file_size = grub_file_size(file) - real_size - GRUB_DISK_SECTOR_SIZE
+   - This is unsigned arithmetic (grub_size_t)
+   - If real_size + GRUB_DISK_SECTOR_SIZE > file_size, wraps to a huge value
+
+3. Later: grub_memcpy(prot_mode_mem, kernel + kernel_offset, prot_file_size)
+   - kernel buffer has size = grub_file_size(file) (allocated at line 702)
+   - kernel_offset = real_size + GRUB_DISK_SECTOR_SIZE (line 895)
+   - If prot_file_size wrapped, kernel_offset + prot_file_size >> file_size
+   - memcpy reads way past the end of the kernel buffer
+
+Cross-reference with pc/linux.c:
+The sister file grub-core/loader/i386/pc/linux.c does the same refactoring but includes underflow checking at
+lines 222-223:
+
+  if (grub_sub (grub_file_size (file), real_size, &grub_linux16_prot_size) ||
+      grub_sub (grub_linux16_prot_size, GRUB_DISK_SECTOR_SIZE, &grub_linux16_prot_size))
+    {
+      grub_error (GRUB_ERR_OUT_OF_RANGE, N_("overflow is detected"));
+      goto fail;
+    }
+
+This uses grub_sub() which returns non-zero if the subtraction would underflow. The presence of this check in
+pc/linux.c but not in linux.c indicates the omission is unintentional.
+
+Consequence:
+A malicious kernel image with a crafted header can trigger this. For example:
+- setup_sects = 60 (below GRUB_LINUX_MAX_SETUP_SECTS)
+- real_size = 60 << 9 = 30720 bytes
+- File size = 10000 bytes
+- prot_file_size = 10000 - 30720 - 512 = 10000 - 31232 wraps to ~4GB - 21232 on 32-bit, larger on 64-bit
+- grub_memcpy reads billions of bytes past the end of the 10000-byte buffer
+
+This could crash GRUB (segfault if the buffer is near the end of mapped memory) or leak memory contents
+(buffer over-read). Additionally, if prot_size (the size of prot_mode_mem) is smaller than the wrapped
+prot_file_size, the destination buffer also overflows, corrupting the heap.
+
+The old code would have caught this because grub_file_read() would return at most (file_size -
+current_position) bytes, which is far less than the requested huge value, triggering the != len check and
+setting an error.
+
+Fix assessment:
+Adding the grub_sub() check like pc/linux.c does looks correct. grub_sub() is specifically designed to detect
+unsigned integer underflow in size calculations. The check should happen immediately after the calculation,
+before the value is used. The goto fail path already handles cleanup (grub_free(kernel) at line 1060).
+
+The suggested fix matches the pattern in pc/linux.c line 222-223. No additional changes are needed because:
+- The fail label already frees kernel (line 1060)
+- Both subtraction steps need checking (first file_size - real_size, then result - GRUB_DISK_SECTOR_SIZE)
+- grub_sub() is the standard safe subtraction helper in GRUB (defined in include/grub/safemath.h)

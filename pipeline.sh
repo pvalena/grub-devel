@@ -125,11 +125,9 @@ while :; do
     } || CON=
 
     con "Is the AI review done"
-
     run "./submit-review.sh -n ${V}"
 
     con "Really submit the reviews"
-
     run "./submit-review.sh ${V}"
 
 
