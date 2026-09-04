@@ -1,6 +1,6 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-08-21
+**Last updated**: 2026-09-03
 
 Quick reference for working in this repository. See `CLAUDE.md` for repository overview
 and `docs/REVIEW_PROCESS.md` for detailed procedures.
@@ -16,10 +16,13 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 - **Closed/Merged MRs**: 60 (unverified, see above)
 - **Active authors**: ~20
 
-**Review files**:
-- Complete reviews: 149 (.md files)
-- Reasoning files: 44 (_reasoning.txt files, only for reviews with issues)
-- Investigation files: 10 (_investigation.txt files, only for large/complex clean reviews)
+**Review files** (counts drift; recount rather than trust the number):
+<!-- recount: ls reviews/*.md | wc -l -->
+<!-- recount: ls reviews/*_reasoning.txt | wc -l -->
+<!-- recount: ls reviews/*_investigation.txt | wc -l -->
+- Complete reviews: ~161 (.md files)
+- Reasoning files: ~47 (_reasoning.txt, only for reviews with issues)
+- Investigation files: ~14 (_investigation.txt, only for large/complex clean reviews)
 
 ---
 
@@ -39,6 +42,7 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
   needed for small/simple clean reviews
 
 **Documentation**:
+- `HANDOVER.md` - Autonomous review-loop runbook (how to operate; agent prompt templates)
 - `CLAUDE.md` - Repository instructions and essentials
 - `MEMORY.md` - This file - workflows and current state
 - `docs/REVIEW_PROCESS.md` - Detailed review procedures
@@ -329,7 +333,7 @@ diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
 - Active authors: ~20
 - Largest contributor: Vladimir Serbinenko (6 MRs)
 - Closed rate: 71% (60/84, unverified)
-- Review files: 149 reviews, 44 reasoning files, 10 investigation files
+- Review files: ~161 reviews, ~47 reasoning, ~14 investigation (recount; see above)
 
 **Historical**:
 - Initial branches: 176 (from mailing lists)

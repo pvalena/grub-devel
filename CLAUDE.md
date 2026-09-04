@@ -4,6 +4,23 @@
 
 This repository analyzes GRUB2 patches from mailing lists, identifies duplicates in cleanly-applied git branches, and manages merge requests to upstream with comprehensive code reviews.
 
+## Current Operating Mode (READ FIRST)
+
+The active, ongoing job is the **autonomous review loop**: when the user queues MR numbers in
+`data/new.txt` and says "continue with reviews", review them and report — nothing else.
+
+**See `HANDOVER.md` for the exact runbook** (this is the source of truth for how to operate).
+In short:
+- Reviews are delegated to **Sonnet 5 agents**, then double-checked by a separate
+  fresh-context **Sonnet 5 adversarial agent**; the main model (Opus) only reads + lints +
+  **approves** (spot-checks source only on a red flag). See `MEMORY.md` "Review Delegation
+  Model" and review skill v3.14.0.
+- **Never** commit, push, modify `grub/`, or edit `data/new.txt`. The user handles all
+  commits. Do not start unrelated work.
+
+Sections below are historical project background (how the corpus was built). The review loop
+above is what is live now.
+
 ## Completed Work Summary
 
 ### Phase 1: Duplicate Detection (COMPLETED)
@@ -125,4 +142,4 @@ Before marking branches as duplicates, always document explicit reasons and veri
 
 ---
 
-**Last updated**: 2026-08-21
+**Last updated**: 2026-09-03

@@ -9,6 +9,12 @@ We maintain AI-assisted reviews of all MRs in the `reviews/` directory. Each rev
 2. **Accurate** - No false positives or hallucinated bugs
 3. **Actionable** - Clearly describe issues with file:line references
 
+> **How reviews are run today:** the phases below are executed by delegated **Sonnet 5
+> agents** — a review agent writes the artifacts, a separate fresh-context adversarial agent
+> double-checks, and the orchestrator approves. See `HANDOVER.md` (operating runbook +
+> agent prompt templates) and `MEMORY.md` "Review Delegation Model". The phase content in
+> this document remains the definition of what each agent does.
+
 ## Repository Structure
 
 ```
