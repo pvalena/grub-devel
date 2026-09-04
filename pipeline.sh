@@ -107,6 +107,9 @@ while :; do
         # Fails on no new MRs
         run "${H}mr-status-new.sh" || continue
 
+        # If it doesn't fail
+        [[ -r data/new.txt ]] || continue
+
         run "${H}checkout-new.sh"
 
         run "${H}rebase-new.sh"
