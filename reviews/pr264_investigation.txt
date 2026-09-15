@@ -1,0 +1,158 @@
+MR !264 - term: Avoid busy polling while waiting for UEFI console input
+1 commit (2d5353490). Co-authored-by: GPT-6-astra (high) via Codex <noreply at openai dot com> -
+AI-assisted, heightened scrutiny applied per review skill Phase 2.
+
+Source files read at pr264 (full functions, not just diff hunks):
+- grub-core/kern/term.c (grub_getkey, grub_getkey_noblock, grub_getkeystatus, globals)
+- include/grub/term.h (struct grub_term_input, FOR_ACTIVE_TERM_INPUTS, grub_term_poll_usb)
+- grub-core/term/efi/console.c (full file: grub_console_wait and all surrounding callbacks)
+- tests/efi_console_wait_test.c (full file, 372 lines)
+- Makefile.util.def (new efi_console_wait_test program entry) and existing tpcm_unit_test
+  entry (precedent for compiling an efi/*.c file into a native unit test)
+- .gitlab-ci/yml/matrix.yml (test-matrix TYPE: native list)
+- include/grub/i386/time.h, include/grub/x86_64/time.h, include/grub/time.h
+  (grub_cpu_idle implementations)
+- grub-core/kern/ia64/efi/init.c (precedent for bare GRUB_EFI_EVT_TIMER + WaitForEvent,
+  vs. arm/loongarch64 which combine EVT_TIMER with EVT_NOTIFY_SIGNAL)
+- include/grub/efi/api.h (GRUB_EFI_EVT_TIMER = 0x80000000)
+- grep across all term drivers with a struct grub_term_input instance (serial.c,
+  at_keyboard.c, i386/pc/console.c, ieee1275/console.c, usb_keyboard.c, uboot/console.c,
+  xen/console.c, arc/console.c, arm/cros.c, arm/pl050.c, osdep/unix and windows emuconsole.c,
+  tests/fake_input.c) to confirm all use designated initializers, so adding a struct field
+  is layout-safe.
+
+== Motivation check ==
+
+grub_cpu_idle() on i386/x86_64 (include/grub/i386/time.h, include/grub/x86_64/time.h) is a
+literal no-op - the `hlt` instruction is commented out with a decades-old "FIXME: this can't
+work until we handle interrupts" note. This confirms the commit message's claim: without this
+change, grub_getkey()'s idle loop is a genuine 100%-CPU busy spin while waiting at a prompt
+(e.g. a LUKS passphrase prompt), on both bare metal and VMs. The fix is solving a real,
+verifiable problem, not a placebo.
+
+== Core mechanism: grub_getkey() wait gate (grub-core/kern/term.c) ==
+
+  term = grub_term_inputs;
+  if (term && !term->next && !grub_term_poll_usb && term->wait
+      && term->wait (term))
+    continue;
+
+`grub_term_inputs` is the same list FOR_ACTIVE_TERM_INPUTS iterates (include/grub/term.h:333),
+so `term && !term->next` correctly means "exactly one active input terminal" - not an
+approximation. If a second terminal is active (e.g. serial + EFI console), or native USB needs
+polling (`grub_term_poll_usb` set by grub-core/bus/usb/usb.c when polling starts), the gate is
+false and the loop falls through unchanged to `grub_cpu_idle()` - i.e., every path that isn't
+"exactly one EFI console, no USB" is byte-for-byte the pre-existing behavior. This scoping
+avoids the failure mode of waiting on one terminal's event while input arrives on another,
+silently-unpolled terminal.
+
+`struct grub_term_input.wait` is a new field inserted before `void *data`. Every existing
+struct grub_term_input instance in the tree uses C99 designated initializers (checked all
+~13 instances listed above), so unspecified `.wait` is implicitly NULL - no other terminal
+driver needed to be touched, and no positional-initializer struct-layout risk exists.
+
+== grub_console_wait() (grub-core/term/efi/console.c) ==
+
+  if (grub_efi_is_finished || input_wait_failed)
+    return 0;
+  text_input = term->data;
+  if (text_input != NULL)
+    events[0] = text_input->wait_for_key;
+  else if (grub_efi_system_table->con_in != NULL)
+    events[0] = grub_efi_system_table->con_in->wait_for_key;
+  else
+    return 0;
+  if (events[0] == NULL)
+    return 0;
+  b = grub_efi_system_table->boot_services;
+  status = b->create_event (GRUB_EFI_EVT_TIMER, GRUB_EFI_TPL_APPLICATION, NULL, NULL, &events[1]);
+  if (status != GRUB_EFI_SUCCESS) { input_wait_failed = 1; return 0; }
+  status = b->set_timer (events[1], GRUB_EFI_TIMER_RELATIVE, 20 * 10000);
+  if (status == GRUB_EFI_SUCCESS)
+    status = b->wait_for_event (ARRAY_SIZE (events), events, &index);
+  if (b->close_event (events[1]) != GRUB_EFI_SUCCESS || status != GRUB_EFI_SUCCESS)
+    input_wait_failed = 1;
+  return status == GRUB_EFI_SUCCESS;
+
+Event lifecycle / leak check: the only event this function owns is events[1] (the timer),
+created via create_event. Every path that reaches a successful create_event also reaches
+close_event before returning (whether set_timer or wait_for_event subsequently fails) -
+traced all 4 exit points: (1) create fails -> return before any event exists to close; (2)
+set_timer fails -> status != SUCCESS carries through, close_event still called unconditionally
+below; (3) wait_for_event fails -> same; (4) both succeed -> close_event called. No leaked EFI
+timer events on any path. events[0] (the firmware-owned wait_for_key event, either from the
+ex-interface or con_in) is never created or closed here, correctly - it's not owned by this
+function.
+
+20 * 10000 = 200000 (100ns units) = 20ms. Matches the code comment and is independently
+confirmed by the test's `grub_test_assert (duration == 200000, NULL)`. GRUB_EFI_EVT_TIMER
+(bare, no NOTIFY_SIGNAL, NULL notify function) + boot_services->wait_for_event is an existing
+idiom in this tree (grub-core/kern/ia64/efi/init.c uses the identical bare-EVT_TIMER +
+create_event pattern), not a novel/unverified construct.
+
+`input_wait_failed` is sticky: once any of create_event/wait_for_event/close_event fails, all
+future grub_console_wait() calls short-circuit to 0 (busy-poll fallback) until
+grub_efi_console_input_init() runs again (chainload/kexec re-registration), which resets the
+flag to 0. This is a conservative but deliberate design - it avoids hammering a firmware whose
+event API is already failing, at the cost of not retrying a possibly-transient failure until
+reinit. Not a correctness bug; noted as a design trade-off.
+
+Race check: the EFI ConIn "wait for key" event is level-triggered by firmware (stays signaled
+while an unread keystroke is queued), so a key arriving between grub_getkey_noblock()'s failed
+read and the wait_for_event call is not missed - wait_for_event returns immediately in that
+case. This is the standard justification for this idiom and matches how EDK2 code (e.g. shell
+key-wait helpers) uses ConIn->WaitForKey.
+
+Reachability of `text_input` path: grub_efi_console_input_init() sets term->data from
+grub_efi_open_protocol() for the Simple Text Input Ex protocol; when unavailable it stays NULL
+and grub_console_wait() falls back to grub_efi_system_table->con_in->wait_for_key. Both branches
+are exercised by the test (check_events(): default con_in path, then the `extended` ex-interface
+path via console_input->data = &extended).
+
+== Test file (tests/efi_console_wait_test.c) verification ==
+
+Compiled as a native (host) unit test per the existing `tpcm_unit_test` precedent in
+Makefile.util.def (also compiles an efi/*.c source - grub-core/commands/efi/tpcm.c - as a
+native testcase), so building grub-core/term/efi/console.c into a host binary via mocked
+grub_efi_boot_services_t/grub_efi_system_table_t is an established pattern, not a new/risky
+build configuration.
+
+Manually traced three of the test's assertion sequences against the actual implementation
+above, cycle by cycle, to confirm the expected call counts are not just plausible but exactly
+derivable from the source:
+
+1. "network_polls == 2" case (default wake_index=0, pending_on_wake=1): iteration 1 -
+   grub_getkey_noblock() polls network (network_polls=1), finds no key, wait() succeeds with
+   index 0 -> pending=1, continue; iteration 2 - network polls again (network_polls=2), read
+   succeeds because pending=1 -> returns 'x'. waited stays 1. Matches
+   `waited == 1 && network_polls == 2`.
+
+2. "Timer-only wakes must keep polling" (wake_index=1, pending_on_wake=0, ready_after=3):
+   wait() returns 1 (success) on a pure timer wake regardless of which event index fired,
+   per `return status == GRUB_EFI_SUCCESS` - so the loop continues polling on every timer
+   tick until mock_read_key's own `ready_after` counter produces a key on the 3rd read.
+   Traced call-by-call: reads 1,2 -> NOT_READY, wait 1,2 both timer-wakes; read 3 hits
+   ready_after and returns the key. Result: waited=2, closed=2, network_polls=3 - matches
+   assertions exactly.
+
+3. check_failures(): for close_status failure (failure==3), the assertion
+   `console_input->wait (console_input) == (failure == 3)` (i.e. still returns 1) is
+   consistent with the source returning `status == GRUB_EFI_SUCCESS` independent of
+   close_event's own return value - a failed close does not retroactively invalidate an
+   already-successful wait. Also confirmed the "must not retry after failure" and
+   "reinit retries" cases both trace correctly against the sticky input_wait_failed flag
+   and its reset in grub_efi_console_input_init().
+
+CI wiring: `efi_console_wait_test` is added under `.test-matrix` `TYPE: native` (matches
+`testcase = native;` in its Makefile.util.def entry), alphabetically placed between
+`date_test` and `erofs_test`, alongside the existing `tpcm_unit_test` entry in the same list -
+no TYPE misclassification (docs-ci-build class from BUG_PATTERNS.md).
+
+== Conclusion ==
+
+No issues found. The wait-gate scoping (single active input, no USB polling), the EFI event
+lifecycle (no leaked timer events on any of the 4 traced exit paths), and the sticky failure
+flag are all correct and match the commit message's stated intent. The AI-assisted test file
+was independently traced against the actual source (not accepted on the AI's own assertions)
+and its expected call counts are exactly reproducible from grub_getkey()'s and
+grub_console_wait()'s logic.
