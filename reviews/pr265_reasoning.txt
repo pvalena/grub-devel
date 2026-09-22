@@ -1,0 +1,90 @@
+MR !265 - Print EFI status codes on error - 2 commits
+
+Source files read:
+- grub-core/commands/efi/lsefi.c (pr265, origin/master)
+- grub-core/loader/efi/chainloader.c (pr265, origin/master)
+- grub-core/loader/efi/linux.c (pr265, origin/master)
+- include/grub/efi/api.h (pr265) - grub_efi_status_t / grub_efi_uintn_t / PRIxGRUB_EFI_UINTN_T
+- include/grub/types.h (pr265) - PRIxGRUB_UINT32_T / PRIxGRUB_UINT64_T definitions
+
+== Issue 1: Typo drops "0x" hex marker in one message; two others gain stray spaces ==
+
+Discovery:
+The MR's whole point is appending the EFI `status` code to five existing error/diagnostic
+messages, using the pattern `"... 0x%" PRIxGRUB_EFI_UINTN_T` already used in-tree (e.g.
+linux.c:297 already had this pattern for "start_image() returned" before this MR). Diffing all
+five touched call sites against each other, one breaks the pattern:
+
+  chainloader.c:463 (grub_cmd_chainloader):
+    "missing protocol for loaded image device path 0%" PRIxGRUB_EFI_UINTN_T
+
+The other four all use "0x%" as the literal prefix before the macro:
+  chainloader.c:126 (grub_chainloader_boot): "start_image() failed 0x%" ...
+  chainloader.c:385 (grub_cmd_chainloader): "cannot load image 0x%" ...
+  linux.c:234 (grub_arch_efi_linux_boot_image): "cannot load image 0x%" ...
+  linux.c:266 (grub_arch_efi_linux_boot_image): "missing protocol for loaded image device path
+    0x%" ...
+
+Source trace:
+Confirmed PRIxGRUB_EFI_UINTN_T is a bare conversion specifier, not a full "%x"-style token, so
+the leading "0x" (or its absence) is literal text supplied by each call site, not something the
+macro adds:
+
+  include/grub/efi/api.h:591-601:
+    #if GRUB_CPU_SIZEOF_VOID_P == 8
+    #define PRIxGRUB_EFI_UINTN_T PRIxGRUB_UINT64_T
+    #else
+    #define PRIxGRUB_EFI_UINTN_T PRIxGRUB_UINT32_T
+    #endif
+
+  include/grub/types.h:105,109,113:
+    # define PRIxGRUB_UINT32_T "x"
+    # define PRIxGRUB_UINT64_T "lx"   (GRUB_CPU_SIZEOF_LONG == 8)
+    # define PRIxGRUB_UINT64_T "llx"  (otherwise)
+
+So "0%" PRIxGRUB_EFI_UINTN_T concatenates (via adjacent string literal concatenation) to
+"0%lx" (or "0%x"/"0%llx" depending on target word size) -- a syntactically valid printf format,
+so this is not a crash or type-mismatch bug (grub_efi_status_t is `typedef grub_efi_uintn_t
+grub_efi_status_t;`, api.h:615, so the width always matches the macro used). It is a content
+bug: the printed text is "...device path 0<hexdigits>" instead of "...device path 0x<hexdigits>",
+e.g. status 0x803 (GRUB_EFI_INVALID_PARAMETER-ish value) prints as "0803", which reads like a
+decimal/octal number, not clearly marked hex, unlike the other four messages in the same MR.
+
+Also checked the two other messages this MR's diff touches for stray whitespace, since the diff
+hunks are one-line changes and easy to fat-finger:
+
+  lsefi.c:111: grub_printf ("Unable to retrieve protocols 0x%" PRIxGRUB_EFI_UINTN_T" \n", status);
+    -- concatenates to "...0x%lx \n": an extra space is printed between the value and the
+       newline. The pre-image (origin/master) was "Unable to retrieve protocols\n" with no
+       trailing space, so this space is newly introduced by this MR, not pre-existing.
+
+  linux.c:297: grub_error (GRUB_ERR_BAD_OS, " start_image() returned 0x%" PRIxGRUB_EFI_UINTN_T,
+    status);
+    -- this exact message (including "0x%" ... status) already existed on origin/master before
+       this MR (it is not one of the "unknown error" / "cannot load image" messages this MR was
+       written to fix); the only change made to this line by commit e42dccd7f is prepending a
+       leading space to the string literal. grub_print_error() prints error messages as
+       "error: <msg>\n" (grub-core/kern/err.c), so this would render as "error:  start_image()"
+       (double space) instead of "error: start_image()".
+
+Consequence:
+The chainloader.c:463 typo is the more substantive issue: it defeats the MR's own goal of making
+EFI status codes easy to read at a glance -- of the five new/touched status-code messages, this
+is the one place where the hex marker is missing, so a user or developer scanning boot log output
+for "0x..." patterns can miss or misread this one. It is not a memory-safety or crash bug (the
+format specifier is still valid for the argument's width), just misleading diagnostic output.
+
+The lsefi.c and linux.c stray spaces are purely cosmetic -- they do not change the reported value
+or make it ambiguous, only add an extra space in the rendered message.
+
+Fix assessment:
+All three fixes are one-character literal edits to the format strings, contained entirely within
+the touched line, with no effect on control flow, arguments, or the `status` variable's type:
+- chainloader.c:463: insert "x" so the prefix reads "0x%" like the other four messages.
+- linux.c:297: drop the added leading space, restoring the message to its pre-MR text.
+- lsefi.c:111: move the closing quote before the embedded space so the message ends in
+  "...%lx\n" instead of "...%lx \n" (matches the other trailing-\n messages in the same MR, e.g.
+  chainloader.c and linux.c messages use grub_error(), which does not embed a trailing newline
+  at all, so lsefi.c's own pre-image, "Unable to retrieve protocols\n", is the closest reference
+  and had no space before the newline).
+None of the three fixes interact with each other or with any other line in the diff.
