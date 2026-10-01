@@ -4,36 +4,25 @@ set -e
 
 zsh -n "$0"
 
-fail () {
+my="$(dirname "$(readlink -f "$0")")"
+[[ -d "$my" ]]
 
-    echo -n "FAIL($(basename "$0")): "
-    echo "$@"
+L="${my}/helpers/gitlab-lib.sh"
+[[ -r "$L" ]]
+ . "$L"
 
-    exit 2
-}
 
-[[ "$1" == '-d' ]] && { DEBUG="$1"; set -x; shift||: ; } || DEBUG=
+[[ "$1" == '-d' ]] && { DEB="$1"; set -x; shift||: ; } || DEB=
 [[ "$1" == '-n' ]] && { DRY="$1"; shift||: ; } || DRY=
 [[ "$1" == '-v' ]] && { V="$1"; shift||: ; } || V="$DRY"
 
 [[ -z "$1" ]]
 
-[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
 
-R='../reviews/'
-[[ -d "$R" ]]
-
-D='../data/done.txt'
-[[ -r "$D" ]]
-
-N='../data/new.txt'
-read_new () {
-    grep -vE "^${1}$" "$N" | grep -v "^\s*$" | sort -n
-}
-
+## MAIN
 [[ -r "$N" && -n "$(cat "$N")" ]] && {
 
-    # TODO: refactor
+    # TODO: refactor into methods
 
     for m in $(cat $N); do
 
@@ -60,15 +49,25 @@ read_new () {
             C="$(cat "$F")" || fail "Failed to cat: '$F'"
             [[ -n "$C" ]] || fail "File empty: '$F'"
 
-        [[ -n "$V" ]] && echo "$C" && echo
+        [[ -n "$V" ]] && {
+            echo "$C"
+            echo
+        }
+
+        grep -qE "^No issues found" "$F" >&2 \
+            && I="${BN}" \
+            || {
+                I="${BF}"
+                [[ -n "$V" ]] && echo ">> Issues FOUND" >&2
+            }
 
         [[ -n "$DRY" ]] && continue
 
         # submit comment
 
-            glab mr note create "${m}" --repo gnu-grub/grub -m "${C}"
+            rglab mr note create "${m}" -m "${C}"
 
-            glab mr update "${m}" --repo gnu-grub/grub -u Pending-AI-Review
+            rglab mr update "${m}" -u "$B" -l "${I}"
 
             echo "$m" >> "$D"
 
@@ -89,7 +88,8 @@ read_new () {
 }
 
 # LEGACY: Let's just go through all of them
-exit 7
+fail "LEGACY"
+
 
 for F in $(ls -d "${R}"*.md); do
 
@@ -115,7 +115,7 @@ for F in $(ls -d "${R}"*.md); do
 
     [[ -n "$DRY" ]] && continue
 
-    glab mr comment "${m}" --repo gnu-grub/grub -m "${C}"
+    rglab mr comment "${m}" -m "${C}"
 
     echo "$m" >> "$D"
 

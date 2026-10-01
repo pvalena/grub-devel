@@ -4,70 +4,12 @@ set -e
 
 zsh -n "$0"
 
+my="$(dirname "$(readlink -f "$0")")"
+[[ -d "$my" ]]
 
-## GLOBALs
-W='10m'
-
-D='../data/done.txt'
-F='../data/closed.txt'
-N='../data/new.txt'
-L='logs/new.log'
-
-B='Pending-AI-Review'
-
-# Authorised users
-A=
-
-# glab args
-G="--repo gnu-grub/grub"
-
-## METHODS
-srlz () {
-    local i="$(cut -d' ' -f2 | cut -d':' -f1 | xargs -ri echo -n "|{}")"
-
-    echo "${1}${i}" \
-        | sed -e 's/^|//'
-}
-
-rglab () {
-
-    (
-
-        [[ -n "$DEB" ]] && set -x
-
-        glab `echo ${G}` "$@"
-
-    )
-}
-
-
-## ARGS
-[[ "$1" == '-d' ]] && { DEB="$1"; shift||: } || DEB=
-
-[[ "$1" == '-l' ]] && {
-
-    [[ -r "$L" ]] && I="$(cat "$L" | srlz)" || I=
-
-    clear
-    while :; do
-
-        Z="$($0 $DEB | grep -vE "^>>> ($I): ")" ||:
-
-        [[ -n "$Z" ]] && {
-
-            echo "$Z" | tee -a "$L"
-
-            I="$(echo "$Z" | srlz "$I")"
-        }
-
-        sleep "$W"
-    done
-
-    exit 3
-}
-
-[[ "$(basename "$PWD")" == 'grub' ]] || cd grub
-
+L="${my}/gitlab-lib.sh"
+[[ -r "$L" ]]
+ . "$L"
 
 ## MAIN
 M="$(rglab mr list -l ${B} 2>&1 | tr -s '\t' ' ' | grep '^!' | cut -d' ' -f1 | cut -d'!' -f2 | grep -v '^$')" ||:
@@ -77,7 +19,7 @@ M="$(rglab mr list -l ${B} 2>&1 | tr -s '\t' ' ' | grep '^!' | cut -d' ' -f1 | c
 
     ### TODO: check for open MRs without any AI-labels
 
-    exit 73
+    wip 'TODO: Additional users'
 
     O="$()"
 
@@ -131,7 +73,7 @@ for mr in `echo ${M}` ; do
             ;;
 
         '')
-            exit 1
+            exit 3
             ;;
 
         *)
