@@ -1,0 +1,166 @@
+MR !268 - script/execute: TPM PCR 8 fixes in grub_script_execute_cmdline()
+2 commits. No issues found. Both commits carry "Assisted-by: Claude:Opus-5".
+
+Source files read during review:
+- grub-core/script/execute.c (grub_script_execute_cmdline, cmdline_logged_arg,
+  grub_script_arglist_to_argv, grub_script_execute_new_scope) -- both pr268 and origin/master
+  versions, via `git show pr268:...` / `git show origin/master:...`
+- grub-core/script/argv.c (grub_script_argv_free)
+- include/grub/script_sh.h (struct grub_script_argv)
+- include/grub/command.h (grub_command_find, GRUB_COMMAND_FLAG_* values)
+- grub-core/commands/menuentry.c (grub_menu_init: menuentry/submenu registration flags)
+- grub-core/normal/dyncmd.c (grub_dyncmd_dispatcher, read_command_list)
+- grub-core/kern/verifiers.c (grub_verify_string)
+- grub-core/commands/tpm.c (grub_tpm_verify_string, grub_tpm_verify_write)
+- include/grub/tpm.h (GRUB_STRING_PCR, GRUB_BINARY_PCR)
+- grub-core/kern/misc.c (grub_vsnprintf/parse_printf_arg_fmt -- unrelated cross-check, see MR
+  !271's investigation of the same printf internals)
+
+== Issue candidate 1: argv leaks on two error paths (commit cbe2b2e81) ==
+
+Discovery:
+Commit message claims two early-return paths in grub_script_execute_cmdline() leaked argv.
+
+Source trace:
+Diffed origin/master vs pr268 for the function. Enumerated every `return` in the function on
+both sides:
+  1. `if (grub_script_arglist_to_argv (...) || ! argv.args || ! argv.args[0]) return grub_errno;`
+     -- before argv is meaningfully populated; unchanged, no free needed either side.
+  2. `cmdstring = grub_malloc (cmdlen); if (!cmdstring) { ... return grub_error(...); }` --
+     master: no `grub_script_argv_free`. pr268: adds `grub_script_argv_free (&argv);` before the
+     return. This is the "cmdstring" leak the commit message names.
+  3. `if (argv.argc < 2 || ! argv.args[1]) { grub_script_argv_free (&argv); return
+     grub_error(...); }` (the "!" inversion path) -- already freed argv on master, unchanged.
+  4. `char *assign = grub_strdup (cmdname); if (assign == NULL) { ... return grub_errno; }` --
+     master: bare `return grub_errno;`, no free. pr268: adds `grub_script_argv_free (&argv);`
+     before the return. This is the "assignment string duplication" leak the commit names.
+  5. func-not-found path: `grub_script_argv_free (&argv); grub_print_error (); return 0;` --
+     already freed on master, unchanged.
+  6. Normal end of function: `grub_script_argv_free (&argv);` unconditionally before computing
+     `ret` into `errnobuf` and returning -- unchanged.
+No other return statements exist in the function. The two fixed paths are exactly the two the
+commit message names, and no early return is left unguarded after this commit.
+
+grub_script_argv_free() (script/argv.c:45) frees each `argv->args[i]` then `argv->args`, and is
+safe to call on a struct where `args` is non-NULL and fully populated (checks `if (argv->args)`
+first). Neither fixed path uses `cmdname`, `args`, or `assign`-derived pointers after the free --
+both `return` immediately after `grub_script_argv_free (&argv);` -- so there is no use-after-free
+introduced by adding these calls.
+
+Consequence (of the pre-fix state; this commit removes it):
+Each OOM on `cmdstring` or on `grub_strdup (cmdname)` leaked argv->args (the array) and every
+string in it. `grub_script_arglist_to_argv()` typically allocates one heap string per shell word,
+so a single leaked cmdline in an OOM condition could be a handful of small allocations -- minor
+in isolation, but occurring exactly under memory pressure, which is when GRUB can least afford
+it.
+
+Fix assessment:
+Correct. Both fixes are a single added `grub_script_argv_free (&argv);` immediately before an
+existing `return`, matching the pattern already used by every other error path in the same
+function (sibling paths 3 and 5 above). No new double-free: argv is not touched again after
+either fixed return.
+
+== Issue candidate 2: block-elision could mis-measure or under-measure commands (commit
+0ddd83183) ==
+
+Discovery:
+This is the AI-assisted, security-relevant part of the MR: `cmdline_logged_arg()` decides,
+per-argument, whether to log the real argument text or a "{...}" placeholder into the buffer that
+is fed to `grub_verify_string(cmdstring, GRUB_VERIFY_COMMAND)`. Getting this wrong in either
+direction is a real security concern: eliding too aggressively weakens the TPM measurement's
+audit trail (a command's real argument never gets measured), eliding too narrowly reopens the PCR
+8 log-exhaustion bug this MR exists to fix.
+
+Source trace -- where does GRUB_VERIFY_COMMAND go:
+grub_verify_string() (kern/verifiers.c:271-286) walks `grub_file_verifiers` and calls
+`ver->verify_string (str, type)` for each registered verifier. grub_tpm_verify_string()
+(commands/tpm.c:88-119) is the TPM module's implementation: for `type == GRUB_VERIFY_COMMAND` it
+prefixes "grub_cmd: " and calls `grub_tpm_measure ((unsigned char *) str, grub_strlen (str),
+GRUB_STRING_PCR, description)`. include/grub/tpm.h:29-30 defines `GRUB_STRING_PCR 8` and
+`GRUB_BINARY_PCR 9`. Separately, `grub_tpm_verify_write()` (commands/tpm.c:78-87, the verifier's
+`.write` callback used for file content, e.g. loading grub.cfg) measures into
+`GRUB_BINARY_PCR` (9). This confirms the commit message's claim precisely: command-line text goes
+to PCR 8 via this exact call path, file content goes to PCR 9, and they are independent.
+
+Source trace -- is argv->script a reliable gate:
+grub_script_arglist_to_argv() (execute.c) initializes `struct grub_script_argv result = {0,0,0}`
+per call (script=NULL) and sets `result.script = arg->script;` only inside the
+`case GRUB_SCRIPT_ARG_TYPE_BLOCK:` branch, which only executes when the parser actually produced
+a BLOCK-type arg node for this specific cmdline's word list. There is no other assignment to
+`.script` in the function. Therefore `argv->script != NULL` is true if and only if this exact
+command line's parse tree contains a literal `{ ... }` block -- it cannot be spuriously true for
+an ordinary argument list. `cmdline_logged_arg()` requires `argv->script != NULL` before it will
+ever return the placeholder for any argument, so a non-block command line's arguments are always
+logged verbatim regardless of the resolved command's flags.
+
+Source trace -- is the DYNCMD exclusion load-bearing:
+Read normal/dyncmd.c's `read_command_list()` (the code the new comment above
+GRUB_SCRIPT_BLOCK_PLACEHOLDER cites). Confirmed lines ~180-190: every not-yet-loaded module
+command parsed from command.lst is registered via
+`grub_register_extcmd_prio (name, grub_dyncmd_dispatcher, GRUB_COMMAND_FLAG_BLOCKS |
+GRUB_COMMAND_FLAG_EXTCMD | GRUB_COMMAND_FLAG_DYNCMD, ...)` -- BLOCKS is set unconditionally for
+every stub, independent of whether the real (post-load) command actually accepts a block. So a
+lookup of an unloaded command's stub always reports BLOCKS. If a user's script happened to write
+`{ ... }` after such a stub command's arguments (whether or not that command is really block-
+aware once loaded), `argv->script` would be set for that cmdline. Without the DYNCMD exclusion,
+`is_block_cmd` would then be true purely because of the generic stub flag, and the block text
+would be elided from the PCR 8 measurement for a command GRUB has not verified is really a block
+command. The exclusion `(grubcmd->flags & GRUB_COMMAND_FLAG_DYNCMD) == 0` closes exactly this
+gap: elision only applies to commands currently registered as real (loaded, non-stub) block
+commands.
+
+Source trace -- which commands this targets:
+grub-core/commands/menuentry.c grub_menu_init(): `menuentry` and `submenu` are registered via
+`grub_register_extcmd (..., GRUB_COMMAND_FLAG_BLOCKS | GRUB_COMMAND_ACCEPT_DASH |
+GRUB_COMMAND_FLAG_EXTRACTOR, ...)` -- BLOCKS set, no DYNCMD. These are exactly the commands whose
+definitions can carry large script bodies and are the stated motivation (menu generation
+exhausting the event log).
+
+Source trace -- check_name/cmdname consistency:
+The new `check_name` computation (`check_name = argv.args[0]; if (strcmp(check_name,"!")==0 &&
+argv.argc>1 && argv.args[1]) check_name = argv.args[1];`) mirrors the later, pre-existing
+`cmdname` computation used for actual dispatch (`cmdname = argv.args[0]; if
+(strcmp(cmdname,"!")==0) { ...error-check...; cmdname = argv.args[1]; }`). Both resolve to the
+same final name whenever the later code doesn't hit its own "no command specified" error path;
+when it would (argv.argc<2 or !args[1]), check_name simply stays "!", grub_command_find("!")
+returns NULL, and is_block_cmd stays false -- a safe default, not a crash or mismatch.
+grub_command_find() (include/grub/command.h:112-115) is a pure, side-effect-free linked-list
+lookup (`grub_named_list_find`), so calling it an extra time for check_name has no functional or
+resource cost.
+
+Source trace -- does execution ever skip individual re-measurement:
+grub_script_execute_new_scope() (execute.c, just above the new code) calls
+grub_script_execute_sourcecode(source) to run a block's source. That function re-parses and
+executes the block as ordinary script statements, each of which is itself a `cmdline` node
+executed via grub_script_execute_cmdline() -- i.e. the same function, recursively, per statement
+inside the block -- so every statement that actually executes (e.g. inside the one menuentry a
+user boots) is independently measured into PCR 8 via the same grub_verify_string() call this MR
+edits. Statements in menu entries that are defined but never chosen are, under both old and new
+code, never executed and thus never individually measured -- the old code's only difference was
+that it *also* measured the full, unexecuted block body once at definition time (parse time),
+which is precisely the log growth this MR removes.
+
+Consequence:
+None (no issue). The elision is correctly scoped to real, loaded, non-dyncmd BLOCKS commands with
+an actually-parsed block, and every executed statement is still measured individually at
+execution time regardless of whether its definition-time logging was elided.
+
+Fix assessment:
+No fix needed. Checked for stdbool availability (bool/true/false are new to this file's function
+signatures): grub-core/script/execute.c includes grub/misc.h, which includes grub/types.h, which
+includes <stdbool.h> -- and bool is already used elsewhere in core code (kern/env.c, kern/misc.c,
+kern/verifiers.c, kern/main.c), so this compiles cleanly with no missing include. Checked for a
+macro/name collision on `GRUB_SCRIPT_BLOCK_PLACEHOLDER` and `cmdline_logged_arg` tree-wide: both
+are unique to this file, defined once and used once.
+
+AI-assistance scrutiny:
+The two commits are well-scoped and each does one thing. The resource-leak fix (commit 1) is
+mechanical and easy to get right; verified by hand it does not omit or duplicate a free. The PCR
+8 elision (commit 2) is the part where an AI assistant plausibly could have gotten a security
+property subtly wrong (e.g. eliding based on the command name string instead of the resolved
+flags, or eliding whenever `is_block_cmd` is true without also gating on `argv->script`, which
+would misfire on stub commands as shown above). Neither mistake is present: the implementation
+correctly ANDs a flag check with an actual-block-parsed check, and correctly excludes DYNCMD
+stubs by reasoning that is verified above to be about real dyncmd.c behavior, not an assumption.
+The explanatory comment above GRUB_SCRIPT_BLOCK_PLACEHOLDER states the DYNCMD rationale
+correctly and it was verified rather than trusted.

@@ -1,0 +1,243 @@
+pr255: disk/ieee1275/obdisk: sparc64 single-instance workaround, write support, leak fixes
+(10 commits)
+
+Source files read during review (all at pr255 tip unless noted):
+  grub-core/disk/ieee1275/obdisk.c   (full file, 1342 lines; also read per-commit diffs)
+  grub-core/lib/disk.c               (grub_disk_write, full function)
+  grub-core/disk/ieee1275/ofdisk.c   (grub_ofdisk_prepare/read/write, for comparison)
+  grub-core/kern/ieee1275/ieee1275.c (grub_ieee1275_encode_uint4, to confirm allocation)
+  grub-core/kern/list.c              (grub_named_list_find)
+  grub-core/kern/misc.c              (grub_strcmp)
+  include/grub/list.h                (FOR_LIST_ELEMENTS)
+  include/grub/disk.h                (grub_disk_cache_invalidate_all declaration)
+  docs/grub.texi                     (diff only)
+
+Commits, in application order (oldest first):
+  262daf49a - disk: Fail cleanly when a disk driver has no write method
+  415c08794 - disk/ieee1275/obdisk: Close the parent ihandle on an early failure
+  6a12c93b8 - disk/ieee1275/obdisk: Open a device on demand
+  d26fae2a5 - disk/ieee1275/obdisk: Add write support
+  ed5b331bd - disk/ieee1275/obdisk: Flush a written device when it is closed
+  eb4fc7383 - disk/ieee1275/obdisk: Free the scan buffer in scan_sparc_sas_2cell()
+  292511240 - disk/ieee1275/obdisk: Free the encoded unit address in canonicalise_disk()
+  f7e1eb4a2 - disk/ieee1275/obdisk: Do not look up a NULL canonical name
+  7f86f7219 - disk/ieee1275/obdisk: Enumerate once
+  5931f8467 - disk/ieee1275/obdisk: Keep one open instance per controller when asked
+
+Per-commit verification, before the two flagged issues:
+
+262daf49a: adds `if (disk->dev->disk_write == NULL) return grub_error(GRUB_ERR_NOT_IMPLEMENTED_YET, ...)`
+at the top of grub_disk_write() in grub-core/lib/disk.c. Confirmed against grub-core/ata.c's
+comparable NULL-method reporting and the surrounding function (the rest of grub_disk_write()'s
+partial-sector/cache logic is untouched). Self-contained, correct.
+
+415c08794: in open_new_parent(), when grub_ieee1275_instance_to_package() fails, adds
+grub_ieee1275_close (ihandle) before free_parent_dev(op)/return NULL. `ihandle` is a local,
+distinct from op->ihandle (op->ihandle is only assigned after this point, on the success path),
+so this cannot double-close anything. Confirmed a genuine, previously-unclosed leak; fix is
+correct.
+
+6a12c93b8: extracts the open-on-first-use logic from grub_obdisk_open() into ensure_open(), and
+introduces obdisk_prepare() (disk->data NULL check, ensure_open(), seek) shared by read (and,
+starting with the next commit, write). Commit message says "No functional change is intended."
+For the two callers that existed at this commit (grub_obdisk_open, grub_obdisk_read), this is
+true: grub_obdisk_read did not previously check dev->opened at all (it used dev->ihandle
+directly, assuming grub_obdisk_open had already run), so adding an ensure_open() call at the top
+of every read is a no-op on an already-open device (dev->opened != 0 short-circuits immediately).
+The behavior change appears only once a later commit in the series (the seek-error path inside
+obdisk_prepare, still present at HEAD) can set dev->opened = 0 without closing dev->ihandle,
+which is exactly what Issue 1 below traces.
+
+d26fae2a5: adds grub_obdisk_write() via obdisk_prepare(), mirroring grub_ofdisk_write() in
+ofdisk.c (both call ..._prepare(), then the IEEE1275 read/write call, then compare the
+transferred byte count). Confirmed grub_ieee1275_write() exists and is used identically
+elsewhere (grub-core/kern/ieee1275/ieee1275.c:235, also used in ofnet.c/serial.c/console.c).
+On a short write, sets dev->opened = 0 (matching the pre-existing short-read handling in
+grub_obdisk_read) and returns GRUB_ERR_WRITE_ERROR. This is the second of the three sites
+central to Issue 1.
+
+ed5b331bd: adds the `dirty` field, close_disk() (grub_ieee1275_close + zero ihandle/opened/dirty
++ grub_disk_cache_invalidate_all()), sets dev->dirty = 1 on a successful write, and calls
+close_disk() from grub_obdisk_close() when dev->dirty != 0. The cache-invalidation comment here
+("the firmware reuses instance handles, which are what identifies a disk to the block cache, so
+invalidate the cache when a device is released: otherwise a sector cached for one disk could be
+served for another that later gets the same handle") is the same hazard that Issue 1's
+unclosed-handle paths reproduce without the mitigation. Confirmed close_disk() is idempotent
+(guarded by `if (dev->opened == 0) return;`).
+
+eb4fc7383: scan_sparc_sas_2cell() now frees `buf` after its scan loop. Confirmed
+scan_sparc_sas_4cell() already does this (`grub_free (buf);` at the end of that function), so
+this brings the sibling function in line; the early `return` on allocation failure does not
+reach the new grub_free (buf is NULL at that point, so nothing to free anyway). Correct.
+
+292511240: canonicalise_disk() frees `real_unit_address` (the string returned by
+canonicalise_4cell_ua(), which forwards grub_ieee1275_encode_uint4()'s return) on all three
+paths that follow its allocation: the two size-overflow/OOM early-returns, and the success path
+(after grub_snprintf() has already copied its contents into real_canon, so the free is correctly
+ordered after last use). Confirmed grub_ieee1275_encode_uint4() (ieee1275.c:522-564) does
+`addr = grub_strdup ((char *) args.addr); return addr;` -- a genuine heap allocation, not a
+borrowed/static buffer, so freeing it is required and correct. scan_sparc_sas_4cell(), the other
+caller of canonicalise_4cell_ua(), already frees its `canon` result the same way -- confirms the
+omission being fixed here was a real, unintentional gap.
+
+f7e1eb4a2: add_disk() now returns early when canonicalise_disk() returns NULL, before calling
+grub_named_list_find(GRUB_AS_NAMED_LIST(disk_devs), canon). Traced grub_named_list_find()
+(kern/list.c:25-34): `FOR_LIST_ELEMENTS (item, head) if (grub_strcmp (item->name, name) == 0)
+return item;` and grub_strcmp() (kern/misc.c:392-404): `while (*s1 && *s2) ...` -- this
+dereferences s2 as soon as *s1 is non-zero, i.e. as soon as any existing device's name is
+non-empty. So grub_named_list_find(disk_devs, NULL) is safe only while disk_devs is empty (the
+loop body never runs); once at least one disk has been added, canonicalise_disk() returning NULL
+for a later devalias (a valid, documented case: "a devalias naming a drive that isn't installed")
+reaches grub_strcmp(item->name, NULL) and dereferences NULL. Confirmed the diff also collapses
+`if ((canon != NULL) && (dev == NULL)) ... else if (dev != NULL) dev->valid = 1;` to `if (dev ==
+NULL) ... else dev->valid = 1;`, which is equivalent now that canon != NULL is guaranteed by the
+new early return. Real, previously-latent NULL-deref bug, correctly fixed.
+
+7f86f7219: grub_obdisk_iterate() now calls enumerate_devices() only `if (disks_enumerated ==
+0)`, instead of unconditionally on every call with pull == GRUB_DISK_PULL_NONE. See Issue 2
+below for the consequence this has beyond what the commit message states.
+
+5931f8467: adds close_parent(), controller_len(), single_instance_wanted(), and
+close_controller_users(), and wires close_controller_users() into open_new_parent() (opening a
+never-before-seen controller), the reopen branch of open_parent() (re-opening a controller whose
+ihandle was released), and ensure_open() (opening a disk target). Traced controller_len()
+against get_parent_devname() (both cut at the last '/' unless that '/' is the string's first
+character, in which case the whole string is kept) -- the two use the same cut point, so a
+disk's controller_len() matches the `parent` string open_parent()/get_parent_devname() would
+compute for it. Confirmed the length-then-memcmp checks in close_controller_users() cannot read
+out of bounds: for the parent_devs loop, `grub_strlen (op->name) == clen` is evaluated (and must
+be true) before the memcmp, via short-circuit &&; for the disk_devs loop, controller_len(dev->name)
+is always <= grub_strlen(dev->name), so if it equals clen, memcmp'ing clen bytes of dev->name is
+in-bounds. See Issue 1 for the interaction between this commit's "keep_disk is already closed"
+assumption and the pre-existing error-path behavior that does not actually close the handle.
+
+== Issue 1: I/O-error paths leave a stale, unclosed ihandle that ensure_open()'s single-instance
+   logic assumes is already closed (obdisk.c) ==
+
+Discovery:
+Reading ensure_open() (line 684) together with the three places elsewhere in the file that write
+`dev->opened = 0` outside of close_disk(): the seek-error branch in obdisk_prepare() (line 745),
+the short-read branch in grub_obdisk_read() (line 770), and the short-write branch in
+grub_obdisk_write() (line 798). All three write `dev->opened = 0;` directly and return an error,
+without touching `dev->ihandle` and without calling the close_disk() helper that commit
+ed5b331bd introduced specifically to do this correctly.
+
+Source trace:
+1. close_disk() (line 89) is the only place in the file that correctly releases a device:
+   `grub_ieee1275_close (dev->ihandle); dev->ihandle = 0; dev->opened = 0; dev->dirty = 0;
+   grub_disk_cache_invalidate_all ();`. After close_disk(), `dev->opened == 0` truthfully means
+   "no open firmware instance is associated with this device."
+2. The three error sites instead do only `dev->opened = 0;`. `dev->ihandle` keeps its old,
+   still-open value; the firmware instance is never closed; the cache is never invalidated. After
+   one of these paths runs, `dev->opened == 0` is now a LIE with respect to what close_disk()'s
+   callers (in particular ensure_open()) assume it means: there is still a live, open instance
+   sitting in `dev->ihandle`, just no longer tracked as "opened."
+3. ensure_open() (line 684): `if (dev->opened != 0) return GRUB_ERR_NONE;` -- so when `opened ==
+   0` (whether because the device was properly closed, or because it just hit one of the three
+   error paths above), ensure_open() proceeds to reopen: `close_controller_users (dev->name,
+   controller_len (dev->name), dev, NULL);` (line 691) then `grub_ieee1275_open (...)` (lines
+   693-696), and finally `dev->ihandle = ihandle; dev->opened = 1;` (lines 718-719), silently
+   overwriting the OLD `dev->ihandle` value. Nothing along this path ever closes the value that
+   was overwritten.
+4. `close_controller_users(dev->name, controller_len(dev->name), dev, NULL)` passes `dev` itself
+   as `keep_disk`, i.e. it deliberately does NOT try to close `dev`'s own (believed-already-closed)
+   handle -- only sibling devices/the controller node on the same controller. This is correct
+   when `dev->opened == 0` really does mean "closed" (the close_disk()/close_parent() case), and
+   wrong when it means "errored but still open" (the three sites above).
+5. Concrete sequence on a machine with `obdisk_single_instance=1` (the exact scenario this MR's
+   last commit exists for): disk A is open (dev_A->opened=1, dev_A->ihandle=H1). A transient
+   grub_ieee1275_seek() or grub_ieee1275_read()/grub_ieee1275_write() failure on A (a real firmware
+   condition the code already anticipates -- that's why these branches exist) sets
+   dev_A->opened=0 while dev_A->ihandle is still H1, still open in the firmware. The next access
+   to A (e.g. a filesystem driver retrying the same grub_disk_t after a transient error, or a
+   second read for a different block of the same file) calls grub_obdisk_read()/write() again ->
+   obdisk_prepare() -> ensure_open(dev_A, ...): `dev_A->opened == 0`, so it runs
+   close_controller_users(A's controller, ..., keep_disk=dev_A, ...) (closing any OTHER disk/the
+   controller node sharing A's controller, per the feature's design) and then calls
+   grub_ieee1275_open() AGAIN on A's own name, obtaining a second handle H2 while H1 is still open
+   in the firmware. For the span between the new open succeeding and H1 eventually being
+   forgotten, the controller has two open instances on the very target this feature exists to
+   keep at one -- on firmware such as the reported Sun Fire V240/T2000 OpenBoot, opening a second
+   instance while one is already open is described in this same series's own commit message
+   (5931f8467) as exactly what faults the machine ("Fast Data Access MMU Miss").
+6. Separately from the single-instance interaction, H1 is simply never closed: it is a permanent
+   IEEE1275 instance-handle leak (bounded by the number of I/O errors encountered), and per
+   ed5b331bd's own stated rationale, if the firmware later reuses H1's numeric value for an
+   unrelated device, any block-cache entries still keyed on H1 (from before the error) could be
+   served to that unrelated device -- the same corruption class ed5b331bd's
+   grub_disk_cache_invalidate_all() call exists to prevent, but which is skipped on this path.
+
+Consequence:
+On firmware without the single-instance limit, this is a permanent per-erroring-I/O leak of one
+IEEE1275 instance handle, plus a latent block-cache-key-reuse risk if the firmware recycles that
+handle number. On firmware WITH the single-instance limit -- the specific hardware this MR
+targets -- a transient read/write/seek error on a device, followed by ordinary continued use of
+that same device, can transiently place two open instances on one controller, i.e. it can
+recreate the exact fault (`obdisk_single_instance=1` is supposed to prevent) that the whole
+series exists to work around. The series' own testing (described in the commits) exercises
+"open one disk, then open/list a different disk on the same controller," which never revisits
+the same disk after an I/O error, so this path is not covered by the reported test cases.
+
+Fix assessment:
+Replacing the bare `dev->opened = 0;` with `close_disk (dev);` at all three sites (obdisk.c line
+745, line 770, line 798) is correct and requires no other change: at each site `dev->opened` is
+known to be non-zero (ensure_open()/a prior successful open already ran), which is exactly what
+close_disk()'s own guard (`if (dev->opened == 0) return;`) expects, so the call is a no-op-safe,
+in every other respect it performs the same effect the error paths were already trying to signal
+(the device needs a fresh open before it is used again) while additionally actually closing the
+firmware instance and invalidating the cache. Nothing in any of the three functions uses
+`dev->ihandle` after the error branch runs (each returns immediately), so closing it there does
+not affect the returned grub_err_t or any other logic on that path. This also automatically
+makes close_controller_users()'s "keep_disk is already closed" assumption in ensure_open() true
+in all cases, restoring the single-instance guarantee for the retry-after-error case as well.
+
+== Issue 2: "Enumerate once" only detects newly-appeared devices, not removed ones, for
+   ls/search (obdisk.c, grub_obdisk_iterate) ==
+
+Discovery:
+Commit 7f86f7219 changes grub_obdisk_iterate() (line 1245) from calling enumerate_devices()
+unconditionally to calling it only `if (disks_enumerated == 0)` (lines 1261-1262). Its own
+comment and commit message describe the consequence for a device that *appears* mid-session
+("not picked up by an iteration"), but enumerate_devices() is also what marks devices *invalid*
+that have disappeared.
+
+Source trace:
+1. enumerate_devices() (line ~1196 pre-patch numbering; unchanged by this series) does
+   `invalidate_all_disks (); enumerate_disks (); enumerate_aliases (); disks_enumerated = 1;
+   display_stats ();`. invalidate_all_disks() sets every disk_dev's `valid = 0`; enumerate_disks()
+   and enumerate_aliases() then re-set `valid = 1` only for devices actually found in the current
+   device tree scan. This is the only mechanism in the file that ever clears a stale `valid` flag.
+2. Before this series, grub_obdisk_iterate() called enumerate_devices() on every invocation with
+   pull == GRUB_DISK_PULL_NONE, so every `ls`/search-driven iteration re-validated the full disk
+   list, catching both newly-appeared and newly-removed devices.
+3. After this series, grub_obdisk_iterate() only calls enumerate_devices() the first time
+   (`disks_enumerated == 0`). Every subsequent call in the same session walks disk_devs with
+   whatever `valid` flags were set during that single enumeration -- a device removed after the
+   first call keeps `valid == 1` and continues to be listed/searched by every later `ls`/search,
+   even though it is physically gone.
+4. This is distinct from find_grub_devpath() (unchanged by this series), which calls
+   enumerate_devices() unconditionally whenever a name lookup fails (not gated on
+   disks_enumerated), so looking a specific device up by name still re-validates the full list;
+   only the "iterate everything" consumer (ls, search, diskfilter's device scan) is affected.
+5. Attempting to actually use a stale, no-longer-present entry does not crash or corrupt data:
+   grub_obdisk_open() -> find_grub_devpath() -> ensure_open() would call grub_ieee1275_open() on
+   the no-longer-existing firmware path, get ihandle == 0, and return
+   GRUB_ERR_UNKNOWN_DEVICE/"can't open device" cleanly.
+
+Consequence:
+A device removed mid-session (the file's own enumerate_aliases() comment already discusses
+hot-plugging as a real concern on this hardware class) continues to appear in `ls` output and
+search results for the rest of the session, until something else triggers a fresh
+enumerate_devices() (a failed name lookup). Any code that treats iteration output as "currently
+present" (rather than "known at least once") gets a false positive; the eventual open attempt
+fails cleanly rather than misbehaving, so this is a listing-accuracy defect, not a
+crash/corruption one.
+
+Fix assessment:
+Not a straightforward fix. The commit message shows the author already tried the natural
+alternative -- re-enumerating on GRUB_DISK_PULL_RESCAN -- and reverted it because every consumer
+of the device list ends up offering each pull level in turn, bringing back the "minutes per
+search" cost this series exists to eliminate. Fixing the removal side without reintroducing that
+cost would need some cheaper staleness signal (e.g. only re-validating entries whose parent
+controller was closed/reopened, or a narrower "did this specific device disappear" probe) that
+is not present in this series; that is a design decision for the author, not a small patch.

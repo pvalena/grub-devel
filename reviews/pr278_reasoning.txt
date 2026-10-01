@@ -1,0 +1,143 @@
+MR !278 - efibootnext: fix misbehaviour on efivar>=39 and MBR ESP
+1 commit (23024bd80). Not AI-assisted (Author: Guoxin Pu, Reviewed-by: Neal Gompa).
+
+Source files read at pr278 (full functions, not just diff hunks):
+- util/grub.d/31_efi_bootnext.in (full file, 304 lines)
+- util/grub-mkconfig_lib.in (grub_warn, save_default_entry, grub_quote, gettext_printf -
+  confirmed all helper functions the test harness depends on are defined here)
+- tests/grub_mkconfig_bootnext_path_test.in (full file, new, 176 lines)
+- tests/grub_mkconfig_bootnext_self_test.in (full file, diff against origin/master version)
+- Makefile.util.def (new testcase registration)
+
+== Verification method (executable, not just reading) ==
+
+Both bundled tests were run against the exact pr278 script (not a paraphrase of it), by
+copying the file out and, only in the disposable /tmp copy, bypassing the
+`/sys/firmware/efi`-absent early exit that both the helper and the test harness use to detect
+a non-EFI host (this sandbox has no /sys/firmware/efi). The in-tree grub/ files were never
+touched. Both tests passed (exit 0) against the unmodified pr278 parsing/extraction logic.
+
+path_test.sh exercises the decorated/bare (File()-present vs. efivar>=39 bare) x
+none/hex/ascii/guid/named-guid optional-data matrix, plus a separate listing for the last-path-
+component rule, network entries (PXE/HTTP), and shim-chainload-target decoding. self_test.sh
+exercises the self-entry filter across GPT and MBR (including an unpadded 7-hex-digit MBR
+signature), each in both File()-decorated and bare form.
+
+The bare-format `N;P;D` sed lookahead that reassembles a boot entry with its optional
+`dp:`/`data:` lines was additionally traced by hand: it is the standard one-line-lookahead
+idiom, every `N` is guarded by `$!` so end-of-input does not error, and a lookahead that turns
+out to be the *next* "BootXXXX" entry (no dp:/data present, e.g. network entries or the plain
+self_test listings) is correctly recycled via `D` rather than lost. The `:data` loop's
+"remove the rightmost space per iteration" technique is order-preserving and reproduces the
+executed test's "00 00 42 4f" -> "0000424f" result exactly. The optional-data length arithmetic
+(opt_len==32 GUID/name case, ascii-range /2 case, default hex case) and the MBR PARTUUID
+zero-padding (`printf '%08x-%02x' ...`) were traced against concrete byte sequences from the
+tests and reproduced the tests' expected values (including the commit's own motivating
+`0xc9f67a5d` example and the self_test's unpadded `0x4ff7d6a` case).
+
+This confirms the two headline fixes (bare-path File() extraction; MBR PARTUUID self-match)
+are correct. The issue below is a narrower gap in a third feature added by the same commit --
+the shim UTF-16LE optional-data decode -- that this verification pass initially missed and
+that a subsequent adversarial re-review caught.
+
+== Issue 1: shim-path case check runs before the script's lowercase normalisation ==
+
+Discovery:
+Re-examining the bare-path (`FILE_DEC` != 'yes') branch's shim-handling block for anything
+that deviates from the rest of the script's identity-comparison convention:
+
+    case "${efi_file}" in
+        '\EFI\'*'\shim'*.efi)
+            if printf '%s\n' "${optdata}" | grep -q '^\([2-7][0-9a-f]00\)\+0000$'; then
+                ...
+                efi_file=".`printf '%b' "${opt_suffix}"`"
+            fi ;;
+    esac
+
+Every other place in this script that compares a value derived from firmware/devpath text
+against a fixed pattern lowercases first: `SELF_VENDORS` is built with `tr 'A-Z' 'a-z'` (line
+89), `osp_efi` (the os-prober path used for comparison) is lowercased at the point of
+comparison (line 269), and `entry_vendor` is derived from the already-lowercased `efi_file`
+(computed after the `tr` at line 230-231, since `entry_vendor`'s extraction is line ~250, well
+past the `tr` call). The shim `case` above is the only identity check in the file that runs
+*before* that `tr` and does not lowercase on its own -- confirmed by reading the full function
+top to bottom: the `tr '\134A-Z' '/a-z'` normalisation is a single unconditional statement at
+lines ~230-231, physically *after* the closing `fi` of the `if [ "${FILE_DEC}" = 'yes' ]
+... else ... fi` block that contains the shim `case`. So at the point the `case` pattern is
+evaluated, `${efi_file}` still holds whatever case the firmware/efibootmgr used for the
+directory name in `devpath` (e.g. `\EFI\...` or `\efi\...` or mixed), not the lowercased form.
+
+Source trace:
+- `devpath` is the raw third field from the `sed` extraction of the efibootmgr line (line
+  183-184), i.e. it preserves whatever case the firmware wrote for the ESP directory tree.
+  `util/grub-install.c` hardcodes GRUB's own installed vendor directory as uppercase `\EFI\`,
+  and mainstream shim-install tooling (Fedora/Debian/Ubuntu shim-signed packages, `grub-install
+  --efi-directory`) follows the same convention, so a canonical GRUB/shim install always
+  produces an uppercase `\EFI\...\shim*.efi` path here and the pattern matches. But firmware,
+  OEM-preloaded entries, or non-canonical/third-party install tooling can write the directory
+  in any case (FAT is case-insensitive, so `\efi\otheros\shimx64.efi` is a perfectly valid,
+  bootable path); POSIX shell `case` patterns have no case-insensitive matching mode, so
+  `'\EFI\'*'\shim'*.efi)` requires an *exact*-case match against the literal string and simply
+  does not match `\efi\otheros\shimx64.efi` at all -- none of the three case-alternatives in
+  the pattern are satisfied.
+- When the pattern fails to match, the `case` block is a no-op: `efi_file` keeps the value
+  assigned two statements earlier (the plain last-path-component extraction, i.e. the shim's
+  own path, not its chainload target).
+- After the `if/else fi` block, the unconditional `tr '\134A-Z' '/a-z'` (line 230-231) still
+  runs and lowercases `efi_file` to `/efi/otheros/shimx64.efi` -- this happens regardless of
+  whether the shim-decode branch fired, so the *symptom* is not a case mismatch surviving into
+  later comparisons; it is that the UTF-16LE decode is skipped entirely for this entry.
+
+Consequence:
+`efi_file` ends up equal to the shim's own path (`/efi/otheros/shimx64.efi`), not the
+chainload target the shim's optional data actually points at (e.g. a firmware updater's
+`fwupdx64.efi`). In the os-prober filter (lines 262-278), if os-prober's output recognises the
+shim path itself as a valid OS loader -- a common, expected result, since shim is the real
+first-stage EFI loader os-prober's Linux-detection logic reports for a distro -- `found=1` and
+the entry is kept in the BootNext menu. This is exactly the failure mode commit 23024bd80's
+own commit message says the shim-decode feature exists to prevent: "shim's chainload target
+remains encoded in optional data rather than appearing as another File() component ... Decode
+NUL-terminated UTF-16LE ASCII targets for bare shim paths so that firmware updaters are still
+filtered against os-prober results." For a bare-format (efivar>=39) listing with a
+non-canonical-case shim directory, that filtering silently does not happen: a firmware-updater
+entry that chainloads behind the shim is offered in the BootNext menu as if it were the OS
+entry, the opposite of the intended behaviour.
+
+Scope: this requires (a) efivar>=39 (bare/undecorated paths -- the File()-decorated branch
+extracts `File(...)` verbatim and never reaches this `case` at all) and (b) a shim path whose
+directory case differs from `\EFI\...\shim...`. `grub-install`-produced installs and the
+mainstream shim-signed packages this MR was written against always use uppercase `\EFI\`, so
+canonical GRUB installs are not affected and this is not a self-reboot-loop risk (the two
+headline fixes verified above remain correct and are the common case this MR targets). It is a
+narrower gap: non-canonical/third-party install tooling, or a firmware/OEM entry using
+lowercase or mixed-case directory names, on a host with efivar>=39.
+
+Fix assessment:
+Lowercasing only the value being compared, immediately before the `case`, follows the same
+idiom already used twice elsewhere in this file (`tr 'A-Z' 'a-z'` on `SELF_VENDORS`'s inputs,
+and on `osp_efi`) and does not disturb anything else: the later unconditional `tr` at line
+230-231 already lowercases `efi_file` a second time regardless of which branch of the `case`
+ran, so lowercasing once more here is idempotent and harmless for the non-shim, already-correct
+paths. The decoded chainload target assigned inside the matched branch
+(`efi_file=".`printf '%b' "${opt_suffix}"`"`) is built from a fixed `.` prefix plus octal-escape
+expansion of ASCII bytes from `optdata`, which is independent of `efi_file`'s case -- so
+lowercasing the match subject does not affect what gets assigned when the branch fires. No
+new leak, use-after-free, or ordering problem is introduced by this fix; it only widens which
+`efi_file` values reach the existing decode branch.
+
+Draft fix:
+
+--- a/util/grub.d/31_efi_bootnext.in
++++ b/util/grub.d/31_efi_bootnext.in
+@@
+-        case "${efi_file}" in
+-            '\EFI\'*'\shim'*.efi)
++        case "`printf '%s' "${efi_file}" | tr 'A-Z' 'a-z'`" in
++            '\efi\'*'\shim'*.efi)
+                 if printf '%s\n' "${optdata}" | grep -q '^\([2-7][0-9a-f]00\)\+0000$'; then
+
+(Only the `case` subject and the pattern's own case change; the pattern's `*.efi` suffix is
+already lowercase and needs no change. `tr 'A-Z' 'a-z'` is used, not the `tr '\134A-Z' '/a-z'`
+form used later in the file, because backslash must stay a backslash here -- the pattern still
+matches on `\EFI\...\shim...`-shaped backslash-delimited segments, and converting backslashes
+to slashes at this point would break the pattern independently of the case issue.)

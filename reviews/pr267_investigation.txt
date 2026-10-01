@@ -1,0 +1,158 @@
+pr267 investigation — ieee1275/ofdisk: PCIe NVMe namespace enumeration
+
+1 commit (a464afd71), +110/-0 lines, single file (grub-core/disk/ieee1275/ofdisk.c). Read the
+full file at the branch (git show pr267:grub-core/disk/ieee1275/ofdisk.c), not just the diff,
+including the pre-existing sibling functions dev_iterate_fcp_disks(), dev_iterate_fcp_nvmeof(),
+and dev_iterate() (the dispatcher this patch hooks into). Also read include/grub/ieee1275/
+ieee1275.h and the powerpc/sparc64 ieee1275.h headers, and grub-core/Makefile.core.def.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+WHAT THE PATCH ADDS
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+Two new static functions plus two call sites in dev_iterate():
+
+1. is_pcie_nvme_controller() — returns true if alias->type is "nvme" or "nvm-e" (the latter
+   observed on IBM POWER firmware per the added comment).
+2. dev_iterate_pcie_nvme() — opens the controller node directly, calls the "get-namespace-list"
+   IEEE1275 client-interface method, copies the returned NSID table into a local stack array,
+   closes the ihandle, then registers one disk per valid NSID via dev_iterate_real(). Falls back
+   to walking the controller's real OF child nodes (type "block") if the method call fails.
+3. In dev_iterate(): a new "else if (is_pcie_nvme_controller (alias))" arm dispatches to (2) and
+   returns; and inside the existing generic "type == block" arm, a new guard skips nodes named
+   "namespace" (comment: "handled by dev_iterate_pcie_nvme() and dev_iterate_fcp_nvmeof()").
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+RESOURCE LIFECYCLE (buf / ihandle) — every path checked
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+dev_iterate_pcie_nvme() has 5 return points. Traced each:
+
+1. grub_add() overflow (sz for buf) -> grub_error() + return. buf not yet allocated. OK.
+2. grub_malloc(sz) fails -> return. Nothing to free. OK.
+3. grub_ieee1275_open() fails -> grub_free(buf); return. ihandle never opened. OK.
+4. IEEE1275_CALL_ENTRY_FN fails or args.catch_result set -> grub_dprintf, grub_ieee1275_close
+   (ihandle), then the OF-children fallback loop (does not touch buf), grub_free(buf); return.
+   ihandle closed exactly once, buf freed exactly once. OK.
+5. Success -> copy args.table into local_ns_table (grub_uint32_t[TABLE_SIZE], stack, 1KB),
+   grub_ieee1275_close(ihandle), loop over namespaces calling dev_iterate_real(buf, buf),
+   grub_free(buf) after the loop. ihandle closed once, buf freed once. OK.
+
+No path double-frees buf, leaves ihandle open, or double-closes it. This matches (and is
+actually stricter than) the sibling dev_iterate_fcp_nvmeof(), which reads
+nvme_namespaces_args.table via a raw grub_uint32_t* AFTER grub_ieee1275_close(ihandle) (pre-
+existing, unmodified by this diff) — the new function copies the table into local_ns_table
+BEFORE closing, avoiding any question about table-pointer validity post-close.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+BUFFER SIZING (buf / bufptr)
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+  sz = strlen(alias->path) + EXTEND_PATH_512   (512, overflow-checked via grub_add)
+  buf = grub_malloc(sz)
+  bufptr = grub_stpcpy(buf, alias->path)       -> bufptr == buf + strlen(alias->path)
+
+Remaining space from bufptr to end of buf is exactly sz - strlen(alias->path) == 512 bytes.
+The only write through bufptr is:
+
+  grub_snprintf(bufptr, EXTEND_PATH_512, "/namespace@%" PRIxGRUB_UINT32_T, nsid);
+
+grub_snprintf is called with a size (512) equal to the remaining buffer space, so it cannot
+write past the allocation even in the worst case (longest possible output "/namespace@" (11
+chars) + 8 hex digits for a full grub_uint32_t + NUL = 20 bytes, far under 512). No overflow.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+NSID TABLE COPY BOUNDS
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+  num_namespaces = (grub_uint32_t) args.nentries;
+  if (num_namespaces > TABLE_SIZE) num_namespaces = TABLE_SIZE;
+  for (...; namespace_index < num_namespaces; ...)
+    local_ns_table[namespace_index] = ((grub_uint32_t *) args.table)[namespace_index];
+
+num_namespaces is clamped to TABLE_SIZE (256) before it is used as a copy count into the
+256-entry local_ns_table, so the copy cannot overrun the stack array even if firmware reports
+an inflated nentries. (A firmware reporting more than 256 namespaces would have the excess
+silently dropped; this matches the file's existing convention of fixed TABLE_SIZE-capped stack
+buffers used elsewhere in the same file for controller/discovery tables, and 256 comfortably
+exceeds any realistic single-controller NVMe namespace count.)
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+DOUBLE-REGISTRATION / DISPATCH ORDERING
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+dev_iterate()'s type dispatch is a single if / else-if chain on one alias's type ("fcp",
+"vscsi", "sas_ioa", then the new is_pcie_nvme_controller() check). Only one arm can fire per
+call, and the new arm explicitly returns after dev_iterate_pcie_nvme(), so a node identified as
+an NVMe controller never additionally falls into the generic "type == block" handling or the
+final recursive FOR_IEEE1275_DEVCHILDREN(alias->path, child) walk in the same function body.
+
+The concern worth tracing: does anything else in the tree walk ever reach a namespace node
+(type "block", name "namespace") through a *different* call path and register it a second
+time? The "fcp" arm (pre-existing, unmodified by this diff) has no `return` and falls through
+to the bottom of dev_iterate(), including the generic block-type handling and the final
+recursive child walk — so for an "fcp" alias, real OF child nodes are also visited via
+dev_iterate(&child). This is exactly why the patch adds the "skip if name == namespace" guard
+inside the generic block-type arm: without it, a namespace node reachable as a real child in
+the OF tree (via that fallthrough) would be registered again by the generic path in addition to
+being registered by dev_iterate_pcie_nvme() or dev_iterate_fcp_nvmeof(). The guard is scoped
+correctly (skips only type=="block" AND name=="namespace", not other block devices), and it
+fixes the same double-registration risk for both the new PCIe path and the pre-existing FCP-
+NVMeoF path. This is a correct, defensive addition, not a bug.
+
+The fallback branch inside dev_iterate_pcie_nvme() (when get-namespace-list fails) iterates the
+controller's own children directly via FOR_IEEE1275_DEVCHILDREN and registers type=="block"
+children unconditionally (no name=="namespace" skip) — that is intentional: this is the ONLY
+mechanism registering those namespaces when the method call is unavailable, so it must not skip
+them; it calls dev_iterate_real() directly rather than dev_iterate(), so it never re-enters the
+dispatch chain in a way that could re-trigger the guard added elsewhere.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+TYPE WIDTH (grub_ieee1275_cell_t) AND PLATFORM SCOPE
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+grub_ieee1275_cell_t is grub_uint32_t on powerpc (include/grub/powerpc/ieee1275/ieee1275.h:26)
+but grub_uint64_t on sparc64 (include/grub/sparc64/ieee1275/ieee1275.h:26). ofdisk.c is built
+for the whole "ieee1275" platform group (grub-core/Makefile.core.def:180), which includes both.
+args.nentries and args.table are grub_ieee1275_cell_t, and are narrowed:
+
+  num_namespaces = (grub_uint32_t) args.nentries;               -- truncates on sparc64
+  ((grub_uint32_t *) args.table)[namespace_index]                -- reinterprets, not truncates
+
+The nentries truncation only matters if a firmware genuinely returns a namespace count that
+does not fit in 32 bits, which is not realistic. The table-address cast is safe on both ABIs:
+grub_ieee1275_cell_t is defined to be exactly the same width as a pointer on each of the two
+platforms it is compiled for (32-bit on powerpc, 64-bit on sparc64), so converting the cell to
+a pointer never drops address bits. This exact narrowing pattern (`(grub_uint32_t)
+...args.nentries`) already exists in the pre-existing, unmodified dev_iterate_fcp_nvmeof() in
+the same file, so this is a consistent, pre-established convention rather than a new defect.
+IBM POWER-specific "nvm-e" device_type strongly implies real-world use is powerpc-ieee1275
+only, where the cast is exact (32-bit to 32-bit).
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+CALL-METHOD ERROR CHECK
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+  if (IEEE1275_CALL_ENTRY_FN (&args) == -1 || args.catch_result)
+
+This checks both the entry-function's own failure return AND the firmware-side catch_result
+(the standard IEEE1275 "did the called method itself throw" indicator). The sibling
+dev_iterate_fcp_nvmeof()'s three call-method sites only check the entry-function return, never
+args.catch_result. The new code is stricter than its sibling, not weaker — a method that is
+merely unimplemented (only setting catch_result, not failing the entry call) is now correctly
+treated as a failure and routed to the OF-children fallback, whereas the pre-existing sibling
+would silently proceed with garbage/zeroed out-arguments in that case (pre-existing, out of
+scope for this diff).
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+CONCLUSION
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+No issues found. Resource management (buf, ihandle) is balanced on every return path and is
+more defensive than the sibling FC-NVMeoF function it is modeled after (copies the firmware
+table before closing the ihandle; checks catch_result in addition to the entry-function
+return). Buffer sizing for the constructed OF path string is exact and overflow-checked. The
+NSID table copy is bounds-checked against the fixed-size stack buffer. The new "skip namespace"
+guard in the generic block-type dispatch path is a correct fix for a latent double-registration
+risk that already existed for the FC-NVMeoF path (via the pre-existing "fcp" arm's fallthrough
+to generic child recursion) and would otherwise have applied to this new PCIe path too.
