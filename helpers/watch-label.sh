@@ -4,12 +4,16 @@ set -e
 
 zsh -n "$0"
 
-my="$(dirname "$(readlink -f "$0")")"
+myf="$(readlink -f "$0")"
+my="$(dirname "$myf")"
 [[ -d "$my" ]]
 
 L="${my}/gitlab-lib.sh"
 [[ -r "$L" ]]
  . "$L"
+
+[[ -z "$1" ]]
+
 
 ## MAIN
 M="$(rglab mr list -l ${B} 2>&1 | tr -s '\t' ' ' | grep '^!' | cut -d' ' -f1 | cut -d'!' -f2 | grep -v '^$')" ||:
@@ -39,21 +43,23 @@ A="$(rglab api 'projects/:id/members/all?per_page=10000' \
         | jq -r '.[] | select(.access_level >= 30 and .state == "active" and .locked == false) | .username')"
 [[ -n "$A" ]] || exit 4
 
-for mr in `echo ${M}` ; do
 
+## LOOP
+for mr in `echo ${M}` ; do
     s="$(rglab mr view $mr 2>/dev/null | grep '^state:' | tr -s '\t' ' ' | cut -d' ' -f2)"
 
     # Check for label-setter
     u="$(rglab api "projects/:id/merge_requests/${mr}/resource_label_events" \
-        | jq -r ".[] | select(.action==\"add\" and .label.name==\"${B}\") | .user.username")"
-
-    echo "u: $u"
-
-    [[ -n "$u" ]]
-    echo "$A" | grep -qE "^${u}$" || exit 5
+        | jq -r ".[] | select(.action==\"add\" and .label.name==\"${B}\") | .user.username" \
+        | tail -n 1)"
 
     [[ -z "$s" ]] && s='' || \
-        echo ">>> $mr: $s"
+        echo ">>> $mr: $s ($u)"
+
+    grep -qE "^${u}$" <<< "$A" || {
+        echo "Warning: user not found, skipping" >&2
+        continue
+    }
 
     case $s in
         open)

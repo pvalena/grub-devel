@@ -66,15 +66,18 @@ wip () {
 
 ## ARGS
 [[ "$1" == '-d' ]] && { DEB="$1"; shift||: } || DEB=
+[[ "$1" == '-d' ]] && { set -x; shift||: } ||:
 
 [[ "$1" == '-l' ]] && {
+
+    [[ -x "$myf" ]]
 
     [[ -r "$L" ]] && I="$(cat "$L" | srlz)" || I=
 
     clear
     while :; do
 
-        Z="$($0 $DEB | grep -vE "^>>> ($I): ")" ||:
+        Z="$($myf $DEB | grep -vE "^>>> ($I): ")" ||:
 
         [[ -n "$Z" ]] && {
 

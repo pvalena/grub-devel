@@ -4,7 +4,8 @@ set -e
 
 zsh -n "$0"
 
-my="$(dirname "$(readlink -f "$0")")"
+myf="$(readlink -f "$0")"
+my="$(dirname "$myf")"
 [[ -d "$my" ]]
 
 L="${my}/helpers/gitlab-lib.sh"
@@ -55,9 +56,13 @@ L="${my}/helpers/gitlab-lib.sh"
         }
 
         grep -qE "^No issues found" "$F" >&2 \
-            && I="${BN}" \
-            || {
+            && {
+                I="${BN}"
+                J="${BF}"
+                :
+            } || {
                 I="${BF}"
+                J="${BN}"
                 [[ -n "$V" ]] && echo ">> Issues FOUND" >&2
             }
 
@@ -67,7 +72,8 @@ L="${my}/helpers/gitlab-lib.sh"
 
             rglab mr note create "${m}" -m "${C}"
 
-            rglab mr update "${m}" -u "$B" -l "${I}"
+            # set/unset labels
+            rglab mr update "${m}" -u "${B},${J}" -l "${I}"
 
             echo "$m" >> "$D"
 
