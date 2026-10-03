@@ -1,0 +1,197 @@
+pr287 investigation — grub-mkimagexx: RISC-V PCREL_LO12 backward-reference sign fix
+
+1 commit (e51868370), +5/-3 lines across util/grub-mkimage32.c, util/grub-mkimage64.c, and
+util/grub-mkimagexx.c. Read the full SUFFIX(relocate_addrs) RISC-V case at the branch (git show
+pr287:util/grub-mkimagexx.c), the Elf_Sxword/Elf_Sword/Elf_Addr type aliases added/used in
+grub-mkimage32.c and grub-mkimage64.c, the real ELF field types in include/grub/elf.h, and the
+grub_target_to_host()/grub_target_to_host32()/grub_target_to_host64() plumbing in
+include/grub/util/mkimage.h. Also read include/grub/types.h for the grub_*_to_*16/32/64 byte-swap
+macro definitions, to resolve a question raised during the trace (see "Byte-swap symmetry" below,
+relevant background for the companion pr286 review, not this commit, but checked while tracing
+grub_target_to_host plumbing).
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+WHAT THE PATCH CHANGES
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+util/grub-mkimagexx.c, SUFFIX(relocate_addrs)(), case R_RISCV_PCREL_LO12_I / R_RISCV_PCREL_LO12_S:
+this block searches backward through the relocation table for the matching R_RISCV_PCREL_HI20
+entry (the AUIPC instruction whose location equals this LO12 relocation's symbol address), then
+recomputes the PC-relative distance from that HI20 relocation's own symbol address and addend:
+
+  Elf_Addr rel2_sym_addr;
+- Elf_Addr rel2_addend;
++ Elf_Sxword rel2_addend;
+  Elf_Addr rel2_loc;
+  grub_int64_t rel2_off;
+  ...
+  rel2_addend = (s->sh_type == grub_target_to_host32 (SHT_RELA)) ?
+-   grub_target_to_host (rel2->r_addend) : 0;
+- rel2_off = rel2_sym_addr + rel2_addend - rel2_loc;
++   (Elf_Sxword) grub_target_to_host (rel2->r_addend) : 0;
++ rel2_off = ((grub_int64_t) rel2_sym_addr + rel2_addend - (grub_int64_t) rel2_loc);
+
+util/grub-mkimage32.c adds `# define Elf_Sxword Elf32_Sword`; util/grub-mkimage64.c adds
+`# define Elf_Sxword Elf64_Sxword`. These two files define the SUFFIX macro and the Elf_*
+type aliases, then #include grub-mkimagexx.c twice (once per word size) to generate the 32-
+and 64-bit variants of every SUFFIX()-wrapped function.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+THE BUG BEING FIXED
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+Before the patch, on an ELF32 target (Elf_Addr == Elf32_Addr == grub_uint32_t, 32-bit unsigned):
+
+  rel2_off = rel2_sym_addr + rel2_addend - rel2_loc;
+
+All three operands were Elf_Addr (unsigned 32-bit), so the entire right-hand side was computed
+in 32-bit unsigned (modulo 2^32) arithmetic, and only the *final* 32-bit result was converted to
+the 64-bit signed rel2_off. If the HI20 instruction's resolved address is numerically less than
+rel2_loc (the HI20 relocation site is *after* the current PC — a backward reference, e.g. a
+local branch target above a later `auipc`/load-immediate pair, or any layout where the compiler
+emitted the LO12 use before its HI20 producer in address order), the true mathematical distance
+is negative, but the unsigned subtraction wraps to a large positive 32-bit value (2^32 + true
+distance) before ever becoming a 64-bit value. Converting that wrapped unsigned 32-bit value to
+int64_t does not recover the sign — it simply becomes the same large positive 64-bit number
+(e.g. a true distance of -100 becomes 4294967196, not -100).
+
+That corrupted rel2_off then feeds:
+
+  off = rel2_off - ((rel2_off + 0x800) & 0xfffff000);
+
+which computes the low-12-bit immediate that is encoded into the I-type/S-type instruction. With
+the wrapped huge-positive rel2_off instead of a small negative one, the `& 0xfffff000` masking
+step lands on the wrong 4K-aligned boundary, so the hi20/lo12 split is wrong and the final
+encoded displacement in the instruction is not the real -100: the generated RISC-V image computes
+the wrong address at runtime for that PC-relative reference. This is a correctness bug (wrong
+address, not a crash), matching the commit's own description: "subtracting the unsigned symbol
+and relocation addresses wraps a negative distance before it is assigned to grub_int64_t."
+
+The ELF64 path (Elf_Addr == Elf64_Addr == grub_uint64_t) was not affected in the same way: the
+original unsigned subtraction already happened in 64-bit arithmetic, and legitimate code/data
+addresses in a grub-mkimage-built module/kernel image are far below 2^63, so a true negative
+distance already produced a correctly-wrapped-looking *64-bit* unsigned value that, when read as
+signed (which never happened explicitly before — it was just assigned to rel2_off, a signed
+type, via implicit conversion) already carried the right bit pattern. The bug was specific to
+ELF32's narrower intermediate width.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+WHY THE FIX IS CORRECT: Elf_Sxword matches the real on-disk field type
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+include/grub/elf.h:507  Elf32_Sword  r_addend;   /* Elf32_Rela */
+include/grub/elf.h:514  Elf64_Sxword r_addend;   /* Elf64_Rela */
+include/grub/elf.h:34   typedef grub_int32_t Elf32_Sword;
+include/grub/elf.h:42   typedef grub_int64_t Elf64_Sxword;
+
+The ELF spec itself defines r_addend as a SIGNED field (negative addends are valid and used,
+e.g. for `symbol - offset` style relocations). The pre-patch code read it into an unsigned
+Elf_Addr, silently discarding the sign information for any negative on-disk addend (R_RISCV
+PCREL_HI20/LO12 pairs normally carry addend 0 in practice, so this specific field was usually not
+the direct trigger, but using the correctly-signed type is what the rest of the fix needs to
+compose correctly). The new `Elf_Sxword` macro is defined per-width to exactly the real field
+type (Elf32_Sword for the 32-bit build, Elf64_Sxword for the 64-bit build), so `rel2_addend` now
+has the same signedness and width as the on-disk r_addend for whichever word size is being built.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+VERIFYING THE grub_target_to_host() ROUND TRIP PRESERVES THE SIGN BITS
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+`rel2_addend = (Elf_Sxword) grub_target_to_host (rel2->r_addend)`. grub_target_to_host() is
+built around (include/grub/util/mkimage.h):
+
+  static inline grub_uint64_t
+  grub_target_to_host_real (const struct grub_install_image_target_desc *image_target,
+                             grub_uint64_t in)
+  {
+    if (image_target->voidp_sizeof == 8)
+      return grub_target_to_host64_real (image_target, in);
+    else
+      return grub_target_to_host32_real (image_target, in);
+  }
+
+Traced the ELF32 path concretely with rel2->r_addend == -100 (Elf32_Sword, i.e. 0xFFFFFF9C as a
+32-bit two's-complement bit pattern):
+
+1. rel2->r_addend (-100, int32_t) is passed as the `grub_uint64_t in` parameter of
+   grub_target_to_host_real(). Converting a signed value to a wider unsigned type is defined by
+   the standard via modulo-2^64 reduction of the mathematical value, which is equivalent to
+   sign-extending the bit pattern: in == 0xFFFFFFFFFFFFFF9C.
+2. voidp_sizeof != 8 (ELF32), so grub_target_to_host32_real(image_target, in) is called. Its
+   parameter is `grub_uint32_t in` — the 64-bit value is truncated to its low 32 bits:
+   0xFFFFFF9C. (This truncation recovers exactly the original 32-bit bit pattern, because step 1
+   only ever extended those same low 32 bits; widening then truncating back to the original
+   width is a no-op on the low bits regardless of whether the widening was sign- or
+   zero-extending.)
+3. grub_target_to_host32_real() byte-swaps 0xFFFFFF9C if image_target->bigendian, else returns
+   it unchanged (host and target already in canonical order for this trace) — the result is
+   still a 32-bit pattern, returned as grub_uint32_t, then implicitly widened back to the outer
+   function's grub_uint64_t return type. This widening is unsigned-to-unsigned (zero-extension):
+   0x00000000FFFFFF9C.
+4. Back at the call site, `(Elf_Sxword) 0x00000000FFFFFF9C` where Elf_Sxword is Elf32_Sword
+   (grub_int32_t, 4 bytes): truncating a 64-bit value to a 32-bit signed type keeps the low 32
+   bits (0xFFFFFF9C) and reinterprets them as signed: -100. Correct.
+
+The key fact that makes this robust despite the mixed sign/zero-extension in steps 1-3: any
+sequence of widen-then-truncate-back-to-the-original-width operations reproduces the original bit
+pattern exactly, independent of whether each individual widening step was sign- or
+zero-extending, because extension only ever sets bits *above* the original width and truncation
+discards exactly those bits. So grub_target_to_host(rel2->r_addend) is guaranteed to return (in
+its low 32 bits, for ELF32) the same on-disk bit pattern byte-order-corrected, which the final
+`(Elf_Sxword)` cast then correctly reinterprets as signed.
+
+For ELF64, r_addend is already 64 bits (Elf64_Sxword == grub_int64_t), voidp_sizeof == 8 routes
+to grub_target_to_host64_real() which operates on the full 64 bits throughout — no intermediate
+truncation step exists for this width, so the same reasoning applies trivially.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+FINAL ARITHMETIC: rel2_off computation
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+  rel2_off = ((grub_int64_t) rel2_sym_addr + rel2_addend - (grub_int64_t) rel2_loc);
+
+rel2_sym_addr and rel2_loc are Elf_Addr (unsigned, 32-bit on ELF32 / 64-bit on ELF64), explicitly
+cast to grub_int64_t before the addition/subtraction. Casting an unsigned 32-bit value to a
+64-bit signed type can never lose information (max value ~4.3e9 fits well inside int64_t's
+positive range), so the ELF32 case is exact. For ELF64, Elf_Addr values exceeding INT64_MAX
+(addresses with the top bit set) would convert to a negative grub_int64_t — implementation-
+defined by the C standard, though universally bit-pattern-preserving on real compilers; this is
+a pre-existing convention already used elsewhere in this file (e.g. the HI20 case a few lines
+above casts `(char *) target - (char *) e` to a signed offset the same way) and is not a new risk
+introduced by this patch — grub-mkimage processes its own linked module/kernel images, whose
+addresses are link-time offsets, not full 64-bit kernel-space pointers, so this is not a realistic
+trigger here.
+
+rel2_addend (Elf_Sxword, int32_t for ELF32 / int64_t for ELF64) is added directly; for ELF32 the
+usual arithmetic conversions promote the int32_t operand to grub_int64_t to match the other
+(already-int64_t) operand, correctly sign-extending a negative addend. All three operands end up
+in signed 64-bit arithmetic, so a true negative distance stays negative — no wraparound.
+
+The subsequent `off = rel2_off - ((rel2_off + 0x800) & 0xfffff000);` is unchanged by this patch
+and operates on `off`, which is declared `grub_int64_t off;` once at the top of the EM_RISCV
+switch block (util/grub-mkimagexx.c, shared across every case in that switch) — confirmed the
+reassignment inside the PCREL_LO12 case reuses that same outer 64-bit signed variable, so no
+separate narrower type is involved downstream.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+REGRESSION CHECK: forward (non-negative) references
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+For a forward reference (HI20 target before the LO12 use, true distance >= 0), the pre-patch
+32-bit unsigned subtraction and the post-patch 64-bit signed subtraction compute the identical
+value: a non-negative true difference that fits in 32 bits has the same representation whether
+computed mod 2^32 then widened, or computed directly in 64-bit arithmetic (no wraparound occurs
+in either case). So the common/forward case is unaffected — this fix is narrowly targeted at the
+backward-reference case only.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+CONCLUSION
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+No issues found. The fix correctly identifies and corrects an ELF32-specific unsigned-wraparound
+bug in backward PC-relative RISC-V relocation resolution. The new Elf_Sxword type exactly matches
+the real (signed) ELF r_addend field type for each word size, the grub_target_to_host() round
+trip through intermediate 32/64-bit unsigned parameters preserves the original bit pattern
+regardless of its internal sign/zero-extension choices, and the final rel2_off computation is
+performed entirely in 64-bit signed arithmetic. The forward-reference case is provably unchanged
+in outcome.

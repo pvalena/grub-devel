@@ -1,0 +1,125 @@
+MR !278 - efibootnext: fix misbehaviour on efivar>=39 and MBR ESP
+Re-review, round 2. 1 commit (8404f2283, rework/force-push of round 1's 23024bd80).
+Round 1 reported ISSUES(1) in reviews/pr278_reasoning.txt (kept unchanged -- see that file for
+the original discovery). This file documents round 2's verification that the issue is fixed.
+
+Source files read at pr278 (full functions, not just diff hunks):
+- util/grub.d/31_efi_bootnext.in (full file, 304 lines)
+- util/grub-mkconfig_lib.in (unchanged from round 1)
+- tests/grub_mkconfig_bootnext_path_test.in (full file, 189 lines, +13 vs round 1's 176)
+- tests/grub_mkconfig_bootnext_self_test.in (full file, byte-identical diff vs round 1)
+- Makefile.util.def (byte-identical diff vs round 1)
+
+== Identifying what changed between rounds ==
+
+Old commit 23024bd80 is still a valid object (`git cat-file -t 23024bd80` -> `commit`), so the
+two rounds' patch content were compared directly:
+
+    diff <(git diff 23024bd80^..23024bd80) <(git diff 8404f2283^..8404f2283)
+
+Master moved 5 commits between the two rounds' parents (7ea3a358a..23024bd80^'s parent range):
+"Bump version to 2.17", efinet MAC/URI node fix, ieee1275 ofdisk NVMe enumeration, script/execute
+argv-free fix, script/execute PCR-8 measurement fix. `git show --stat` on all 5 confirms none
+touch util/grub.d/31_efi_bootnext.in, the two test files, Makefile.util.def, or grub-mkconfig_lib.
+The patch-level diff is therefore a clean signal of the MR's own changes, not noise from rebasing.
+
+The patch-level diff showed exactly two changes, both already anticipated by round 1's draft fix:
+
+1. util/grub.d/31_efi_bootnext.in: the shim-detection case statement changed from
+
+       case "${efi_file}" in
+           '\EFI\'*'\shim'*.efi)
+
+   to
+
+       case "`printf '%s' "${efi_file}" | tr 'A-Z' 'a-z'`" in
+           '\efi\'*'\shim'*.efi)
+
+   This is character-for-character the draft fix reviews/pr278.md (round 1) proposed: lowercase
+   the match subject with `tr 'A-Z' 'a-z'` (not the `tr '\134A-Z' '/a-z'` form used later in the
+   file, since the pattern still needs literal backslashes), and lowercase the pattern itself.
+
+2. tests/grub_mkconfig_bootnext_path_test.in: the single hardcoded shim path
+   '\EFI\otheros\shimx64.efi' in the Boot0010/Boot0012 sub-test was replaced with a loop over five
+   case variants:
+
+       '\EFI\otheros\shimx64.efi' '\efi\otheros\shimx64.efi' '\EfI\OtherOS\shimx64.efi'
+       '\EFI\otheros\SHIMX64.efi' '\EFI\otheros\shimx64.EFI'
+
+   run for both the decorated (File()) and bare (efivar>=39) formats, each checking that the
+   updater-chainload entries (Boot000D, Boot0010) are still dropped and the shim-self/network
+   entries (Boot000E, 000F, 0012) are still kept. This is a direct regression test for the exact
+   scenario round 1 documented.
+
+No other lines in util/grub.d/31_efi_bootnext.in, tests/grub_mkconfig_bootnext_self_test.in, or
+Makefile.util.def differ between the two rounds -- the self-entry MBR/GPT PARTUUID matching logic
+reviewed and executable-tested clean in round 1 is untouched, so it was re-verified rather than
+re-derived from scratch (see "Re-executing both test suites" below).
+
+== Re-tracing the originally documented failure scenario ==
+
+Round 1's reasoning traced: a bare-format (efivar>=39) entry whose ESP directory tree uses a
+non-canonical case, e.g. `\efi\otheros\shimx64.efi`, failed the old case-sensitive pattern
+`'\EFI\'*'\shim'*.efi)` outright (POSIX `case` has no case-insensitive mode), so the UTF-16LE
+optional-data decode never fired and `efi_file` stayed at the shim's own path -- letting a
+firmware-updater entry chainloaded behind that shim slip past the os-prober filter.
+
+With the fix, the case subject is `` `printf '%s' "${efi_file}" | tr 'A-Z' 'a-z'` `` and the
+pattern is `'\efi\'*'\shim'*.efi'`. Tracing the same example: `efi_file` at this point (before the
+fix's own lowercasing) holds `\efi\otheros\shimx64.efi` verbatim (this is the pre-existing,
+unchanged last-path-component extraction a few lines above, still reached before the unconditional
+`tr '\134A-Z' '/a-z'` normalisation two statements later). Lowercasing it for the match yields
+`\efi\otheros\shimx64.efi`, which matches `'\efi\'*'\shim'*.efi'` (starts with `\efi\`, contains
+`\shim`, ends `.efi`). The branch now fires, the UTF-16LE optional-data decode runs, and `efi_file`
+is reassigned to the actual chainload target -- exactly the behaviour round 1 found missing.
+
+The same trace holds for every other case permutation (`\EfI\OtherOS\shimx64.efi`,
+`\EFI\otheros\SHIMX64.efi`, `\EFI\otheros\shimx64.EFI`): `tr 'A-Z' 'a-z'` normalises all of them to
+`\efi\otheros\shimx64.efi` before the match, so the fix is not narrowly tailored to the one example
+in round 1's reasoning -- it covers the whole class of case variation, consistent with FAT's
+case-insensitivity (the property round 1 cited as the root cause).
+
+Fix side effects checked: the decoded chainload target assigned inside the matched branch
+(`efi_file=".`printf '%b' "${opt_suffix}"`"`) is built from a fixed `.` prefix plus octal-escape
+expansion of bytes from `optdata`, independent of `efi_file`'s case -- lowercasing the match
+subject does not change what gets assigned when the branch fires. The later unconditional
+`tr '\134A-Z' '/a-z'` still runs afterward regardless of which arm of the case executed, so it
+is unaffected and remains idempotent. No new leak, UB, or ordering issue was introduced; the change
+is a pure narrowing-to-widening of which `efi_file` values reach the pre-existing decode branch,
+matching round 1's own fix assessment of the draft it proposed.
+
+== Executable verification (not just reading) ==
+
+Both bundled tests were run against the exact pr278 script content (not a paraphrase), in a
+disposable /tmp copy, bypassing only the `/sys/firmware/efi`-absent early exit (this sandbox has
+no /sys/firmware/efi, same as round 1) in both the helper and the two test harnesses. The in-tree
+grub/ files were never modified.
+
+    tests/grub_mkconfig_bootnext_path_test.in  -> exit 0 (PASS)
+    tests/grub_mkconfig_bootnext_self_test.in  -> exit 0 (PASS)
+
+To confirm the new shim_path loop is a real regression test and not a false-pass, the fix was
+reverted in the disposable copy only (case subject/pattern restored to round 1's
+`case "${efi_file}" in '\EFI\'*'\shim'*.efi)` form) and path_test.sh was re-run against that
+reverted copy:
+
+    FAIL (bare, \efi\otheros\shimx64.efi): updater matched first loader
+    exit 1
+
+This reproduces, as an executable failure, precisely the scenario round 1's reasoning described:
+without the fix, a bare-format entry with a lowercase `\efi\` directory lets a firmware-updater
+entry chainloaded behind a shim pass the os-prober filter. With the fix restored (the actual
+pr278 content), the same test passes. This confirms both that the fix is effective and that the
+new test added alongside it actually exercises the fixed code path (it is not a vacuous addition).
+
+self_test.sh passing re-confirms the GPT/MBR self-entry PARTUUID and vendor matching logic --
+unchanged since round 1 -- still holds; it was not expected to be affected by this round's change
+and the diff-of-diffs confirms no lines in that file or in the matching code
+(`entry_partuuid`/`entry_vendor`/`SELF_VENDORS`) differ between rounds.
+
+== Conclusion ==
+
+Round 1's Issue 1 (shim-path detection case-sensitivity) is fixed. The fix is the exact minimal
+change needed (lowercase match subject and pattern, consistent with the file's other two identity
+checks), it is covered by a new, confirmed-meaningful regression test, and no other code in the
+file changed between rounds. No new issues were found in this round.

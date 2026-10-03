@@ -241,3 +241,127 @@ search" cost this series exists to eliminate. Fixing the removal side without re
 cost would need some cheaper staleness signal (e.g. only re-validating entries whose parent
 controller was closed/reopened, or a narrower "did this specific device disappear" probe) that
 is not present in this series; that is a design decision for the author, not a small patch.
+
+===============================================================================
+RE-REVIEW (2026-10-03): round 2, 11 commits (was 10)
+===============================================================================
+
+Everything above this marker is the original round-1 trace, kept unchanged. This section
+documents round 2's verification only.
+
+Source files read during round 2 (all at the new pr255 tip unless noted):
+  grub-core/disk/ieee1275/obdisk.c   (full file, 1342 lines; close_disk(), close_controller_users(),
+                                       ensure_open(), obdisk_prepare(), grub_obdisk_read/write(),
+                                       grub_obdisk_iterate(), enumerate_devices(), struct disk_dev)
+  (docs/grub.texi and grub-core/lib/disk.c diffs re-checked; unchanged from round 1, see below)
+
+Change identification:
+1. `git log --oneline origin/master..pr255 | wc -l` -> 11 (was 10). `git diff --shortstat
+   origin/master..pr255` -> 3 files changed, 272 insertions(+), 40 deletions(-) (was 270/38),
+   matching the task's stated numbers.
+2. `git cat-file -t <hash>` on all 10 round-1 hashes (262daf49a, 415c08794, 6a12c93b8, d26fae2a5,
+   ed5b331bd, eb4fc7383, 292511240, f7e1eb4a2, 7f86f7219, 5931f8467) returns "commit" for every
+   one -- the objects still exist (not pruned) -- but `git merge-base --is-ancestor <hash> pr255`
+   is FALSE for all 10: none is reachable from the new tip. This is not a simple append; the
+   branch was fully rewritten (new commit inserted mid-series plus a rebase onto a newer
+   origin/master). Checked `262daf49a^` (old round-1 branch root's parent): 711110dac. Checked
+   `8a8609e2c^` (new round-2 branch root's parent): 7ea3a358a, which is the current
+   `origin/master`. `git merge-base 5931f8467 origin/master` = 711110dac, confirming master moved
+   711110dac -> 7ea3a358a between rounds. This fully explains why every hash changed even for
+   commits with identical content: a commit's hash depends on its parent hash, so rebasing the
+   root commit onto a new master changes that commit's hash, which cascades to every commit after
+   it, independent of any content change.
+3. Because hash identity cannot be used, content identity was checked instead by pairing commits
+   with the same subject line (oldest to newest) and comparing patch content with
+   `diff <(git diff OLD^..OLD) <(git diff NEW^..NEW)` (this compares the tree-level patch, which
+   is insensitive to parent-hash changes and blob-id churn from unrelated file history, modulo the
+   `index aaa..bbb` header line which does change when an intervening commit touches the same
+   file earlier):
+     262daf49a -> 8a8609e2c ("Fail cleanly..."):              IDENTICAL
+     415c08794 -> 2b4bcdcfc ("Close the parent ihandle..."):  IDENTICAL
+     6a12c93b8 -> b79d8e5df ("Open a device on demand"):      IDENTICAL
+     d26fae2a5 -> da300dc6c ("Add write support"):            IDENTICAL
+     ed5b331bd -> b7e36b407 ("Flush a written device..."):    IDENTICAL
+     eb4fc7383 -> d6201cee3 ("Free the scan buffer..."):      index-line only (see below)
+     292511240 -> ea4b3364d ("Free the encoded unit..."):     index-line only (see below)
+     f7e1eb4a2 -> 9d9378e01 ("Do not look up a NULL..."):     index-line only (see below)
+     7f86f7219 -> 73d1607ad ("Enumerate once"):                REAL CHANGE (comment text, see below)
+     5931f8467 -> 02a3844d6 ("Keep one open instance..."):    index-line only (see below)
+   For the four "index-line only" cases, the sole difference reported by `diff` is the
+   `index <old-blob>..<new-blob>` header line of the hunk; no `+`/`-` content line differs. This
+   is the expected, inert effect of new commit af7006eb5 (see below) landing earlier in the same
+   file's history and shifting every subsequent blob hash -- confirmed by checking that each of
+   these four commits' actual diff hunks (the `@@ ... @@` lines and their content) are
+   byte-for-byte identical between rounds.
+4. The new commit (af7006eb5, "Release a device after an I/O error") sits in the branch between
+   b7e36b407 ("Flush a written device...") and d6201cee3 ("Free the scan buffer..."), i.e.
+   inserted immediately after the commit that introduced close_disk() and immediately before the
+   next round-1 commit. `git show af7006eb5 --stat`: 1 file changed (obdisk.c), 3 insertions(+),
+   3 deletions(-) -- a pure one-for-one line replacement at three sites, which is also why the
+   net change to the whole series's insertion/deletion counts (270/38 -> 272/40, i.e. +2/+2) is
+   smaller than this commit's own +3/-3: the "Enumerate once" comment rework below replaces 3
+   lines with 3 lines of its own (net 0), and these two independent per-commit diffs do not sum
+   linearly against the single whole-branch diff once GRUB_ERR_UNKNOWN_DEVICE and multiple
+   commits touch overlapping file regions; the whole-branch numbers (+2/+2) were taken directly
+   from `git diff --shortstat origin/master..pr255`, not derived from the per-commit sums.
+
+Previous Issue 1 (stale ihandle on I/O error) -- verified FIXED:
+`git show af7006eb5` shows exactly:
+    @@ obdisk_prepare()
+    -      dev->opened = 0;
+    +      close_disk (dev);
+    @@ grub_obdisk_read()
+    -      dev->opened = 0;
+    +      close_disk (dev);
+    @@ grub_obdisk_write()
+    -      dev->opened = 0;
+    +      close_disk (dev);
+This is the previously drafted fix, applied verbatim at all three sites identified in round 1.
+Re-traced the full chain at the new tip (`git show pr255:grub-core/disk/ieee1275/obdisk.c`):
+  - close_disk() (line 89): unchanged from round 1 -- `if (dev->opened == 0) return;` guard, then
+    `grub_ieee1275_close (dev->ihandle); dev->ihandle = 0; dev->opened = 0; dev->dirty = 0;
+    grub_disk_cache_invalidate_all ();`.
+  - obdisk_prepare() (line 724), grub_obdisk_read() (line 754), grub_obdisk_write() (line 781):
+    read at the new tip, confirmed each error branch now calls `close_disk (dev);` in place of
+    the bare flag write, and confirmed `dev->ihandle` is not read again after that call on any of
+    the three return paths (each returns a grub_error() result immediately), so routing through
+    close_disk() cannot change the returned grub_err_t or any other logic on those paths.
+  - ensure_open() (line 684): unchanged from round 1 -- `if (dev->opened != 0) return
+    GRUB_ERR_NONE;` then `close_controller_users (dev->name, controller_len (dev->name), dev,
+    NULL);` then opens a fresh ihandle. Re-derived the consequence: because the three error sites
+    now always route through close_disk() before returning, `dev->opened == 0` once again
+    truthfully means "no open firmware instance is associated with this device" in every case
+    that reaches ensure_open(), restoring the invariant close_controller_users()'s `keep_disk =
+    dev` skip relies on. The two-open-instances-on-one-controller scenario traced in round 1's
+    Issue 1 (steps 5-6 above) can no longer occur via this path: there is no longer a window where
+    `dev->opened == 0` while `dev->ihandle` is still a live, open firmware instance.
+  - No new issue found in the fix itself: the replacement is a drop-in, same call site, same
+    control flow, only strictly more work (close + cache invalidate) before the same return
+    statement.
+
+Previous Issue 2 (stale `valid` flag for disappeared devices) -- verified UNCHANGED:
+`diff <(git diff 7f86f7219^..7f86f7219) <(git diff 73d1607ad^..73d1607ad)` shows only the block
+comment inside grub_obdisk_iterate() changed, from:
+    * some of which iterate repeatedly. Enumerate once. A device appearing
+    * mid-session is therefore not picked up by an iteration, though
+    * find_grub_devpath() still enumerates when a name cannot be found.
+to:
+    * some of which iterate repeatedly. Enumerate once. A device that appears
+    * or disappears mid-session is therefore not reflected in an iteration,
+    * though find_grub_devpath() still enumerates when a name cannot be found.
+Compared the two commits' full commit messages (`git log -1 --format=full <hash>`): the new
+message adds one sentence at the end of its final paragraph, "A device that disappears stays
+listed, and opening it fails," which round 1's message did not have. Neither change touches code:
+`git show pr255:grub-core/disk/ieee1275/obdisk.c` lines 1245-1272 (grub_obdisk_iterate()) still
+read `if (disks_enumerated == 0) enumerate_devices ();` at line 1261, identical in control flow
+to round 1. enumerate_devices(), invalidate_all_disks(), and find_grub_devpath() are all
+byte-for-byte unchanged (confirmed: these functions are not touched by any of the three
+"index-line only" commits or by af7006eb5, all of which are confined to the three I/O-error
+sites in obdisk_prepare()/grub_obdisk_read()/grub_obdisk_write()). The consequence described in
+round 1 (a device that disappears mid-session stays listed as valid, and opening it fails
+cleanly with GRUB_ERR_UNKNOWN_DEVICE rather than crashing) therefore still holds exactly as
+analyzed above; the only change is that the author's own comment and commit message now say so
+explicitly, which is documentation catching up to the known trade-off, not a fix.
+
+Round 2 conclusion: Issue 1 fixed and verified; Issue 2 verified unchanged and still open.
+Verdict: ISSUES(1).

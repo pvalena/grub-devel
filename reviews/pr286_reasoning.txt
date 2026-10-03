@@ -1,0 +1,197 @@
+pr286 reasoning — grub-mkimagexx: SHT_NOBITS bypass of the new section bounds validation
+
+1 commit (9fa459f22), util/grub-mkimagexx.c. Source files read: util/grub-mkimagexx.c (full
+SUFFIX(grub_mkimage_load_image)(), SUFFIX(relocate_symbols)(), SUFFIX(get_symbol_address)(),
+arm_get_trampoline_size(), SUFFIX(is_kept_reloc_section)(), SUFFIX(put_section)()), compared
+against origin/master:util/grub-mkimagexx.c for the pre-patch baseline.
+
+This finding was raised by an adversarial double-check of my initial CLEAN verdict and
+independently re-verified against pr286:util/grub-mkimagexx.c before writing this file (all line
+numbers and code below were re-read directly from `git show pr286:util/grub-mkimagexx.c`, not
+taken on trust).
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+== Issue 1: SHT_NOBITS lets an index-targeted section skip offset/size validation ==
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+Discovery:
+The new validation loop added by this commit (util/grub-mkimagexx.c:2510-2531) only bounds-checks
+a section's sh_offset/sh_size when that section's own sh_type is not SHT_NOBITS:
+
+  for (i = 0, s = smd.sections; i < smd.num_sections; i++, s = ...)
+    if (grub_target_to_host32 (s->sh_type) != SHT_NOBITS)
+      {
+        ...
+        if (offset > kernel_size || size > kernel_size - offset)
+          grub_util_error (_("premature end of file %s"), kernel_path);
+        ...
+      }
+
+Several places in the same file resolve "the section at index X" (X coming from an already
+range-checked index field: e_shstrndx, or a section's sh_link) and immediately dereference that
+target section's sh_offset, without re-checking the target's own sh_type or whether it was
+actually covered by the loop above. Because the loop's bounds check is conditioned on sh_type,
+a section that legitimately *should* be treated as file-backed (a string table, a symbol table)
+but is given sh_type == SHT_NOBITS in a crafted file bypasses the offset/size check entirely,
+while still being trusted and dereferenced as if it had been validated.
+
+Source trace:
+
+Site 1 — util/grub-mkimagexx.c:2536-2539, inside SUFFIX(grub_mkimage_load_image)():
+
+  s = (Elf_Shdr *) ((char *) smd.sections
+                      + grub_target_to_host16 (e->e_shstrndx) * smd.section_entsize);
+  smd.strtab = (char *) e + grub_host_to_target_addr (s->sh_offset);
+
+e_shstrndx is range-checked at line 2506 (`>= smd.num_sections` rejected), but nothing checks
+that section s's sh_type is SHT_STRTAB, nor that s->sh_offset was validated by the loop above
+(which it was NOT, if s->sh_type == SHT_NOBITS). s->sh_offset is used unconditionally to compute
+smd.strtab.
+
+Site 2 — util/grub-mkimagexx.c:658-661, inside SUFFIX(relocate_symbols)():
+
+  symtab_section = (Elf_Shdr *) ((char *) smd->sections
+                                 + grub_target_to_host32 (smd->symtab->sh_link)
+                                   * smd->section_entsize);
+  symtab = (char *) e + grub_target_to_host (symtab_section->sh_offset);
+
+smd->symtab->sh_link is range-checked by the new loop's SHT_SYMTAB/SHT_DYNSYM branch (line 2524:
+`grub_target_to_host32 (s->sh_link) >= smd.num_sections`), but that only proves the INDEX is in
+range — it never inspects symtab_section (the section the index names) at all. If that section's
+own sh_type is SHT_NOBITS, its offset/size were skipped by the `!= SHT_NOBITS` guard, yet
+symtab_section->sh_offset is dereferenced unconditionally here.
+
+Site 3 — util/grub-mkimagexx.c:795-798 (arm_get_trampoline_size(), #ifdef MKIMAGE_ELF32 i.e. ARM
+only) and util/grub-mkimagexx.c:725-733 (SUFFIX(get_symbol_address)()):
+
+  symtab_section = (Elf_Shdr *) ((char *) sections
+                                   + (grub_target_to_host32 (s->sh_link) * section_entsize));
+  ...
+  sym_addr = SUFFIX (get_symbol_address) (e, symtab_section, ELF_R_SYM (info), image_target);
+
+  /* get_symbol_address(): */
+  sym = (Elf_Sym *) ((char *) e
+                       + grub_target_to_host (s->sh_offset)
+                       + i * grub_target_to_host (s->sh_entsize));
+  return sym->st_value;
+
+Here `s` is an SHT_REL/SHT_RELA section (already range-checked for its own offset/size, and its
+sh_link validated as an index by the loop's REL/RELA branch, line 2531). symtab_section is the
+section s->sh_link points at — again, only the index was checked, not the target's type or
+whether the target passed the offset/size check. get_symbol_address() dereferences
+symtab_section->sh_offset (and sh_entsize) unconditionally and then dereferences the resulting
+`sym` pointer (`sym->st_value`).
+
+Contrast with the SAFE pattern used everywhere else in the file: every other call to
+get_symbol_address() (util/grub-mkimagexx.c:929-930, :1523-1524) and every direct
+smd->symtab->sh_offset read (util/grub-mkimagexx.c:663-665, :1060-1061, :1311-1312) passes
+smd->symtab itself, not a section reached via sh_link/e_shstrndx. smd->symtab is assigned later
+in grub_mkimage_load_image() (around line 2614) only from a section whose sh_type is literally
+SHT_SYMTAB (`if (s->sh_type == grub_host_to_target32 (SHT_SYMTAB)) smd.symtab = s;`), so by
+construction it can never be the SHT_NOBITS section this bug relies on, and it was therefore
+already bounds-checked by the main loop (SHT_SYMTAB != SHT_NOBITS always takes the checked
+branch). It is specifically the *indirect* lookups (by e_shstrndx or by a referring section's
+sh_link) that skip this guarantee, because they never re-examine the type of the section the
+index actually names.
+
+Consequence:
+A crafted object/module file fed to grub-mkimage can declare the section that e_shstrndx points
+at (or the section that a symtab's/REL's sh_link points at) with sh_type = SHT_NOBITS and an
+arbitrary sh_offset (e.g. 0xfffffff0 on ELF32, or a similarly huge 64-bit value on ELF64). That
+section is skipped by the new offset/size check (the `!= SHT_NOBITS` guard), so the bogus
+sh_offset is never rejected. smd.strtab (Site 1) or symtab/symtab_section (Sites 2/3) then become
+wild pointers computed as `kernel_img_base + attacker_controlled_offset`, entirely outside the
+loaded kernel_img allocation.
+
+Those wild pointers are then read as C strings or structures:
+  - smd.strtab + sh_name is read via strncmp()/strcmp() in is_kept_reloc_section()
+    (util/grub-mkimagexx.c:2300-2312) and used as a %s argument to grub_util_info() in
+    put_section() (util/grub-mkimagexx.c:2346) and the BSS-section naming loop
+    (util/grub-mkimagexx.c:2558) — an out-of-bounds read of attacker-uncontrolled heap/process
+    memory, with no bound on how far the implicit strcmp/strncmp scan may run before hitting a
+    NUL byte or an unmapped page (the latter crashes grub-mkimage; the former can leak adjacent
+    memory into a path comparison or a diagnostic message).
+  - symtab + sym->st_name (Site 2) is read via grub_strcmp() against "__bss_start"/"_end" in
+    relocate_symbols() (util/grub-mkimagexx.c:684-686) — same class of OOB read.
+  - get_symbol_address()'s `sym` pointer (Site 3) is directly dereferenced
+    (`return sym->st_value;`) with no string-ness to limit the read, but the offset into it
+    (sh_offset + i * sh_entsize) is still attacker-controlled via the bogus sh_offset, so this is
+    an OOB *read of arbitrary size* (a full Elf_Sym struct) at an attacker-influenced address.
+
+This is exactly the bug class the commit's own message says it closes ("Malformed offsets and
+sizes can lead to out-of-bounds reads while processing symbols and relocations") — the new
+validation closes the direct per-section case but leaves the three index-indirected lookups open
+because the `!= SHT_NOBITS` guard on the *referring* loop iteration does not constrain what type
+the *referenced* (by e_shstrndx/sh_link) section is allowed to be.
+
+Fix assessment:
+The index fields themselves (e_shstrndx, sh_link, sh_info) are already correctly range-checked
+against num_sections. What's missing is a type (and therefore offset/size) check on the specific
+section each of those indices names, at or before the point its sh_offset is trusted. Since a
+genuine string table is always SHT_STRTAB and a genuine symbol table is always SHT_SYMTAB or
+SHT_DYNSYM — never SHT_NOBITS — requiring the expected type at each of the three dereference
+sites both rejects the attack and is automatically consistent with the existing loop: the main
+validation loop (util/grub-mkimagexx.c:2510-2531) runs to completion, unconditionally, over every
+section in the file before grub_mkimage_load_image() calls locate_sections(), and before
+relocate_symbols()/relocate_addrs()/arm_get_trampoline_size() can run at all (they are reachable
+only from later in the same call chain). So by the time any of the three sites execute, every
+section whose declared type is not SHT_NOBITS has already had its offset/size validated — adding
+a type check at the dereference site is sufficient; it does not need to re-run or duplicate the
+offset/size check itself, because requiring the correct (non-NOBITS) type routes the section
+through a validation that has unconditionally already happened.
+
+Draft fix for Site 1 (util/grub-mkimagexx.c, in grub_mkimage_load_image(), right after computing
+`s` for e_shstrndx and before computing smd.strtab):
+
+  s = (Elf_Shdr *) ((char *) smd.sections
+                      + grub_target_to_host16 (e->e_shstrndx) * smd.section_entsize);
++ if (grub_target_to_host32 (s->sh_type) != SHT_STRTAB)
++   grub_util_error (_("invalid string table in %s"), kernel_path);
+  smd.strtab = (char *) e + grub_host_to_target_addr (s->sh_offset);
+
+Draft fix for Site 2 (util/grub-mkimagexx.c, in relocate_symbols(), right after computing
+symtab_section):
+
+  symtab_section = (Elf_Shdr *) ((char *) smd->sections
+                                 + grub_target_to_host32 (smd->symtab->sh_link)
+                                   * smd->section_entsize);
++ if (grub_target_to_host32 (symtab_section->sh_type) != SHT_STRTAB)
++   grub_util_error ("%s", _("invalid string table for symbol table"));
+  symtab = (char *) e + grub_target_to_host (symtab_section->sh_offset);
+
+(relocate_symbols() has no kernel_path parameter, so the error call drops the "%s" filename
+substitution, matching the existing parameter-less grub_util_error() calls already in this file,
+e.g. the pre-existing "no symbol table" error.)
+
+Draft fix for Site 3 (util/grub-mkimagexx.c, in arm_get_trampoline_size(), right after computing
+symtab_section, before it is passed to get_symbol_address()):
+
+  symtab_section = (Elf_Shdr *) ((char *) sections
+                                   + (grub_target_to_host32 (s->sh_link) * section_entsize));
++ if (grub_target_to_host32 (symtab_section->sh_type) != SHT_SYMTAB
++     && grub_target_to_host32 (symtab_section->sh_type) != SHT_DYNSYM)
++   grub_util_error ("%s", _("invalid symbol table for relocation section"));
+
+Each fix is a single added `if`/`grub_util_error` pair, self-contained, and does not change any
+other control flow. None of the three functions currently reject malformed input by a different,
+more specific path first (checked: no prior check anywhere already constrains these particular
+sections' types), so these checks cannot be made unreachable by an earlier rejection. Checked
+that SHT_STRTAB/SHT_SYMTAB/SHT_DYNSYM are already-used constants in this file (e.g.
+util/grub-mkimagexx.c:579, :2522) so no new includes/macros are needed.
+
+An alternative, slightly broader fix (not drafted above, but equally valid and mentioned for
+completeness since the author may prefer it) is to drop the `!= SHT_NOBITS` condition on the main
+loop's offset/size check entirely and instead validate every section's offset/size unconditionally
+regardless of declared type, since a NOBITS section's sh_offset being garbage is harmless as long
+as nothing ever dereferences it — the real problem is that *something does* dereference it when
+reached via sh_link/e_shstrndx. The three targeted type checks above are preferred because they
+are minimal, localized to the exact sites that perform the trust decision, and self-documenting
+(a string table must be SHT_STRTAB; this is not a style preference, it is the correctness
+invariant the rest of the code already silently assumes).
+
+Other observations from the original (now superseded) investigation pass, still accurate and not
+affected by this issue: the rewritten table-fits check (addition -> division) is independently
+overflow-safe, and the `grub_host_to_target16` -> `grub_target_to_host16` rename in the same hunk
+is a confirmed behavioral no-op (both macros reduce to the identical byte-swap-iff-needed
+operation for a given image_target->bigendian/host-endianness pair). Neither of those is related
+to, or mitigates, Issue 1.
