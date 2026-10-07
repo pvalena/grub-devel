@@ -1,0 +1,115 @@
+pr292 reasoning — CI: Check Signed-off-by format (metadata-sob.sh)
+
+1 commit (606cc1d75), .gitlab-ci/script/metadata-sob.sh. Source files read: the full script at
+pr292:.gitlab-ci/script/metadata-sob.sh, and origin/master:.gitlab-ci/script/metadata-sob.sh for
+the pre-patch baseline. Also read .gitlab-ci/yml/metadata.yml to confirm the job invokes this
+script with no extra flags/wrapping that would change `git log` or `grep` behavior.
+
+This finding was raised by an adversarial double-check of my initial CLEAN verdict. I
+independently reproduced it (not taken on trust) with live shell tests before writing this file:
+both exercising the regex directly against crafted strings, and reproducing the underlying claim
+that a commit message can carry trailing whitespace/CR into `git log --format=%B` output via a
+real git workflow.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+== Issue 1: Trailing whitespace/CR on a valid Signed-off-by line fails the new format check ==
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+Discovery:
+Line 12 defines the new format regex:
+
+  SOB_REGEX='^Signed-off-by:[[:space:]]+[^<>[:space:]].*<[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+>$'
+
+It is anchored with a bare `>$` — the email's closing `>` must be the last character on the line.
+Line 24 obtains the commit message verbatim from `git log -1 --format=%B "$SHA"`, and line 28
+tests each line of it against SOB_REGEX with `grep -iEq`. Any content after the final `>` on a
+Signed-off-by line — even a single trailing space or an embedded `\r` from a CRLF-terminated
+line — makes the `$` anchor fail to match.
+
+Source trace (regex behavior, confirmed live against the actual SOB_REGEX string copied from the
+file, not a paraphrase):
+
+  $ SOB_REGEX='^Signed-off-by:[[:space:]]+[^<>[:space:]].*<[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+>$'
+  $ printf '%s' "Signed-off-by: Jane Doe <jane@example.com>"  | grep -iEq "$SOB_REGEX"; echo $?
+  0        # matches, as expected
+  $ printf '%s' "Signed-off-by: Jane Doe <jane@example.com> " | grep -iEq "$SOB_REGEX"; echo $?
+  1        # trailing space -> no match
+  $ printf 'Signed-off-by: Jane Doe <jane@example.com>\r' | grep -iEq "$SOB_REGEX"; echo $?
+  1        # trailing CR -> no match
+  $ printf '%s' "Signed-off-by: Jane Doe <jane@example.com>\t" | grep -iEq "$SOB_REGEX"; echo $?
+  1        # trailing tab -> no match
+
+So the regex itself, as written in the file, really does reject these three variants while
+accepting the clean baseline. This rules out a misreading of the pattern.
+
+Source trace (can such bytes actually reach `MESSAGE` from a real commit, i.e. is this reachable
+or only a theoretical regex nitpick?). I tested three commit-creation paths in scratch
+repositories:
+
+  1. `git commit -m "$(printf '...\nSigned-off-by: Jane Doe <jane@example.com> \n')"` — default
+     cleanup mode ("whitespace", since no editor is invoked) strips the trailing space before the
+     commit object is written. `git log -1 --format=%B | cat -A` confirms no trailing space in
+     the stored message.
+  2. `git am` on a `git format-patch`-generated patch, with a trailing space manually spliced
+     onto the Signed-off-by line (`sed -i 's/\(Signed-off-by:.*example.com>\)$/\1 /'`), and
+     separately with a `\r` spliced in before the line's `\n` (simulating a CRLF-mangled mbox
+     line, the realistic case for this corpus — mailing-list patches passed through assorted
+     mail clients). In both cases `git am` applied cleanly and the resulting commit message,
+     inspected with `git log -1 --format=%B | cat -A`, had the trailing space/`\r` stripped.
+     `git am` defaults to stripping CR (its `--keep-cr` option exists specifically to opt out of
+     this), and applies the same "whitespace" message cleanup as `git commit`.
+  3. `git commit-tree <tree> -p <parent}` fed a message with a trailing space via stdin — this is
+     the *plumbing* command, with no cleanup pass applied at all. The resulting commit's
+     `git log -1 --format=%B | cat -A` output was:
+       Signed-off-by: Jane Doe <jane@example.com> $
+     i.e. the trailing space is stored byte-for-byte in the commit object.
+
+So: the two common CLI porcelain paths (`git commit`, `git am`) do sanitize trailing whitespace
+before a commit lands, which means a contributor using a stock `git am` workflow is not exposed.
+But `git commit-tree` is exactly the primitive that GitLab's/GitHub's web-based commit APIs,
+squash-merge-via-API, "edit commit message" web UI actions, and libgit2/git2go-based tooling
+build on — none of those necessarily route through the CLI's cleanup logic, and the whole point
+of this CI check's existence (per CLAUDE.md: "analyzes GRUB2 patches from mailing lists") is to
+validate trailers arriving by paths more varied than a disciplined local `git am`. A contributor
+whose mail client/editor leaves a trailing space, or whose patch round-trips through a tool that
+writes the commit object directly, produces a commit this new check will flag as malformed even
+though the trailer is perfectly legitimate.
+
+Consequence:
+The CI job (`.gitlab-ci/yml/metadata.yml`, stage `metadata`, runs on every merge_request_event)
+prints "Wrong Signed-off-by format on commit <sha>" and sets `sob_fail=1`, causing the job to
+`exit 1` and the pipeline stage to fail — for a commit that is in fact correctly signed. This is
+the exact scenario the review skill's "false positive" framing describes, except here the false
+positive is in the *tool under review*, not in this review: the CI script would incorrectly
+reject legitimate contributions. It is not a security bypass (no malformed/unsigned commit is
+ever accepted by this change — the check only ever fails closed), so it doesn't undermine the
+commit's stated hardening goal; it is a robustness/usability regression specific to this new
+format check (the presence-only check it supplements did not have this failure mode).
+
+Fix assessment:
+Changing the regex's tail from `>$` to `>[[:space:]]*$` allows any amount of trailing whitespace
+(space, tab, or `\r`, all members of the POSIX `[:space:]` class) between the closing `>` and
+end-of-line, while leaving every other constraint untouched. Re-tested live after the change:
+
+  $ NEW_REGEX='...[^[:space:]<>@]+>[[:space:]]*$'
+  baseline clean           -> MATCH (unchanged)
+  trailing space           -> MATCH (fixed)
+  trailing tab             -> MATCH (fixed)
+  trailing CR              -> MATCH (fixed)
+  missing domain dot       -> NO MATCH (unchanged — still correctly rejected)
+  name-less trailer        -> NO MATCH (unchanged — still correctly rejected)
+  no email/angle brackets  -> NO MATCH (unchanged — still correctly rejected)
+
+The fix is a single-character-class addition at the end of an already-anchored pattern; it
+cannot loosen the earlier constraints (name token present, `@`, a literal `.` in the domain,
+balanced `<...>`), and it uses the same `[[:space:]]` class already used elsewhere in this same
+regex (after `Signed-off-by:`), so it is stylistically consistent with the rest of the pattern.
+An equally valid alternative (not drafted, since the regex-only fix is smaller and touches only
+line 12) is to strip trailing whitespace from each candidate line before matching, e.g. via
+`sed 's/[[:space:]]*$//'` on `$MESSAGE` prior to the `grep` calls — this would also normalize the
+presence check on line 25, which has the same (pre-existing, out-of-scope-for-this-MR) `$`-less
+substring behavior and is not affected by this particular bug since it only anchors `^`, not `$`.
+
+AI-assistance scrutiny: not applicable — the commit carries only `Signed-off-by:` and
+`Reviewed-by:` trailers, no AI-tool attribution, and nothing in the commit message or diff
+suggests AI assistance.

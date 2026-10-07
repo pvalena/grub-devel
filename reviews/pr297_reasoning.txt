@@ -1,0 +1,170 @@
+pr297 reasoning — grub-mkconfig module/device deduplication + EFI BootNext consolidation
+
+3 commits:
+  3e1a93e0d - grub-mkconfig: Track and deduplicate emitted modules
+  f3b5c8608 - 00_header: Deduplicate device preparation for theme files
+  33010340f - 31_efi_bootnext: Consolidate EFI platform check
+
+Source files read in full at pr297: util/grub-mkconfig.in, util/grub-mkconfig_lib.in,
+util/grub.d/00_header.in, util/grub.d/31_efi_bootnext.in. Also read origin/master's
+util/grub-mkconfig_lib.in (prepare_grub_to_access_device baseline, to separate pre-existing
+code from this patch's changes) and the docs/grub.texi hunk. Checked all other util/grub.d/*.in
+scripts for existing (unmodified) callers of prepare_grub_to_access_device, to assess
+cross-script interaction with the new state-file mechanism: 10_linux.in, 10_hurd.in,
+10_kfreebsd.in, 10_netbsd.in, 10_windows.in, 10_xnu.in, 10_illumos.in, 20_linux_xen.in,
+30_os-prober.in.
+
+All three commits carry "Assisted-by: Claude:Opus-5.5 Gemini:gemini-3.8-flash" — AI-assistance
+scrutiny applied throughout (see note at the end).
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+== Issue 1: Module state file created without the umask hardening used for grub.cfg itself ==
+═══════════════════════════════════════════════════════════════════════════════════════════════
+
+Discovery:
+util/grub-mkconfig.in already protects the generated config from other local users: creating
+"${grub_cfg}.new" is wrapped in umask 077/restore (lines 286-288), and the final copy onto
+"${grub_cfg}" is wrapped the same way (lines 362-365):
+
+  oldumask=$(umask); umask 077
+  exec > "${grub_cfg}.new"
+  umask $oldumask
+  ...
+  oldumask=$(umask)
+  umask 077
+  cat ${grub_cfg}.new > ${grub_cfg}
+  umask $oldumask
+
+This commit (3e1a93e0d) adds a third file in the same directory, the module-tracking state file,
+but creates it under whatever umask the caller already had — not under umask 077:
+
+  if [ -n "${GRUB_MODULE_STATE_FILE}" ]; then
+    export GRUB_MODULE_STATE_FILE
+    > "${GRUB_MODULE_STATE_FILE}"                      # <- line 317, ambient umask
+    trap 'test -n "${GRUB_MODULE_STATE_FILE}" && rm -f "${GRUB_MODULE_STATE_FILE}"' EXIT
+    ...
+
+Source trace:
+By the time line 317 runs, the umask-077 window from lines 286-288 has already closed (umask
+was restored to $oldumask at line 288, well before the module-tracking block at lines 302-326).
+GRUB_MODULE_STATE_FILE is "${grub_cfg}.modules" whenever grub-mkconfig is invoked with "-o FILE"
+(the common case — distros' update-grub/grub2-mkconfig wrappers always pass -o), so this is the
+normal invocation path, not an edge case. ">" is shell redirection (create-or-truncate), which
+creates the file at mode 0666 & ~umask — e.g. 0644 under a typical 022 umask, i.e.
+world-readable, versus grub.cfg/grub.cfg.new's deliberately-enforced 0600.
+
+The only path that gets a safe mode "for free" is the mktemp fallback (no -o, line 308): GNU
+coreutils' mktemp creates its file at mode 0600 regardless of umask, which is exactly why the
+adjacent comment ("Never fall back to a predictable name in a world-writable directory") is only
+about the *name* being unpredictable, not about permissions — mktemp already handles permissions.
+The "${grub_cfg}.modules" branch has no equivalent protection.
+
+Consequence:
+For the lifetime of one grub-mkconfig run (from file creation at line 317 until it is removed
+right after the grub.d loop, lines 346-349, or via the EXIT trap on early termination), any local
+user who can reach the file (most distros do not lock down /boot the way grub.cfg's own umask
+dance implies they care about) can read the full list of modules grub-mkconfig loaded
+unconditionally — partition/filesystem/abstraction module names, including cryptodisk-related
+ones such as "gcry_rijndael" or "luks2" when the box uses encrypted boot. That is not as
+sensitive as grub.cfg's own contents (which can carry a superuser password hash via
+GRUB_PASSWORD/01_users, the reason the umask-077 precedent exists at all), so this is a
+confidentiality-hardening inconsistency rather than a credential leak — but it is a concrete,
+demonstrable gap relative to a pattern the same function already enforces twice for sibling
+files, and it is live on every "-o"-based invocation, i.e. essentially every real-world use.
+
+Fix assessment:
+Wrapping the single "> ${GRUB_MODULE_STATE_FILE}" with the same umask 077/restore idiom already
+used twice in this exact file (lines 286-288, 362-365) closes the gap with a 3-line, fully
+localized change; it reuses the existing "oldumask" variable name and pattern, introduces no new
+failure mode (umask itself cannot fail), and does not change any control flow (the trap/export
+statements around it are untouched). The mktemp branch needs no change (already 0600).
+
+Draft fix included in the review .md.
+
+── Also verified (no issues) ──
+
+Commit 33010340f (31_efi_bootnext.in): the per-entry "if [ \$grub_platform = efi ]; then ... fi"
+wrap was replaced by capturing the whole while-loop's output via
+bootnext_entries="$( ... while ... done )" and wrapping it once at the end, gated on
+[ -n "${bootnext_entries}" ]. Traced that: (1) the while loop was already the last stage of a
+pipe and thus already ran in a subshell pre-patch (dash/POSIX forks each pipeline stage), so
+loop-local variables (bootnum, label, devpath, efi_file, entry_partuuid, entry_vendor, found,
+CLASS, ...) never leaked to the parent script either before or after this change — wrapping it
+in an additional $(...) adds no new scoping behavior; (2) SAVEDEFAULT is captured before the
+subshell and is read-only inside it, so it is visible unchanged; (3) command substitution strips
+only trailing newlines, and since all stdout inside the loop comes solely from the per-entry
+heredoc (gated behind the "continue" filters — the progress message on line 221 goes to stderr),
+bootnext_entries is empty iff zero entries were emitted, exactly matching the old script's
+behavior for the zero-entries case (nothing printed); (4) set -e is inherited into the command
+substitution the same way it already applied to the bare pipeline, so no new errexit exposure.
+
+Commit f3b5c8608 (00_header.in): traced every call site of header_prepare_device /
+prepare_grub_to_access_device in the file (GRUB_FONT branch line 250, theme-shortcut line 271,
+fallback-font line 280, theme line 342, background line 383) against three scenarios (GRUB_FONT
+set; GRUB_FONT unset with a fallback font found, font device == theme device; same but font
+device != theme device) to confirm the "last one prepared" single-slot tracking
+(_header_prepared_device) never causes a module to be skipped that was not actually already
+inserted earlier in the *generated* output. Key facts that make this sound: (a) the two
+"if [ x$gfxterm = x1 ]" host-side blocks (lines 226-313 and 337-389) are sequential, not nested,
+so _header_prepared_device and the header_prepare_device() function (defined in the first block)
+remain in scope for the second — POSIX "if" does not scope variables/functions; (b) the only
+non-toplevel prepare_grub_to_access_device call (line 280, fallback font) is reached only when
+the theme-shortcut (line 271) was not already taken, and it is deliberately placed inside the
+"else" of the generated "if $feature_default_font_path" block, i.e. it genuinely is conditional
+output in grub.cfg, so correctly NOT recording to the state file matches the documented
+contract ("Conditional and menu entry insertions are not recorded"); (c) the
+font_device == theme_device shortcut (line 268-270) uses the identical comparison that would
+later cause line 342's header_prepare_device to see "already prepared" and skip — so the two
+can't disagree with each other (traced all 4 combinations of "shortcut taken" x "theme/font
+device equal").
+
+Cross-script interaction: grub-mkconfig.in's "for i in ${grub_mkconfig_dir}/*" loop relies on
+plain shell glob sort, which is lexical and therefore numeric here (00_, 10_, 20_, 25_, 30_,
+31_, 40_, 41_ prefixes), guaranteeing 00_header.in's toplevel insmod/state-file writes land in
+grub.cfg, and in the state file, before any later script (10_linux.in etc.) runs. Those later
+scripts are unmodified by this MR but still benefit from (and are safe to rely on) the shared
+GRUB_MODULE_STATE_FILE: each one's own prepare_grub_to_access_device calls check
+grub_module_is_loaded() via the file (not via the in-process _grub_loaded_modules variable,
+which does not survive across the separate child-process invocation of each grub.d script) and
+can therefore correctly skip a module 00_header.in already loaded unconditionally. A module
+loaded via "insmod" in GRUB persists for the remainder of the boot session (GRUB does not
+auto-unload between config sections), so skipping a later re-emit of an already-toplevel-loaded
+module is semantically safe, not just an optimization that happens to work.
+
+Checked grub_module_is_loaded()'s and grub_add_module()'s newline-wrapped substring match
+("case \"\n${_loaded}\n\" in *\"\n$1\n\"*)") for the standard false-positive risk of this idiom
+(unterminated list, off-by-one on first/last element): both wrap the haystack in synthetic
+leading/trailing newlines, so an empty list and single-element list are both handled correctly;
+module names come only from grub_probe's fixed vocabulary (partmap/abstraction/fs target
+names) or literal strings in the script, not attacker-controlled data, so the theoretical risk
+of a module name containing shell case glob metacharacters is not realistic here.
+
+Checked GRUB_DISABLE_MODULE_DEDUPLICATION end-to-end: grub_module_is_loaded() returns 1
+(not-loaded) unconditionally when the flag is true, so grub_toplevel_insmod() always falls
+through to "echo insmod $1" and skips the record-keeping — full reversion of the cross-section/
+toplevel tracking. grub_add_module()'s within-a-single-call dedup (the fix for the literal
+"insmod gcry_rijndael twice" bug named in the commit message) has no such gate and stays active
+even with the flag set; this is narrower than the commit message's "restore the previous
+behavior" phrasing taken literally, but is not a functional bug — deduplicating identical
+module names requested twice within the same prepare_grub_to_access_device call is always safe,
+and docs/grub.texi's actual user-facing wording ("omits redundant insmod commands ... regardless
+of prior loading") only promises reverting the cross-section behavior, which is what happens.
+Not raised as an issue: no incorrect output results either way, and the user doc is accurate.
+
+AI-assistance scrutiny:
+All three commits carry Claude:Opus-5.5 and Gemini:gemini-3.8-flash assisted-by tags, so this
+was reviewed with the understanding that an LLM authored or materially contributed to the code.
+What the generated code gets right: the newline-delimited "member of list" idiom is applied
+correctly and consistently across grub_add_module/grub_module_is_loaded; the set -e-safe
+mktemp-in-an-elif pattern correctly avoids aborting the script on a mktemp failure; the
+explicit per-signal traps that call "exit N" (to force dash's EXIT trap to run on a caught
+signal) is the correct, well-known workaround for that specific shell's documented behavior,
+and the signal-to-exit-code mapping (129/130/131/143 for HUP/INT/QUIT/TERM) is correct; the
+cross-process design (state via a file, not an inherited shell variable) correctly recognizes
+that each util/grub.d/* script runs as its own process. What it missed: exactly the kind of
+"notice what the neighboring code already does and match it" consistency check that requires
+holding the whole function in view at once — the umask-077 precedent is literally 15-30 lines
+above and below the new code in the same file, but protecting a *newly introduced* file is easy
+to miss when the attention is on getting the new feature's logic (tracking, trapping, dedup)
+correct. This matches the general pattern noted in the review skill for AI-assisted code:
+locally-correct logic, missed a project-established convention sitting in the same file.
