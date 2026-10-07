@@ -1,6 +1,7 @@
 # CONTEXT DUMP — GRUB2 MR Review Project
 
-**Generated**: 2026-09-03
+**Generated**: 2026-09-03 (stats/session-state refreshed 2026-10-08; reusable core otherwise
+unchanged — see MEMORY.md "Current Status" for live counts rather than trusting numbers here)
 
 Knowledge-transfer dump for restoring full working context in a new session or model. The
 **reusable core** (project, layout, workflow, conventions) is stable; the **session state**
@@ -26,17 +27,30 @@ Summary" for that background. **What is live now is the review loop below.**
 
 **`HANDOVER.md` is the source of truth for how to operate.** Summary:
 
-- The user queues MR numbers in `data/new.txt` (user-managed; read-only to us) and says
-  "continue with reviews". We review exactly those, report, and stop. No other work.
-- **Delegation (default):** a **Sonnet 5 review agent** runs Phases 0-6 and writes all
-  artifacts (including companions) → a **separate fresh-context Sonnet 5 adversarial agent**
-  re-verifies (false positives AND missed bugs) → the **main model (Opus) approves**: reads
+- `data/new.txt` holds queued MR numbers (read-only to us) and, when told to continue, we
+  review exactly those, report, and stop. No other work.
+- **`data/new.txt` is fed by an automated pipeline, not hand-typed.** A human operator runs
+  `pipeline.sh`, which calls `helpers/watch-label.sh` to poll GitLab for MRs tagged
+  `Pending-AI-Review` (checking the label-setter is an authorized project member first),
+  appends them to `data/new.txt`, checks out/rebases the branches, then this interactive
+  session (or the containerized equivalent in `container/`) is invoked. The file is
+  genuinely transient — several scripts `rm` it once drained, so its absence means "nothing
+  queued," not an error.
+- **Delegation (default):** a **review agent** runs Phases 0-6 and writes all
+  artifacts (including companions) → a **separate fresh-context adversarial agent**
+  re-verifies (false positives AND missed bugs) → the **orchestrator approves**: reads
   the reviews, runs the linter, spot-checks source only on a red flag, bounces a missing
-  companion back to the review agent, normalizes trivial house-format nits.
-- Spawn agents with `model: sonnet` (Agent tool rejects `claude-sonnet-5`; `sonnet` resolves
-  to Sonnet 5 via session subagent-model config). Reusable prompt templates are in
+  companion back to the review agent, normalizes trivial house-format nits. The model per role
+  is interchangeable — don't bake in Opus/Sonnet; the roles and the fresh-context split are
+  the invariant. Current defaults: delegated agents `sonnet`, orchestrator = whatever this
+  session runs (Opus interactively, container `MODEL` otherwise — default `sonnet`).
+- Spawn delegated agents with `model: sonnet` by default (Agent tool rejects `claude-sonnet-5`;
+  `sonnet` resolves via session subagent-model config). Reusable prompt templates are in
   `HANDOVER.md`.
-- **Never** commit, push, modify `grub/`, or edit `data/new.txt`. The user commits.
+- **Never** commit, push, modify `grub/`, or edit `data/new.txt`. After we stop,
+  `submit-review.sh` posts each review **verbatim as a public GitLab MR comment** (`glab mr
+  note create`), applies `AI-Reviewed-No-Issues`/`AI-Reviewed-Found-Issues`, commits, and
+  pushes — this is a human/pipeline action, never ours.
 
 ## 3. Repository layout
 
@@ -48,12 +62,17 @@ Summary" for that background. **What is live now is the review loop below.**
 - `data/` — `new.txt` (pending queue, user-managed), `open.txt`, `closed.txt`.
 - `docs/` — `REVIEW_PROCESS.md` (procedure), `BUG_PATTERNS.md` (bug-class KB),
   `DUPLICATE_ANALYSIS_PLAN.md` (historical).
-- `helpers/lint-reviews.sh` — pre-finalization linter for new reviews.
-- `HANDOVER.md`, `CLAUDE.md`, `MEMORY.md`, `MRS_BY_AUTHOR.md`, `closed.sh`.
+- `helpers/lint-reviews.sh` — pre-finalization linter for new reviews. `helpers/verify_docs.sh`
+  — cross-checks stats across CLAUDE.md/MEMORY.md/docs/*.md.
+- `pipeline.sh`, `helpers/watch-label.sh`, `helpers/mr-status*.sh`, `helpers/checkout-new.sh`,
+  `helpers/cleanup-new.sh`, `submit-review.sh`, `container/` — the automation around this
+  session (discovery, checkout, submission, containerized variant). Not part of our job; see
+  §2 and MEMORY.md for what each does. `MRS_BY_AUTHOR.md` is archival only — do not edit it.
+- `HANDOVER.md`, `CLAUDE.md`, `MEMORY.md`.
 
 Corpus size (recount; do not trust a fixed number):
 `ls reviews/*.md | wc -l`, `ls reviews/*_reasoning.txt | wc -l`,
-`ls reviews/*_investigation.txt | wc -l` (currently ~161 / ~47 / ~14).
+`ls reviews/*_investigation.txt | wc -l` (currently 197 / 53 / 19 — recounted 2026-10-08).
 
 ## 4. The review workflow (Phases 0-6)
 
@@ -122,30 +141,70 @@ struct's first field: `grub_free(x->f)` then `grub_free(x)` is a double-free, no
 
 ## 8. Notable review cases / lessons
 
-See `MEMORY.md` "Important Review Cases" for the full list. Recurring lessons: trace return-
-value semantics through callers (pr115); shell `case x*)` matches before `x)` (pr89); verify
-commit count before finalizing (2026-02-0071); embedded-array vs allocation before calling a
-double-free (pr196); re-read the whole restore path after confirming known fixes (pr156);
-EFI override buffers must be restored on every early exit between assignment and commit
-(pr226); ignored `grub_get_datetime()` return → uninitialized read (pr232); unsigned
-underflow feeding an unbounded `grub_memcpy` where the sister file guards with `grub_sub`
-(pr240); CI `set -x` leaking GPG key/passphrase/token into job logs (pr238).
+See `MEMORY.md` "Important Review Cases" and `docs/BUG_PATTERNS.md` for the full KB (the
+single source of truth for bug-class signatures and guards — do not re-derive them here).
+Recurring lessons: trace return-value semantics through callers (pr115); shell `case x*)`
+matches before `x)` (pr89); verify commit count before finalizing (2026-02-0071);
+embedded-array vs allocation before calling a double-free (pr196); re-read the whole restore
+path after confirming known fixes (pr156); EFI override buffers must be restored on every
+early exit between assignment and commit (pr226); ignored `grub_get_datetime()` return →
+uninitialized read (pr232); unsigned underflow feeding an unbounded `grub_memcpy` where the
+sister file guards with `grub_sub` (pr240); CI `set -x` leaking GPG key/passphrase/token into
+job logs (pr238); a close/release helper bypassed by a hand-rolled state reset on an
+error path leaks the underlying handle (pr255 — see `driver-device-lifecycle` in
+BUG_PATTERNS.md); an identity/pattern check placed before the file's own normalization step
+silently stops matching equivalent input (pr278 — `logic-deadcode-ordering`); a bounds-check
+loop's per-type exemption (e.g. `SHT_NOBITS`) can be bypassed when a *different* code path
+dereferences an exempted entry via an index/link field without its own type check (pr286 —
+`buffer-bounds`); a regex anchored for "clean" input breaks on realistic trailing
+whitespace/CRLF from mixed-origin data, e.g. mailing-list-derived commits (pr292 —
+`docs-ci-build`).
 
-## 9. Session state (snapshot — verify before relying)
+**Process lesson (this repo's own infra, not a GRUB finding):** this project now has a real
+automated pipeline (`pipeline.sh`, GitLab-label-triggered `watch-label.sh`,
+`container/`-based headless review runner, `submit-review.sh` posting comments to real
+upstream MRs) that none of the memory docs mentioned until this was discovered during a
+2026-10-08 documentation audit — several batches of reviews had already been reviewed,
+posted publicly, and merged before the docs caught up. Lesson: when a project's tooling
+grows organically (new `helpers/*.sh`, a `container/` directory, a `pipeline.sh`), treat an
+undocumented script as a signal to update the memory docs proactively, not just when
+explicitly asked — `git log --oneline -- helpers/ container/ pipeline.sh` surfaces this drift
+quickly.
 
-- `data/new.txt` is the live queue; read it fresh each batch. When empty, there is nothing
-  to do.
-- Recently completed batches this run (all reviewed via the delegation pipeline, none
-  committed by us — user commits): 232 (re-review, fixed), 233, 234, 236, 237, 238 (2 CI
-  issues), 239, 222, 240 (security over-read), 250, 252, 254, 256. Check `git status` and
-  `reviews/` for exactly what is present/uncommitted.
-- Uncommitted at dump time: the review artifacts for the above, plus doc updates
-  (`CLAUDE.md`, `MEMORY.md`, this file, `HANDOVER.md`). The user handles commits.
-- Global skill edits this run were committed by us in `~/.claude/skills` (review v3.13.0 then
-  v3.14.0) per the user's explicit request; repo files are the user's to commit.
+## END OF REUSABLE CORE
+
+## 9. Session state (snapshot — verify before relying; supersedes all prior dumps' session state)
+
+- `data/new.txt` is the live queue (pipeline-populated, see §2); read it fresh each batch.
+  Empty or absent ⇒ nothing to do.
+- As of 2026-10-08: the most recent batches reviewed via the delegation pipeline (committed
+  by `submit-review.sh`, not by us) run from roughly pr253 through pr301, including several
+  re-reviews (pr255, pr278) and confirmed-issue reviews (pr255, pr265, pr278 round 1, pr286,
+  pr292) now folded into `docs/BUG_PATTERNS.md` (§8). Check `git log --oneline -- reviews/`
+  and `data/open.txt`/`data/closed.txt` for exactly what is current — do not trust this list
+  past its generation date.
+- This dump's own stats/session-state refresh (2026-10-08) was done as part of a documentation
+  audit requested by the user, using the `refresh-docs`, `auto-memory`, and `memory-dump`
+  skills together. Completed: `CLAUDE.md`, `MEMORY.md`, `HANDOVER.md`, `docs/BUG_PATTERNS.md`,
+  this file, `README.md`, `Containerfile`, `container/README-container.md` updated;
+  `docs/REVIEW_PROCESS.md` rewritten to remove its severity-label system (it contradicted the
+  current "no severity labels, honest language" house rule) and refresh its stats/structure
+  diagram; `helpers/verify_docs.sh` rewritten to check MEMORY.md against `data/*.txt` directly
+  (single source of truth) instead of requiring CLAUDE.md to duplicate the same numbers, plus
+  a regression check that CLAUDE.md hasn't re-acquired a hardcoded MR or review-file count
+  (the review-file patterns are scoped so they skip the legitimate Phase 1-3 milestone
+  numbers). `MRS_BY_AUTHOR.md`
+  was found stale (listed 2 already-closed MRs) but **must not be edited** — the user
+  explicitly said to keep it archival/reference-only; `verify_docs.sh` treats it as
+  informational, not an error. `MEMORY_DUMP_2.txt` (a fully-superseded 2026-04-22 dump) was
+  deleted by the user, including its references in `Containerfile`/`container/README-container.md`.
 
 ## 10. Handover
 
 To operate hands-off, read `HANDOVER.md` and run its loop. That runbook + the two skill files
 + `docs/BUG_PATTERNS.md` + `helpers/lint-reviews.sh` are everything needed to continue
-reviews exactly as they run today.
+reviews exactly as they run today. For documentation maintenance specifically, the
+`refresh-docs`, `auto-memory`, and `memory-dump` skills plus `helpers/verify_docs.sh` cover
+it — this dump should not need a full from-scratch regeneration unless it's grown stale
+again (see its own Core Principle on 1-2 week staleness in the `auto-memory`/`memory-dump`
+skills).

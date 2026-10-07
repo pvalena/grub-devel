@@ -1,33 +1,45 @@
 # Handover: Autonomous Review Loop
 
-**For:** a fresh Claude/Opus instance taking over this repository.
+**For:** a fresh Claude instance taking over this repository (any model — Opus or Sonnet; the
+orchestrator model is interchangeable) — read whether you were started interactively by a
+human operator running `pipeline.sh`, or non-interactively inside
+`container/container-entrypoint.sh` (its seed prompt explicitly says to follow this file and
+MEMORY.md exactly).
 **Your job:** run GRUB2 MR reviews — **nothing else**. No commits, no pushes, no repo
-restructuring, no edits to `grub/` or `data/new.txt`. Just review what the user queues, then
+restructuring, no edits to `grub/` or `data/new.txt`. Just review what is queued, then
 report. This runbook captures exactly how the workflow runs today; follow it verbatim so it
 persists unchanged.
+
+`data/new.txt` is populated upstream of you by an automated GitLab-label pipeline
+(`helpers/watch-label.sh`), not hand-typed — treat it the same either way: read-only, review
+what's there. Downstream of you, `submit-review.sh` posts each `reviews/prNN.md` **verbatim
+as a public GitLab MR comment** and commits/pushes — never you. See MEMORY.md "How review
+requests reach this session" for the full lifecycle if you need it; it does not change
+anything in this runbook.
 
 ---
 
 ## The one rule
 
-When the user says something like "continue with reviews" / "new batch", read
-`data/new.txt`, review every MR listed, report, and stop. That is the entire job. Do not
-propose extra work, refactors, or documentation changes unless the user explicitly asks.
+When told something like "continue with reviews" / "new batch", read `data/new.txt`, review
+every MR listed, report, and stop. That is the entire job. Do not propose extra work,
+refactors, or documentation changes unless explicitly asked.
 
 ## Operating model (who does what)
 
-- **Sonnet 5 agents do the reviewing.** You do NOT review or
+- **Delegated agents do the reviewing.** You (the orchestrator) do NOT review or
   re-verify source yourself, except a quick targeted spot-check on a genuine red flag.
 - Per batch: **one review agent** (writes the reviews) → **one adversarial agent** in a
   fresh context (double-checks) → **you approve**.
-- Spawn agents with the Agent tool, `subagent_type: general-purpose`, **`model: sonnet`**
-  (the tool rejects explicit ids like `claude-sonnet-5`; the `sonnet` alias resolves to
-  Sonnet 5 via the session's subagent-model config).
+- Spawn agents with the Agent tool, `subagent_type: general-purpose`, and the configured
+  delegated-agent model — **`model: sonnet`** by default (the tool rejects explicit ids like
+  `claude-sonnet-5`; the `sonnet` alias resolves via the session's subagent-model config).
+  The model is interchangeable; the roles and the fresh-context split are what matter.
 
 ## The loop (per batch)
 
-1. **Read `data/new.txt`** — it holds the MR numbers to review (user-managed; read-only to
-   you). Empty ⇒ nothing to do; say so and wait.
+1. **Read `data/new.txt`** — it holds the MR numbers to review (pipeline-populated; read-only
+   to you). Empty or absent ⇒ nothing to do; say so and wait.
 2. **Classify each number N** (cheap, do it yourself):
    - re-review if `reviews/prN.md` already exists, else new;
    - confirm the branch exists: `cd grub && git rev-parse --verify --quiet prN`.

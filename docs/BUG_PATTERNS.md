@@ -1,7 +1,8 @@
 # GRUB2 Review Bug-Pattern Knowledge Base
 
-Recurring bug classes distilled from this project's own reviews (the 44 reviews that found confirmed
-issues, ~55 findings total). Each entry gives a **signature** (the code shape / what to grep for), why
+Recurring bug classes distilled from this project's own reviews (~53 reviews that found confirmed
+issues — recount: `ls reviews/*_reasoning.txt | wc -l` — ~60 findings total). Each entry gives a
+**signature** (the code shape / what to grep for), why
 it is a real bug **specifically in GRUB**, and the **false-positive guard** — the check that must pass
 before reporting it, because that guard is what protects the zero-false-positive record.
 
@@ -22,12 +23,12 @@ and the global `review` skill. Cross-cutting API facts live in the "GRUB API con
 | Class | Findings | One-line |
 |-------|----------|----------|
 | resource-leak-error-path | ~14 | alloc/open then early return/goto before the matching free/close |
-| driver-device-lifecycle  | ~8  | DMA/ring/queue/protocol handle not stopped/reset/balanced |
-| logic-deadcode-ordering  | ~8  | wrong branch order, zero-as-flag, missing guard, wrong table |
-| docs-ci-build            | ~8  | build breakage, doc/code mismatch, CI misclassification |
+| driver-device-lifecycle  | ~9  | DMA/ring/queue/protocol handle not stopped/reset/balanced |
+| logic-deadcode-ordering  | ~9  | wrong branch order, zero-as-flag, missing guard, wrong table |
+| docs-ci-build            | ~10 | build breakage, doc/code mismatch, CI misclassification |
 | null-deref               | ~6  | pointer used before its NULL check |
 | return-value-semantics   | ~6  | ignored return, errno leak, error/success conflation |
-| buffer-bounds            | ~5  | overflow, off-by-one, truncated length field |
+| buffer-bounds            | ~6  | overflow, off-by-one, truncated length field, validation bypass |
 | double-free-uaf-dangling | ~4  | free twice, dangling pointer across free, wrong allocator |
 | low-level-ub-platform    | ~4  | shift UB, `sizeof(long)`, `%lx` on 64-bit, address ceiling |
 | api-contract             | ~4  | missing format attr, wrong enum domain, incomplete table |
@@ -85,8 +86,13 @@ it completes in order and keeps AQA/ASQ/ACQ across disable — real hardware doe
 - For EFI protocol close: confirm the open was **mutually exclusive** (if/else opens only one) or that
   the handle was zeroed just before the close (2026-02-0008).
 - Distinguish "works on QEMU" from "correct" — in-order completion is not a guarantee.
+- When a dedicated close/release helper exists (e.g. `close_disk()`), confirm every error path that
+  should tear the handle down actually **calls the helper** rather than hand-rolling a partial state
+  reset — a bare `dev->opened = 0` without `grub_ieee1275_close()` looks like a close but isn't (pr255).
 
-**Seen in:** pr133#1/#2/#3, pr156, 2026-02-0008 (GOP/EDID close).
+**Seen in:** pr133#1/#2/#3, pr156, 2026-02-0008 (GOP/EDID close), pr255#1 (I/O-error paths bypassed
+`close_disk()`, leaving the firmware `ihandle` open; a retry then opened a second instance on the same
+controller — reproduces the "Fast Data Access MMU Miss" fault the series existed to fix).
 
 ## logic-deadcode-ordering
 
@@ -108,9 +114,15 @@ survive casual testing.
   constrained to the literal's length (pr127).
 - Wrong table: the `if` guard and the write must reference the **same** level pointer (2025-04-0236).
 - Timeout: `CSTS_FATAL`-only exit is insufficient; confirm `grub_get_time_ms()` is truly absent (pr155).
+- Compare-before-normalize: if the file has an established normalization step (lowercasing, trimming),
+  confirm every identity/pattern check that should be case/whitespace-insensitive actually runs **after**
+  that step, not before it — a check placed before normalization silently stops matching equivalent but
+  differently-cased/spaced input (pr278).
 
 **Seen in:** pr89#1, pr114 (dead `free(NULL)`), pr127#2/#3, pr155#1, pr196#5, 2025-03-0206
-(AC_CHECK_TOOL double-prefix), 2025-04-0236 (paging), 2026-02-0010 (empty ZFS fallback).
+(AC_CHECK_TOOL double-prefix), 2025-04-0236 (paging), 2026-02-0010 (empty ZFS fallback), pr278
+(shim-path `case` match ran before the script's own `tr 'A-Z' 'a-z'` normalization, so a
+non-canonical-case path skipped the UTF-16LE chainload-target decode the commit added).
 
 ## null-deref
 
@@ -176,9 +188,17 @@ menu titles) in a shared heap, so an overflow corrupts `grub_mm` metadata. The 4
   counts by `block_size` (pr155).
 - Check the sibling path: pr127's IPv6 option length is 16-bit and fine — only the 8-bit IPv4 path
   wraps; do not flag the correct one.
+- Validation-exemption bypass: when a bounds-check loop exempts certain entries by type/kind (e.g.
+  skips `SHT_NOBITS` sections), confirm nothing **else** later dereferences one of the exempted entries
+  by following an index/link field (`e_shstrndx`, `sh_link`) without separately checking that specific
+  target's type/offset — the exemption for "doesn't need file backing" and "safe to trust its offset"
+  are different claims, and conflating them lets a crafted input pick an exempted entry as the target.
 
 **Seen in:** pr127#4 (DNS option length), pr146#2 (strcat), pr155#3 (log_sector_size),
-pr159 (missing separator), 2025-05-0221 (title length double-increment).
+pr159 (missing separator), 2025-05-0221 (title length double-increment), pr286 (ELF section-bounds
+validation skipped `SHT_NOBITS` sections, but `e_shstrndx`/`sh_link`-indexed lookups dereferenced an
+exempted section's `sh_offset` unconditionally — a crafted object file could set the string/symbol-table
+target to `SHT_NOBITS` with an arbitrary offset to force an out-of-bounds read).
 
 ## double-free-uaf-dangling
 

@@ -21,8 +21,8 @@ Run the full pipeline interactively (prompts for confirmation at each step):
 Or run individual steps manually:
 
 ```bash
-# 1. Discover new MRs (polls GitLab API starting after the last known MR)
-helpers/mr-new.sh
+# 1. Discover new MRs (polls GitLab for MRs labeled Pending-AI-Review, appends to data/new.txt)
+helpers/watch-label.sh
 
 # 2. Checkout the new branches locally
 helpers/checkout-new.sh
@@ -59,7 +59,7 @@ helpers/view-new.sh
 
 | Script | Purpose |
 |--------|---------|
-| `mr-new.sh` | Find MRs labeled `Pending-AI-Review` via `glab`. Appends to `data/new.txt`. `-l`: loop 10m. |
+| `watch-label.sh` | Find MRs labeled `Pending-AI-Review` via `glab`. Appends to `data/new.txt`. `-l`: loop 10m. |
 | `watch.sh` | Poll GitLab API from last known MR number. Appends closed to `data/closed.txt`. `-l`: loop hourly. |
 | `checkout-new.sh` | Checkout branches for MRs in `data/new.txt` as `pr${MR}` in `grub/`. |
 | `view-new.sh` | Show `git log -p` for each new MR branch (diff against `origin/master`). |

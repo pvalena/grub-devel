@@ -1,6 +1,7 @@
 # GRUB Merge Request Review Process
 
-This document describes the systematic process for reviewing GRUB merge requests (MRs) from the upstream GitLab repository.
+This document describes the systematic process for reviewing GRUB merge requests (MRs) from
+the upstream GitLab repository.
 
 ## Overview
 
@@ -9,28 +10,36 @@ We maintain AI-assisted reviews of all MRs in the `reviews/` directory. Each rev
 2. **Accurate** - No false positives or hallucinated bugs
 3. **Actionable** - Clearly describe issues with file:line references
 
-> **How reviews are run today:** the phases below are executed by delegated **Sonnet 5
-> agents** — a review agent writes the artifacts, a separate fresh-context adversarial agent
-> double-checks, and the orchestrator approves. See `HANDOVER.md` (operating runbook +
-> agent prompt templates) and `MEMORY.md` "Review Delegation Model". The phase content in
-> this document remains the definition of what each agent does.
+> **How reviews are run today:** the phases below are executed by **delegated agents** — a
+> review agent writes the artifacts, a separate fresh-context adversarial agent double-checks,
+> and the orchestrator approves. The model per role is interchangeable (don't assume
+> Opus/Sonnet); see `HANDOVER.md` (operating runbook + agent prompt templates) and `MEMORY.md`
+> "Review Delegation Model" for the current defaults. The phase content in this document
+> remains the definition of what each agent does.
 
 ## Repository Structure
 
 ```
 grub-devel/
-├── grub/                          # Submodule: branches with all MR commits
+├── grub/                          # Submodule: branches with all MR commits (READ-ONLY)
 ├── reviews/                       # Individual MR reviews (one per branch)
-│   ├── YYYY-MM-NNNN.md            # Complete review (90 files)
-│   └── YYYY-MM-NNNN_reasoning.txt # Brief reasoning (31 files, only for reviews with issues)
-├── MRS_BY_AUTHOR.md               # Active tracking document (26 open MRs)
+│   ├── prNN.md                    # New-MR review (base: origin/master, rebased)
+│   ├── YYYY-MM-NNNN.md            # Historical/original-corpus review (base: see below)
+│   ├── *_reasoning.txt            # Brief reasoning, only for reviews with issues
+│   └── *_investigation.txt        # Verification trail, only for large/complex CLEAN reviews
+├── MRS_BY_AUTHOR.md               # Archival reference only — not maintained, do not edit
 ├── data/
-│   ├── open.txt                   # List of 26 open MR numbers
-│   ├── closed.txt                 # List of 56 closed MR numbers
-│   └── mrs.txt                    # Branch to MR number mapping
+│   ├── open.txt / closed.txt      # Open/closed MR numbers (counts: see MEMORY.md)
+│   └── new.txt                    # Pipeline-populated review queue (often absent; normal)
+├── helpers/, pipeline.sh, submit-review.sh, container/   # Discovery/submission automation
+│                                     — see MEMORY.md "How review requests reach this session"
 └── docs/
-    └── REVIEW_PROCESS.md          # This file
+    ├── REVIEW_PROCESS.md          # This file
+    └── BUG_PATTERNS.md            # Recurring bug-class KB (consult before each review)
 ```
+
+Counts above are recount-on-demand, not hardcoded — see MEMORY.md "Current Status" for the
+live numbers; this diagram shows shape, not size.
 
 ## Review Workflow
 
@@ -57,7 +66,10 @@ git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD | wc -l
 git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD
 ```
 
-**Master base commit**: `c160b58610879a52d959db21b9cae98af5fd095f` (all MRs are based on this)
+**Master base commit**: `c160b58610879a52d959db21b9cae98af5fd095f` — this applies to
+**historical `YYYY-MM-NNNN` branches only** (the original mailing-list corpus). **New `prNN`
+branches are based on `origin/master`** (rebased as master moves) — use
+`git log --oneline origin/master..prNN`, not the fixed hash above, for those.
 
 **Cross-check**: Compare the count with what's documented in the review file.
 
@@ -145,7 +157,11 @@ EOF
 glab mr comment 42 --repo gnu-grub/grub -F review-mr42.md
 ```
 
-**Note**: The `--repo` flag is required because git remotes use `ssh.gitlab.freedesktop.org` which doesn't match glab's configured host `gitlab.freedesktop.org`.
+**Note**: The `--repo` flag is required because git remotes use `ssh.gitlab.freedesktop.org`
+which doesn't match glab's configured host `gitlab.freedesktop.org`. In current practice this
+manual step is automated by `submit-review.sh` (run by the pipeline operator after this
+session stops) — see MEMORY.md "How review requests reach this session". The commands above
+remain useful for manual/ad-hoc submission.
 
 ## Review File Format
 
@@ -187,46 +203,44 @@ Adds USB 3.0 (xHCI) controller driver. 2963 lines based on SeaBIOS implementatio
 management. Needs extensive hardware testing.
 ```
 
-### Reasoning Files (`reviews/YYYY-MM-NNNN_reasoning.txt`)
+### Reasoning Files (`reviews/prNN_reasoning.txt` / `reviews/YYYY-MM-NNNN_reasoning.txt`)
 
 **Only create for reviews with issues found.**
 
+> **Current house style (supersedes the severity-label format below):** no severity labels.
+> Use honest, precise language instead — "read the source and found X" / "traced the logic
+> and confirmed Y", not "verified correct". The historical `[Severity]:` prefix format and the
+> Critical/Minor/Note/Concern classification that followed it, below, are **no longer used**
+> and are kept only as a record of how this doc read before the convention changed — do not
+> write new reasoning files this way. See `HANDOVER.md` / `MEMORY.md` "Review Delegation
+> Model" for the current format (Discovery / Analysis / Step-by-step / Consequence per issue).
+
 Reasoning files provide brief, technical justifications for issues discovered in code reviews.
-
-**Format:**
-```
-[Severity]: [Issue description at location]. [Technical explanation].
-[Consequences].
-
-[Next issue if multiple]
-```
-
-**Severity Levels:**
-- **Critical**: Crashes, memory corruption, security vulnerabilities, compilation errors
-- **Minor**: Style issues, misleading names, non-critical leaks
-- **Note**: Observations, limitations, requires specialized review
-- **Concern**: Potential issues needing deeper analysis
 
 **Requirements:**
 - Brief and focused (no unnecessary prose)
 - Include file paths and line numbers
-- State what is wrong (not how to fix)
-- Use precise terminology
-- State consequences/impact
-- **Do NOT create for "No issues found" reviews**
+- State what is wrong (not how to fix) and its consequence/impact
+- Use precise, honest terminology — no severity labels
+- **Do NOT create for "No issues found" reviews** (exception: a re-review that became clean
+  keeps the prior round's reasoning file for traceability — see HANDOVER.md)
 
-**Example:**
+**Historical format (pre-2026 convention; do not use for new reviews):**
 ```
-Critical: Double-free at grub-core/bus/usb/xhci.c:2099,2196. grub_xhci_check_transfer() frees
-transfer->controller_data (line 2099) without setting to NULL. If grub_xhci_cancel_transfer()
-subsequently called on same transfer, retrieves dangling pointer (lines 2142-2143) and frees again
-(line 2196). Should set transfer->controller_data = NULL after line 2099.
-
-Minor: ext2 listed in journaled filesystems (util/grub-install.c:2037) but ext2 has no journal.
-Name is misleading though it functionally works since ext3/4 report as "ext2" in GRUB.
+[Severity]: [Issue description at location]. [Technical explanation]. [Consequences].
+```
+Old example, for illustration only — would be written without the `Critical:`/`Minor:`
+prefixes under the current convention:
+```
+Double-free at grub-core/bus/usb/xhci.c:2099,2196. grub_xhci_check_transfer() frees
+transfer->controller_data (line 2099) without setting it to NULL. If
+grub_xhci_cancel_transfer() is subsequently called on the same transfer, it retrieves the
+dangling pointer (lines 2142-2143) and frees it again (line 2196). Fix: set
+transfer->controller_data = NULL after line 2099.
 ```
 
-**Current state**: 31 reasoning files for reviews with issues.
+**Current state**: 53 reasoning files for reviews with issues (recount:
+`ls reviews/*_reasoning.txt | wc -l`).
 
 ### Formatting Requirements
 
@@ -273,9 +287,12 @@ After (<120 chars):
   `check_arg(argv[i], 0)` passing NULL as second parameter.
 ```
 
-### Summary Table (`MRS_BY_AUTHOR.md`)
+### Summary Table (`MRS_BY_AUTHOR.md`) — historical format, do not edit this file
 
-Update when adding/moving MRs between categories:
+`MRS_BY_AUTHOR.md` is kept as an archival reference only and is not actively maintained or
+reconciled against `data/open.txt`/`data/closed.txt`. The format below is shown for
+historical context (how it was structured when it was maintained), not as a current
+instruction to update it.
 
 ```markdown
 ## Critical Issues (13 MRs)
@@ -290,30 +307,17 @@ Update when adding/moving MRs between categories:
 - **Critical issue rate**: 20.6% (13/63 MRs)
 ```
 
-## Issue Severity Classification
+## Issue Classification (historical; no longer used)
 
-### Critical Issues
-- System instability, crashes, or hangs
-- Data corruption or loss
-- Security vulnerabilities (buffer overflows, use-after-free, double-free)
-- NULL pointer dereferences
-- Memory leaks in initialization paths
-- Compilation errors
-
-### Minor Issues
-- Resource leaks in uncommon error paths
-- Printf format mismatches
-- File descriptor leaks
-- Non-critical style issues with potential impact
-
-### No Issues
-- Clean code after thorough review
-- May have minor style issues with no functional impact
-
-### Complex/Needs Testing
-- Platform-specific code requiring specialized hardware
-- Too complex for thorough static analysis
-- Requires runtime testing to validate
+> This section described a Critical/Minor/No-Issues/Complex classification scheme. **Current
+> house style uses no severity labels at all** — every finding is described in honest,
+> specific language (what's wrong, why it's real, what it affects) and left for the reader to
+> judge impact, rather than pre-sorted into a severity bucket. Kept here only so old reviews
+> using these terms (pre-2026) are still understandable; do not classify new findings this way.
+> The underlying bug *categories* this section implied (crashes, resource leaks, build
+> breakage, platform-specific complexity) are still useful to think about — see
+> `docs/BUG_PATTERNS.md` for the current, actively-maintained version of that list, organized
+> by recurring signature rather than severity.
 
 ## Common Bug Patterns
 
@@ -455,7 +459,8 @@ Before finalizing any review:
 
 ---
 
-**Last updated**: 2026-06-08
-**Open MRs**: 26
-**Review files**: 90 (.md) + 31 (_reasoning.txt)
-**Master base**: c160b58610879a52d959db21b9cae98af5fd095f
+**Last updated**: 2026-10-08
+**Review files**: 197 (.md) + 53 (_reasoning.txt) + 19 (_investigation.txt) — recount:
+`ls reviews/*.md reviews/*_reasoning.txt reviews/*_investigation.txt | wc -l` per group
+**Open/closed MR counts**: see `MEMORY.md` "Current Status" (not duplicated here — volatile)
+**Master base**: see "Master base commit" above — differs for historical vs. `prNN` branches

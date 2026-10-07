@@ -33,7 +33,7 @@ ARG WORKDIR=/grub-devel
 ARG REPO_SRC=lpcsf-new/test/rhel/packages/grub2/grub-devel
 COPY --chown=${APP_USER}:${APP_USER} \
      ${REPO_SRC}/CLAUDE.md ${REPO_SRC}/HANDOVER.md ${REPO_SRC}/MEMORY.md \
-     ${REPO_SRC}/DUMP_MEMORY.md ${REPO_SRC}/MEMORY_DUMP_2.txt ${REPO_SRC}/MRS_BY_AUTHOR.md \
+     ${REPO_SRC}/DUMP_MEMORY.md ${REPO_SRC}/MRS_BY_AUTHOR.md \
      ${REPO_SRC}/README.md ${WORKDIR}/
 COPY --chown=${APP_USER}:${APP_USER} ${REPO_SRC}/docs/ ${WORKDIR}/docs/
 COPY --chown=${APP_USER}:${APP_USER} ${REPO_SRC}/templates/ ${WORKDIR}/templates/

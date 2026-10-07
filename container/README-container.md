@@ -27,7 +27,7 @@ you need is here.
 
 - **Reviewer docs/tooling** (baked into every variant, because they are reviewer configuration,
   not per-batch data): `CLAUDE.md`, `HANDOVER.md`, `MEMORY.md`, `DUMP_MEMORY.md`,
-  `MEMORY_DUMP_2.txt`, `MRS_BY_AUTHOR.md`, `README.md`, `docs/`, `templates/`, `helpers/`.
+  `MRS_BY_AUTHOR.md`, `README.md`, `docs/`, `templates/`, `helpers/`.
 - **Claude config**: `~/.claude/settings.json` and all of `~/.claude/skills/*/` (the skills' own
   `.git` and `skills/CLAUDE.md` are dropped). Nothing else is taken from `$HOME`.
 - Each image writes `/grub-devel/variant` containing `standalone` / `baked` / `full` so you can

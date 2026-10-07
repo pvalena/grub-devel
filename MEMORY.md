@@ -1,6 +1,6 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-09-03
+**Last updated**: 2026-10-08
 
 Quick reference for working in this repository. See `CLAUDE.md` for repository overview
 and `docs/REVIEW_PROCESS.md` for detailed procedures.
@@ -9,20 +9,47 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 
 ## Current Status
 
-- **Total MRs tracked**: 84 (24 open + 60 closed) — *not re-verified against GitLab this
-  update; open/closed counts are carried over from the last reconciliation*
-- **Total MRs reviewed**: 149
-- **Open MRs**: 24 (unverified, see above)
-- **Closed/Merged MRs**: 60 (unverified, see above)
-- **Active authors**: ~20
+- **Total MRs tracked**: 87 (24 open + 63 closed)   <!-- recount: wc -l < data/open.txt ; wc -l < data/closed.txt -->
+- **Open MRs**: 24   <!-- recount: wc -l < data/open.txt -->
+- **Closed/Merged MRs**: 63   <!-- recount: wc -l < data/closed.txt -->
+- **Active authors**: ~20 (see `MRS_BY_AUTHOR.md`, kept as an archival reference — not
+  actively reconciled against `data/open.txt`; do not edit it as part of routine updates)
 
 **Review files** (counts drift; recount rather than trust the number):
 <!-- recount: ls reviews/*.md | wc -l -->
 <!-- recount: ls reviews/*_reasoning.txt | wc -l -->
 <!-- recount: ls reviews/*_investigation.txt | wc -l -->
-- Complete reviews: ~161 (.md files)
-- Reasoning files: ~47 (_reasoning.txt, only for reviews with issues)
-- Investigation files: ~14 (_investigation.txt, only for large/complex clean reviews)
+- Complete reviews: 197 (.md files)
+- Reasoning files: 53 (_reasoning.txt, only for reviews with issues)
+- Investigation files: 19 (_investigation.txt, only for large/complex clean reviews)
+
+---
+
+## How review requests reach this session (pipeline context)
+
+`data/new.txt` is populated by an **automated pipeline**, not hand-typed by a human:
+`helpers/watch-label.sh` polls GitLab for MRs tagged with the label `Pending-AI-Review`,
+verifies the label-setter is an authorized project member (`access_level >= 30`, active,
+not locked) to prevent an unauthorized actor from triggering a free/malicious review cycle,
+then appends the MR number to `data/new.txt`. Run via `pipeline.sh` by a human operator, who
+then starts this interactive session and says "continue with reviews" at the point
+`pipeline.sh` prints `TODO: Run some Magic AI review here`.
+`container/container-review-prompt.txt` (the seed prompt for the containerized variant of
+this same step) says verbatim: *"Follow HANDOVER.md and MEMORY.md exactly"* — these two
+files are the live operating contract for both the interactive and containerized paths.
+
+**`data/new.txt` is transient by design** — `checkout-new.sh`/`submit-review.sh`/
+`mr-status-new.sh` all remove it once drained. Its absence on disk is the normal "nothing
+queued" state, same as an empty file.
+
+**After this session stops**, the human runs `submit-review.sh`, which posts each
+`reviews/prNN.md` **verbatim as a real public GitLab MR comment** (`glab mr note create`)
+and applies `AI-Reviewed-No-Issues` or `AI-Reviewed-Found-Issues` (replacing
+`Pending-AI-Review`) based on a literal string match against the review's "Issues Found"
+section. This is why house-format compliance (honest language, no severity labels,
+obfuscated emails, GitLab-only links) matters beyond internal tidiness — it ends up on
+someone else's open-source MR. The commit (`Add review(s): NNN ...`) and push are also done
+by this script, never by this session.
 
 ---
 
@@ -170,21 +197,29 @@ often because the whole area was reworked — so re-review it fully, not just th
 
 ### Review Delegation Model (default)
 
-Reviews are done by **Sonnet 5 agents**, not by the main model directly:
-1. **Review agent** (Sonnet 5, one agent may handle several MRs) runs Phases 0-6 and writes
+Reviews are done by **delegated agents**, not by the orchestrator (main session) directly.
+The structure below is fixed; the *model* filling each role is configurable and
+interchangeable — do not assume a specific model. Current defaults: delegated agents run as
+`sonnet`; the orchestrator is whatever model this session runs (interactively often Opus, in
+the container whatever `MODEL` is set to — default `sonnet`). What matters is the roles and
+the fresh-context separation, not the model names.
+
+1. **Review agent** (one agent may handle several MRs) runs Phases 0-6 and writes
    the review artifacts — including the companion file when warranted (reasoning for reviews
    with issues; investigation for large/complex clean reviews). Creating companions is the
-   agent's job, not the main model's.
-2. **Adversarial agent** (Sonnet 5, *separate/fresh context*) double-checks: re-verifies every
-   finding against source, hunts for false positives and missed issues, checks the linter.
-3. **Main model** reads the review and **approves** — it does NOT re-verify against source
+   agent's job, not the orchestrator's.
+2. **Adversarial agent** (*separate/fresh context* from the review agent) double-checks:
+   re-verifies every finding against source, hunts for false positives and missed issues,
+   checks the linter.
+3. **Orchestrator** reads the review and **approves** — it does NOT re-verify against source
    itself. Spot-check source only on a red flag (a claim likely beyond agent competence:
    subtle low-level/UB, crypto, or spec/platform assertions), not routinely. If a needed
    companion file is missing, bounce the task back to the review agent (SendMessage) to
    produce it rather than writing it yourself. Run `helpers/lint-reviews.sh` before approving.
 
-Spawn agents with `model: sonnet` (the Agent tool rejects explicit ids like `claude-sonnet-5`;
-the `sonnet` alias resolves to Sonnet 5 with the session subagent-model config).
+Spawn delegated agents with the configured delegated-agent model (default `model: sonnet` — the
+Agent tool rejects explicit ids like `claude-sonnet-5`; the `sonnet` alias resolves via the
+session subagent-model config).
 
 ### Reviewing MRs via Agent Batches
 
@@ -201,14 +236,13 @@ global review skill v3.11.0+ for the mandatory post-agent audit checklist.
 
 When MRs close:
 
-1. **Check status**: `./closed.sh`
+1. **Check status**: `helpers/mr-status.sh` (original corpus, tracks against `data/mrs.txt`)
+   or `helpers/mr-status-new.sh` (label-pipeline MRs, tracks against `data/new.txt`) — there
+   is no `closed.sh` in this repo (a prior version of this doc referenced one that no longer
+   exists).
 2. **Update tracking**: Move MR numbers from `data/open.txt` to `data/closed.txt`
-3. **Update MRS_BY_AUTHOR.md**: Remove closed MRs, update counts, remove empty authors
-4. **Verify**:
-   ```bash
-   diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | sed -E 's/.*!([0-9]+).*/\1/' \
-     | sort -n) <(sort -n data/open.txt)
-   ```
+3. **`MRS_BY_AUTHOR.md` is kept as an archival reference and is not routinely updated** —
+   do not edit it as part of this workflow.
 
 ---
 
@@ -234,6 +268,11 @@ glab mr view <N> --repo gnu-grub/grub 2>/dev/null | grep "^state:"
 ```
 
 **Important**: Always use `--repo gnu-grub/grub` flag (git remote uses ssh.gitlab.freedesktop.org).
+
+**Pipeline labels** (defined in `helpers/gitlab-lib.sh`, applied by `watch-label.sh`/
+`submit-review.sh`): `Pending-AI-Review` (queues an MR), `AI-Reviewed-No-Issues` /
+`AI-Reviewed-Found-Issues` (applied after `submit-review.sh` posts the comment, replacing
+`Pending-AI-Review`).
 
 ---
 
@@ -313,9 +352,8 @@ git show prNN:file.c | sed -n 'LINE1,LINE2p' # Read actual source
 # Formatting
 awk 'length > 120' reviews/prNN.md            # Check line width
 
-# Verification (MRS_BY_AUTHOR vs data/open.txt)
-diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
-  sed -E 's/.*!([0-9]+).*/\1/' | sort -n) <(sort -n data/open.txt)
+# Doc-consistency check (stats across CLAUDE.md/MEMORY.md/docs/*.md vs actual files)
+helpers/verify_docs.sh
 ```
 
 **Key principles**:
@@ -326,36 +364,17 @@ diff <(grep -oE '\[!([0-9]+)\]' MRS_BY_AUTHOR.md | \
 
 ---
 
-## Statistics
-
-**Current (2026-08-21)**:
-- Open MRs: 24 (unverified against GitLab this update)
-- Active authors: ~20
-- Largest contributor: Vladimir Serbinenko (6 MRs)
-- Closed rate: 71% (60/84, unverified)
-- Review files: ~161 reviews, ~47 reasoning, ~14 investigation (recount; see above)
-
-**Historical**:
-- Initial branches: 176 (from mailing lists)
-- Duplicates removed: 65 (39% rate)
-- Unique branches: 111
-- Original MRs created: 63, plus 42 new upstream MRs reviewed
-
----
-
 ## File Update Policy
 
-**Update MRS_BY_AUTHOR.md when**:
-- MRs are closed/merged (remove them)
-- New MRs opened (add them)
-
 **DO NOT update**:
+- `MRS_BY_AUTHOR.md` — kept as an archival reference only, not reconciled against
+  `data/open.txt`/`data/closed.txt`. A prior version of this policy said to update it on
+  every close/open; that is no longer current practice.
 - `ai-analysis/BRANCHES_REVIEWS.md` (historical record)
 - `grub/` repository files (analysis only)
 
-**Always verify**:
-- MRS_BY_AUTHOR.md matches `data/open.txt` after updates
-- Author counts are correct
+See CLAUDE.md "Completed Work Summary" for the historical duplicate-detection/MR-creation
+numbers (Phase 1-3) — not repeated here to avoid two copies drifting apart.
 
 ---
 
