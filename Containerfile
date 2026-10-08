@@ -39,13 +39,18 @@ ARG APP_USER=claudeuser
 ARG WORKDIR=/grub-devel
 # Path to this repo, relative to the build context ($HOME). Override with --build-arg.
 ARG REPO_SRC=lpcsf-new/test/rhel/packages/grub2/grub-devel
+# Only the files the review loop actually reads are baked into A/B (keeps the review-only image lean
+# and out of pipeline/submission tooling). Deliberately NOT baked: MRS_BY_AUTHOR.md + README.md
+# (archival/overview), docs/DUPLICATE_ANALYSIS_PLAN.md (historical), and all helpers except
+# lint-reviews.sh (pipeline/discovery/rebase/gitlab/submission scripts run on the host, not here).
+# Variant C (full) bakes the whole repo regardless.
 COPY --chown=${APP_USER}:${APP_USER} \
      ${REPO_SRC}/CLAUDE.md ${REPO_SRC}/HANDOVER.md ${REPO_SRC}/MEMORY.md \
-     ${REPO_SRC}/DUMP_MEMORY.md ${REPO_SRC}/MRS_BY_AUTHOR.md \
-     ${REPO_SRC}/README.md ${REPO_SRC}/.rtbrc ${REPO_SRC}/FACTS.md ${WORKDIR}/
-COPY --chown=${APP_USER}:${APP_USER} ${REPO_SRC}/docs/ ${WORKDIR}/docs/
+     ${REPO_SRC}/DUMP_MEMORY.md ${REPO_SRC}/.rtbrc ${REPO_SRC}/FACTS.md ${WORKDIR}/
+COPY --chown=${APP_USER}:${APP_USER} \
+     ${REPO_SRC}/docs/REVIEW_PROCESS.md ${REPO_SRC}/docs/BUG_PATTERNS.md ${WORKDIR}/docs/
 COPY --chown=${APP_USER}:${APP_USER} ${REPO_SRC}/templates/ ${WORKDIR}/templates/
-COPY --chown=${APP_USER}:${APP_USER} ${REPO_SRC}/helpers/ ${WORKDIR}/helpers/
+COPY --chown=${APP_USER}:${APP_USER} ${REPO_SRC}/helpers/lint-reviews.sh ${WORKDIR}/helpers/
 COPY ${REPO_SRC}/container/container-review-prompt.txt /usr/local/share/review-prompt.txt
 COPY ${REPO_SRC}/container/container-entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

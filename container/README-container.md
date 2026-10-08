@@ -35,8 +35,13 @@ you need is here.
 | **C** | `full` | baked | baked | baked | **baked** (whole repo) | no |
 
 - **Reviewer docs/tooling** (baked into every variant, because they are reviewer configuration,
-  not per-batch data): `CLAUDE.md`, `HANDOVER.md`, `MEMORY.md`, `DUMP_MEMORY.md`,
-  `MRS_BY_AUTHOR.md`, `README.md`, `docs/`, `templates/`, `helpers/`.
+  not per-batch data): `CLAUDE.md`, `HANDOVER.md`, `MEMORY.md`, `DUMP_MEMORY.md`, `.rtbrc`,
+  `FACTS.md`, `docs/REVIEW_PROCESS.md`, `docs/BUG_PATTERNS.md`, `templates/`, and
+  `helpers/lint-reviews.sh` — the only helper the review loop runs. Non-loop files are
+  deliberately excluded from A/B to keep the review-only image lean: `MRS_BY_AUTHOR.md` and
+  `README.md` (archival/overview), `docs/DUPLICATE_ANALYSIS_PLAN.md` (historical), and the
+  pipeline/discovery/rebase/gitlab/submission helpers (those run on the host). Variant **C**
+  bakes the whole repo, so it carries them anyway.
 - **Claude config** (from `~/.claude/`): `settings.json`, `CLAUDE.md`, all of `skills/*/`, and
   `plugins/*/` (their `.git` dirs and the skills' `CLAUDE.md` are dropped). The skills come from
   the shared collection — see the install prerequisite above. Session/private data is **never**
