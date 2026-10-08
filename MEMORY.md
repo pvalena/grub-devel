@@ -106,19 +106,23 @@ See global `sanity-check` skill. If REJECT: stop immediately, do not proceed.
    look for and the false-positive guards to apply before reporting. Append new patterns there
    when a review finds one not already represented.
 
+Read source through `rtb` — the read-only `review-toolbox` wrapper
+(`~/.claude/skills/review-toolbox/rtb`; `.rtbrc` registers `grub` as the default source).
+It replaces `cd grub && git …` pipelines and needs one Bash approval instead of raw
+`git`/`sed`. Run `rtb facts` once and paste its output into any review subagent's prompt.
+
 1. **Count commits** (use correct base):
    ```bash
-   cd grub/
    # For new MRs (prNN branches):
-   git log --oneline origin/master..prNN
+   rtb log --ref origin/master..prNN --head 1000
    # For older branches (YYYY-MM-NNNN):
-   git log --oneline c160b5861..BRANCH
+   rtb log --ref c160b5861..BRANCH --head 1000
    ```
 
 2. **Read full diff**, then **read actual source** at the branch:
    ```bash
-   git diff origin/master..prNN
-   git show prNN:path/to/file.c | sed -n 'START,ENDp'
+   rtb diff --ref origin/master..prNN
+   rtb cat path/to/file.c --ref prNN --lines START,END
    ```
 
 3. **Create review file**: `reviews/prNN.md` (or `reviews/YYYY-MM-NNNN.md`)
@@ -171,8 +175,9 @@ caught a real bug (PR155 Issue 3) that the initial review missed.
 ### Re-reviewing Updated MRs
 
 When `reviews/prNN.md` already exists, treat it as a re-review — don't start from
-scratch. Verify old commit hashes still exist (`git cat-file -t OLD_HASH`), then diff
-patch content ignoring rebase noise: `diff <(git diff OLD^..OLD) <(git diff NEW^..NEW)`.
+scratch. Verify old commit hashes still exist (`git -C grub cat-file -t OLD_HASH` — a quick
+existence probe `rtb` doesn't wrap), then diff patch content ignoring rebase noise:
+`diff <(rtb diff OLD^ OLD) <(rtb diff NEW^ NEW)`.
 Zero output means that commit is unchanged in substance even if its hash changed (e.g.
 because `origin/master` moved). Update the review with a "Re-review" header stating
 what changed; only fully re-review reworked/new commits. See global review skill
@@ -341,13 +346,13 @@ NUL, so `raw_time_len - 1` at the call site is correct, not an off-by-one.
 
 ## Quick Reference
 
-**Essential commands**:
+**Essential commands** (`rtb` = `~/.claude/skills/review-toolbox/rtb`, read-only source wrapper):
 ```bash
-# Review workflow (new MRs)
-cd grub/
-git log --oneline origin/master..prNN         # Count commits
-git diff origin/master..prNN                  # Full diff
-git show prNN:file.c | sed -n 'LINE1,LINE2p' # Read actual source
+# Review workflow (new MRs) — read through rtb, not raw git
+rtb log  --ref origin/master..prNN --head 1000  # Count/list commits
+rtb diff --ref origin/master..prNN              # Full diff
+rtb cat  file.c --ref prNN --lines LINE1,LINE2  # Read actual source
+rtb facts                                       # Paths/refs/rules → paste into subagents
 
 # Formatting
 awk 'length > 120' reviews/prNN.md            # Check line width

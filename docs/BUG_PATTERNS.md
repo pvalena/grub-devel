@@ -56,7 +56,7 @@ lives. Even "once per invocation" leaks in host tools are real defects.
 - Does a sink **take ownership**? `grub_env_set()` *copies* its value, so the source buffer must still
   be freed by the caller (pr124, pr160). Confirm ownership before concluding leak-or-not.
 - Is there **cleanup outside the diff hunk** later in the function? Read the full function via
-  `git show BRANCH:file`, not just the diff.
+  `rtb cat file --ref BRANCH` (the read-only wrapper), not just the diff.
 - Compare with a **sibling function** in the same file — the correct pattern next door confirms the
   omission is unintentional (pr115, pr196, pr225, pr160).
 

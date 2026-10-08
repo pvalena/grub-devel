@@ -1,0 +1,15 @@
+# .rtbrc — review-toolbox source registry for the GRUB2 MR review project.
+# Read by `rtb` (~/.claude/skills/review-toolbox/rtb). Only variable assignments
+# are read out of this file; no logic runs. Paths are relative to the repo root
+# (the cwd during reviews), so this works identically on the host and in the
+# review container (/grub-devel), where grub/ sits at ./grub either way.
+
+# The grub repo: all MR branches as local `prNN` (and historical YYYY-MM-NNNN).
+# READ-ONLY. New MRs are based on origin/master (rebased); pass --ref prNN per
+# review, or a range to `rtb diff` (e.g. --ref origin/master..prNN).
+SRC_grub_KIND=git
+SRC_grub_PATH=./grub
+SRC_grub_REF=origin/master
+
+RTB_DEFAULT_SRC=grub
+RTB_FACTS=./FACTS.md

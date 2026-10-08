@@ -1,0 +1,7 @@
+ - container:
+`MRS_BY_AUTHOR.md` [not actually needed for reviews]
+are there any other not-needed files there?
+
+ - sanity checks => script
+Additionally, I noticed the sanity-check runs scripts which are almost always similar -- but always created on the fly -- to check the PR range, as we do when reviewing; this should be a resuable script instead [standartized]
+Add it to a global skill

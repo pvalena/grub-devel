@@ -7,6 +7,9 @@ Steps:
    by default — the model is interchangeable) that runs Phases 0-6 of
    ~/.claude/skills/review/SKILL.md and ~/.claude/skills/sanity-check/SKILL.md, consults
    docs/BUG_PATTERNS.md for the touched subsystem, and writes artifacts ONLY under reviews/.
+   The agent reads grub/ source only through rtb (~/.claude/skills/review-toolbox/rtb, the
+   read-only wrapper; .rtbrc registers grub) — run `rtb facts` and paste its output into the
+   agent prompt so paths/refs/rules are fixed. Same for the adversarial agent below.
 3. Then spawn a separate, fresh-context adversarial agent to double-check every finding
    for false positives and missed issues.
 4. Read each reviews/prNN.md, run helpers/lint-reviews.sh for the batch (must print PASS), and

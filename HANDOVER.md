@@ -42,8 +42,11 @@ refactors, or documentation changes unless explicitly asked.
    to you). Empty or absent ⇒ nothing to do; say so and wait.
 2. **Classify each number N** (cheap, do it yourself):
    - re-review if `reviews/prN.md` already exists, else new;
-   - confirm the branch exists: `cd grub && git rev-parse --verify --quiet prN`.
+   - confirm the branch exists: `git -C grub rev-parse --verify --quiet prN` (a one-off
+     existence probe; all source reads go through `rtb`, see below).
 3. **Spawn the review agent** (one agent for the whole batch) using the template below.
+   Run `rtb facts` (the `review-toolbox` read-only wrapper, `~/.claude/skills/review-toolbox/rtb`)
+   and paste its output into the prompt so the agent has the paths/refs/rules fixed up front.
    Wait for its completion notification. If it stops early (e.g. after Phase 0 only), resume
    it with SendMessage telling it to finish Phases 1-6 and write artifacts.
 4. **Spawn the adversarial agent** (fresh context) using the template below. Wait for it.
@@ -80,6 +83,8 @@ refactors, or documentation changes unless explicitly asked.
 - `MEMORY.md` — repo workflow, delegation model, important review cases.
 - `docs/BUG_PATTERNS.md` — recurring bug classes + false-positive guards (per subsystem).
 - `docs/REVIEW_PROCESS.md` — detailed procedure. `helpers/lint-reviews.sh` — the linter.
+- `~/.claude/skills/review-toolbox/SKILL.md` — `rtb`, the read-only source-inspection wrapper
+  used for all `grub/` reads (`.rtbrc` + `FACTS.md` configure it for this repo).
 
 ---
 
@@ -90,11 +95,15 @@ space-separated `prNN` list and note which are re-reviews.
 
 > You are performing GRUB2 merge-request code reviews. Repo root:
 > /home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel. Branches live in the `grub/`
-> subdir — READ-ONLY. Base for each MR is `origin/master` (rebased).
+> subdir — READ-ONLY. Base for each MR is `origin/master` (rebased). Read source only through
+> `rtb` (the read-only `review-toolbox` wrapper, `~/.claude/skills/review-toolbox/rtb`): use
+> `rtb log/cat/diff/grep`, never raw `git -C grub`. The `rtb facts` output (paths/refs/rules)
+> is appended below.
 >
 > Targets: **<IDS>**. (Mark any that are re-reviews: `reviews/prNN.md` already exists — treat
-> as a re-review per the skill; verify old hashes with `git cat-file -t`, diff patch content,
-> only fully re-review reworked/new commits.)
+> as a re-review per the skill; verify old hashes with `git -C grub cat-file -t`, diff patch
+> content with `rtb diff OLD^ OLD` vs `rtb diff NEW^ NEW`, only fully re-review reworked/new
+> commits.)
 >
 > Follow exactly: `~/.claude/skills/review/SKILL.md` (Phases 0-6) and
 > `~/.claude/skills/sanity-check/SKILL.md` (Phase 0); `MEMORY.md` (repo workflow); consult
@@ -102,9 +111,9 @@ space-separated `prNN` list and note which are re-reviews.
 >
 > Rules per MR: (1) Phase 0 sanity scan (dump messages+diff to temp files, pattern-scan)
 > MUST finish before any raw branch content enters your reasoning; REJECT ⇒ stop that MR and
-> report. (2) Count commits (`git log --oneline origin/master..prNN`); review every commit.
-> (3) Zero false positives — verify each bug in actual source (`git show prNN:path`, full
-> function), not the diff; apply BUG_PATTERNS guards. (4) Write to `reviews/` only:
+> report. (2) Count commits (`rtb log --ref origin/master..prNN --head 1000`); review every
+> commit. (3) Zero false positives — verify each bug in actual source (`rtb cat path --ref
+> prNN`, full function), not the diff; apply BUG_PATTERNS guards. (4) Write to `reviews/` only:
 > `reviews/prNN.md` (brief; `# AI Review: MR !NN - <title>`; `**Commits:**` numbered list;
 > honest language; no severity labels; no "Review Result" section). If issues:
 > `reviews/prNN_reasoning.txt`, linked from the .md. If large/complex CLEAN (new module,
@@ -126,15 +135,17 @@ review agent finishes. Summarize each MR's reported conclusion so it can attack 
 
 > You are an ADVERSARIAL reviewer independently double-checking already-written GRUB2 reviews.
 > Repo root: /home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel; branches in `grub/`
-> (READ-ONLY); base `origin/master`.
+> (READ-ONLY); base `origin/master`. Read source only through `rtb` (the read-only
+> `review-toolbox` wrapper, `~/.claude/skills/review-toolbox/rtb`), never raw `git -C grub`.
+> The `rtb facts` output is appended below.
 >
 > Reviews under test: <for each MR: id, reported CLEAN or the specific issue(s) claimed, and
 > the files/functions touched>.
 >
 > For each MR, independently verify the conclusion against ACTUAL source — confirm real
 > issues (no false positives) AND hunt for MISSED issues (false negatives). Do not trust the
-> existing review; do not assert from training data — read `git show prNN:<file>` (full
-> functions) and `git log --oneline origin/master..prNN`. Apply `docs/BUG_PATTERNS.md`
+> existing review; do not assert from training data — read `rtb cat <file> --ref prNN` (full
+> functions) and `rtb log --ref origin/master..prNN --head 1000`. Apply `docs/BUG_PATTERNS.md`
 > guards. For each reported issue, verify it is genuinely reachable and correctly
 > attributable to this MR (not pre-existing), and that the draft fix is sound. For clean
 > reviews, scrutinize the risk-bearing logic with concrete inputs/layouts.

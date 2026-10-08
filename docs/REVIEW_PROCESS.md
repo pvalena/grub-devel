@@ -17,6 +17,15 @@ We maintain AI-assisted reviews of all MRs in the `reviews/` directory. Each rev
 > "Review Delegation Model" for the current defaults. The phase content in this document
 > remains the definition of what each agent does.
 
+> **Reading source:** all `grub/` reads go through `rtb` — the read-only `review-toolbox`
+> wrapper (`~/.claude/skills/review-toolbox/rtb`; `.rtbrc` registers `grub` as the default
+> source, `FACTS.md` is fed to subagents via `rtb facts`). It needs one Bash approval instead
+> of broad `git`/`sed` and makes writes structurally impossible. The `git`/`sed` pipelines
+> shown historically below map to `rtb` as: `git log --oneline A..B` → `rtb log --ref A..B
+> --head 1000`; `git show REF:path | sed -n 'A,Bp'` → `rtb cat path --ref REF --lines A,B`;
+> `git diff A..B` → `rtb diff --ref A..B`; `git grep P REF -- paths` → `rtb grep P --ref REF
+> -- paths`. Use `rtb`, not raw `git -C grub`, for new work.
+
 ## Repository Structure
 
 ```
@@ -50,26 +59,21 @@ live numbers; this diagram shows shape, not size.
 **Solution**: Always verify commit count against master base.
 
 ```bash
-cd grub/
-
 # Find branch for MR (example: MR !39)
-grep "!39" ../data/mrs.txt
-# Output: 2025-05-0016|39
+grep "!39" data/mrs.txt          # → 2025-05-0016|39
 
-# Checkout the branch
-git checkout 2025-05-0016
-
-# Count commits since master base
-git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD | wc -l
+# Count commits since the branch's base. rtb reads by ref — no checkout needed.
+# New prNN branches: base origin/master. Historical YYYY-MM-NNNN: base c160b586… (below).
+rtb log --ref c160b58610879a52d959db21b9cae98af5fd095f..2025-05-0016 --head 1000 | wc -l
 
 # List all commits for review
-git log --oneline c160b58610879a52d959db21b9cae98af5fd095f..HEAD
+rtb log --ref c160b58610879a52d959db21b9cae98af5fd095f..2025-05-0016 --head 1000
 ```
 
 **Master base commit**: `c160b58610879a52d959db21b9cae98af5fd095f` — this applies to
 **historical `YYYY-MM-NNNN` branches only** (the original mailing-list corpus). **New `prNN`
 branches are based on `origin/master`** (rebased as master moves) — use
-`git log --oneline origin/master..prNN`, not the fixed hash above, for those.
+`rtb log --ref origin/master..prNN --head 1000`, not the fixed hash above, for those.
 
 **Cross-check**: Compare the count with what's documented in the review file.
 
@@ -80,11 +84,11 @@ branches are based on `origin/master`** (rebased as master moves) — use
 **Solution**: Verify each reported issue by reading the actual code.
 
 ```bash
-# For each reported bug, verify by reading the code
-git show <commit-hash>:<file-path>
+# For each reported bug, verify by reading the code (full function at the branch)
+rtb cat <file-path> --ref prNN
 
-# Or check specific lines
-git show HEAD:grub-core/path/to/file.c | grep -A 10 -B 5 "suspected_bug"
+# Or check specific lines / around a pattern
+rtb cat grub-core/path/to/file.c --ref prNN --grep "suspected_bug" --ctx 10
 ```
 
 **Common false positives to watch for:**
@@ -366,8 +370,7 @@ GRUB_MOD_FINI(module) {
 
 **Verification**:
 ```bash
-git checkout 2025-07-0295
-git show HEAD:grub-core/lib/cmdline.c | grep -A 30 "grub_loader_cmdline_size"
+rtb cat grub-core/lib/cmdline.c --ref 2025-07-0295 --grep "grub_loader_cmdline_size" --ctx 30
 ```
 
 **Code inspection**:
@@ -404,26 +407,27 @@ grub_disk_close(esp_disk);         // Line 1407 - Safe, partition is NULL
 
 ### Searching for patterns
 ```bash
-# Find all occurrences of a function call
-grep -rn "grub_free" grub-core/bus/usb/xhci.c
+# Find all occurrences of a function call (at the branch)
+rtb grep "grub_free" --ref prNN -- grub-core/bus/usb/xhci.c
 
 # Check if pointer is nulled after free
-git show HEAD:grub-core/bus/usb/xhci.c | grep -A 2 "grub_free(cdata)"
+rtb cat grub-core/bus/usb/xhci.c --ref prNN --grep "grub_free(cdata)" --ctx 2
 
-# Find resource allocation without corresponding free
-git diff c160b58610879a52d959db21b9cae98af5fd095f..HEAD | grep -E "grub_malloc|grub_dma_alloc"
+# Find resource allocation without corresponding free (scan the MR's diff).
+# rtb --grep is a basic-regex grep (no -E alternation), so use grub_.*alloc:
+rtb diff --ref origin/master..prNN --grep "grub_.*alloc"
 ```
 
 ### Checking commit details
 ```bash
-# Show specific commit changes
-git show <commit-hash>
+# Show a single commit's changes (diff of the commit against its parent)
+rtb diff <commit-hash>^ <commit-hash>
 
-# Show only statistics
-git show --stat <commit-hash>
+# Scope a commit's changes to one path
+rtb diff <commit-hash>^ <commit-hash> -- path/to/file
 
-# Show specific file from commit
-git show <commit-hash>:path/to/file
+# Show a specific file as of a commit/branch
+rtb cat path/to/file --ref <commit-hash>
 ```
 
 ## Quality Checklist
@@ -444,7 +448,8 @@ Before finalizing any review:
 
 ### Lessons Learned
 
-1. **Always count commits** - Don't trust manual counting, use `git log | wc -l`
+1. **Always count commits** - Don't trust manual counting, use
+   `rtb log --ref origin/master..prNN --head 1000 | wc -l`
 2. **Verify every bug claim** - Read the actual code, don't assume the review is correct
 3. **Check for NULL assignments** - Common source of false positive double-free claims
 4. **Understand protocol semantics** - E.g., UEFI close_protocol doesn't invalidate pointers

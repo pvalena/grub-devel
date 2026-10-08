@@ -17,6 +17,15 @@ you need is here.
 > repo sits at `~/lpcsf-new/test/rhel/packages/grub2/grub-devel`; if it lives elsewhere, pass
 > `--build-arg REPO_SRC=<path-relative-to-$HOME>`.
 
+> **Prerequisite — install the global skills first.** The build bakes `~/.claude/skills/`, which
+> must already contain the review skills (`review`, `sanity-check`, `review-toolbox`, `auto-memory`,
+> …). They live in the shared skills collection — deploy it to `~/.claude/skills` before building:
+> ```bash
+> git clone git@github.com:pvalena/claude-skills.git ~/.claude/skills   # or install into it
+> ```
+> (HTTPS: `https://github.com/pvalena/claude-skills.git`.) Without this the image has no `rtb`
+> and reviews cannot run.
+
 ## The three variants
 
 | Variant | Target | Claude config + skills | Reviewer docs/tooling | Host Vertex config | Review data (`grub/`, `reviews/`, `new.txt`) | Shareable |
@@ -28,8 +37,11 @@ you need is here.
 - **Reviewer docs/tooling** (baked into every variant, because they are reviewer configuration,
   not per-batch data): `CLAUDE.md`, `HANDOVER.md`, `MEMORY.md`, `DUMP_MEMORY.md`,
   `MRS_BY_AUTHOR.md`, `README.md`, `docs/`, `templates/`, `helpers/`.
-- **Claude config**: `~/.claude/settings.json` and all of `~/.claude/skills/*/` (the skills' own
-  `.git` and `skills/CLAUDE.md` are dropped). Nothing else is taken from `$HOME`.
+- **Claude config** (from `~/.claude/`): `settings.json`, `CLAUDE.md`, all of `skills/*/`, and
+  `plugins/*/` (their `.git` dirs and the skills' `CLAUDE.md` are dropped). The skills come from
+  the shared collection — see the install prerequisite above. Session/private data is **never**
+  taken from `$HOME`: `projects/` (transcripts), `history.jsonl`, `sessions/`, `file-history/`,
+  caches, and any credentials are excluded, so variant A stays shareable.
 - Each image writes `/grub-devel/variant` containing `standalone` / `baked` / `full` so you can
   tell what a running container was built as: `podman run --rm grub-review:b cat variant`.
 - **In-container working directory is `/grub-devel`** (named to match the host repo). Inside it:
@@ -132,9 +144,10 @@ copying junk or secrets (e.g. `.git`, `node_modules`, caches).
 
 This project does **not** ship one, on purpose: the build context is `$HOME`, so a
 `$HOME/.containerignore` would affect your whole home directory and anything else you build from
-there. Instead the few unwanted paths (the skills' `.git`, `skills/CLAUDE.md`) are removed inside
-the image. If you prefer context-level exclusion without touching `$HOME`, point podman at a
-dedicated ignore file: `podman build --ignorefile /path/to/myignore ...`.
+there. Instead the few unwanted paths (the skills'/plugins' `.git`, `skills/CLAUDE.md`) are removed
+inside the image, and only the config subset of `~/.claude` is copied (never `projects/`,
+`history.jsonl`, `sessions/`, or caches). If you prefer context-level exclusion without touching
+`$HOME`, point podman at a dedicated ignore file: `podman build --ignorefile /path/to/myignore ...`.
 
 > **Note:** variants **B** and **C** bake host configuration/provider settings (and C bakes the
 > whole repo). Treat those images as private — handling of pushing/sharing/commits is entirely
