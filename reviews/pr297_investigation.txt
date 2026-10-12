@@ -1,0 +1,111 @@
+MR !297 re-review (2026-10-12): grub-mkconfig module/device dedup + EFI BootNext consolidation
+3 commits, 9e1b528f6 fc988acfa 95c48af00
+
+Files read during verification:
+- util/grub-mkconfig.in (commit 1, reworked)
+- util/grub.d/00_header.in (commit 2, unchanged)
+- util/grub.d/31_efi_bootnext.in (commit 3, unchanged)
+
+== Re-review verification method ==
+
+Compared old commit hashes (from the prior review, 2026-07-23) against current pr297 branch:
+
+Prior hashes (all verified via `git cat-file -t` — still exist as dangling objects post-rebase):
+  1. 3e1a93e0d (grub-mkconfig)
+  2. f3b5c8608 (00_header)
+  3. 33010340f (31_efi_bootnext)
+
+Current pr297 hashes:
+  1. 9e1b528f6 (grub-mkconfig)
+  2. fc988acfa (00_header)
+  3. 95c48af00 (31_efi_bootnext)
+
+Patch-level comparison (ignoring rebase-induced blob hash changes):
+  - Commit 1: `diff <(git diff 3e1a93e0d^..3e1a93e0d) <(git diff 9e1b528f6^..9e1b528f6)` → 16
+    lines different (REWORKED)
+  - Commit 2: same comparison → 0 lines (UNCHANGED)
+  - Commit 3: same comparison → 0 lines (UNCHANGED)
+
+Inspected the 16-line diff for commit 1 rework: the only substantive change is the addition of the
+`oldumask=$(umask); umask 077` / `umask $oldumask` wrapping around the shell redirection
+`> "${GRUB_MODULE_STATE_FILE}"` at lines 317-319, exactly matching the draft fix from the prior
+review's Issue 1. The remaining diff lines are hunk-offset shifts caused by the two new lines.
+
+== Verification of the applied fix ==
+
+Read `util/grub-mkconfig.in` at pr297 (9e1b528f6), lines 315-322:
+
+```sh
+if [ -n "${GRUB_MODULE_STATE_FILE}" ]; then
+  export GRUB_MODULE_STATE_FILE
+  oldumask=$(umask); umask 077
+  > "${GRUB_MODULE_STATE_FILE}"
+  umask $oldumask
+  trap 'test -n "${GRUB_MODULE_STATE_FILE}" && rm -f "${GRUB_MODULE_STATE_FILE}"' EXIT
+  # Some shells (e.g. dash) skip the EXIT trap when killed by a signal.
+  # Exit explicitly instead, so the EXIT trap runs and the script stops.
+```
+
+The file creation `> "${GRUB_MODULE_STATE_FILE}"` now runs under `umask 077`, creating it at mode
+`0600` (user-only read/write) regardless of the ambient umask, matching the hardening already
+applied to `${grub_cfg}.new` (lines 282-288) and the final `${grub_cfg}` copy (lines 303-310). The
+umask restore immediately follows, limiting the hardened scope to just this file creation. This
+removes the world-readable state-file gap from the prior version.
+
+Cross-referenced with the prior review's sibling-function comparison: lines 282-288 and 303-310 use
+the identical `oldumask=$(umask); umask 077` / `umask $oldumask` idiom, confirming consistency.
+
+== Analysis of unchanged commits 2-3 ==
+
+Commits 2 and 3 are byte-for-byte identical at the patch level (zero-line diff), confirming they
+are pure rebases (updated parent commit hash only; no content change). The prior review's analysis
+of commit 2's cross-commit interaction and commit 3's subshell-capture refactor remains valid:
+
+Commit 2 (`util/grub.d/00_header.in`):
+- The "last one prepared" device shortcut (lines 186-190 in the old version) never skips a module
+  that genuinely needs re-emitting — verified for all font/theme/background combinations in the
+  prior review. The fix to commit 1 does not touch this logic (it only affects the state file's
+  permission bits, not its content or semantics).
+
+Commit 3 (`util/grub.d/31_efi_bootnext.in`):
+- The EFI platform-check consolidation wraps the while-loop's output in a single
+  `if [ "$grub_platform" = "efi" ]` block instead of repeating the check per entry. The prior
+  review verified no scope-leak or `set -e` exposure from the new `$(...)` wrapping (the while-loop
+  was already running in a subshell pre-patch due to pipe semantics). The fix to commit 1 is
+  entirely independent (different file, different subsystem).
+
+== Cross-commit interaction re-verification ==
+
+The fix to commit 1 (umask hardening) does not affect the cross-commit interaction analyzed in the
+prior review. That interaction is:
+
+1. Commit 1 creates a shared state file (`${grub_cfg}.modules`) that `util/grub.d/*.in` scripts
+   append to (via `grub_record_module`) and consult (via `grub_is_module_recorded`) during the
+   loop through `/etc/grub.d/*` scripts (which runs in lexical order: 00_, 10_, 20_, ...).
+2. Commit 2 (`00_header.in`, the first script in the loop) uses `grub_is_module_recorded` to skip
+   re-preparing a device for font/theme/background when the required modules were already emitted
+   at the top level of grub.cfg (recorded by commit 1's logic).
+
+The state file's permission bits (the only thing the fix changed) have no bearing on this
+interaction: the scripts still write to and read from the file in the same way, under the same trap
+cleanup (EXIT + explicit-exit-on-signal), and the file is still removed after the grub.d loop
+completes. The umask hardening only affects who else on the system can read the file while it
+exists (now user-only, previously world-readable under a typical `022` umask).
+
+== Additional findings re-verification ==
+
+The prior review's Additional findings remain accurate:
+- `GRUB_DISABLE_MODULE_DEDUPLICATION=true` behavior: fully reverts cross-section tracking but does
+  not gate the separate within-call dedup (the fix for the literal "insmod gcry_rijndael twice"
+  bug); this is narrower than "restore the previous behavior" read literally but matches the
+  `docs/grub.texi` wording.
+- Commit 3's subshell-capture refactor: checked for scope-leak and `set -e` exposure from the new
+  `$(...)` wrapping — none found, as the while-loop was already running in a subshell pre-patch.
+
+Both findings' correctness is independent of the umask fix.
+
+== Conclusion ==
+
+The prior review's Issue 1 is fixed correctly, matching the suggested draft fix. Commits 2-3 are
+unchanged (pure rebase). The cross-commit interaction, Additional findings, and all other analysis
+from the prior review remain valid.

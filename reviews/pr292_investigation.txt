@@ -1,0 +1,112 @@
+MR !292 re-review (2026-10-12): CI: Check Signed-off-by format
+1 commit, 04da713a0
+
+Files read during verification:
+- .gitlab-ci/script/metadata-sob.sh (commit reworked)
+
+== Re-review verification method ==
+
+Compared old commit hash (from the prior review, 2026-07-23) against current pr292 branch:
+
+Prior hash (verified via `git cat-file -t` — still exists as dangling object post-rebase):
+  - 606cc1d75
+
+Current pr292 hash:
+  - 04da713a0
+
+Patch-level comparison (ignoring rebase-induced blob hash changes):
+  - `diff <(git diff 606cc1d75^..606cc1d75) <(git diff 04da713a0^..04da713a0)` → 12 lines
+    different (REWORKED)
+
+Inspected the 12-line diff: two substantive changes, matching the prior review's two issues:
+
+1. The `SOB_REGEX` line (line 18 in both versions) changed from:
+   ```
+   SOB_REGEX='^Signed-off-by:[[:space:]]+[^<>[:space:]].*<[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+>$'
+   ```
+   to:
+   ```
+   SOB_REGEX='^Signed-off-by:[[:space:]]+[^<>[:space:]].*<[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+>\s*$'
+   ```
+   The anchor changed from `>$` to `>\s*$` (allows trailing whitespace before EOL).
+
+2. The code comment (line 9 in both versions) changed from:
+   ```
+   #     Signed-off-by: NAME <USER@DOMAIN.TOPLEVELDOMAIN>
+   ```
+   to:
+   ```
+   #     Signed-off-by: NAME LASTNAME <USER@DOMAIN.TOPLEVELDOMAIN>
+   ```
+   Now matches the `SOB_FORMAT` line below it (which already showed `NAME LASTNAME`).
+
+Both fixes match the draft suggestions from the prior review exactly.
+
+== Verification of fix 1: Trailing whitespace tolerance ==
+
+Read `.gitlab-ci/script/metadata-sob.sh` at pr292 (04da713a0), lines 15-18:
+
+```sh
+SOB_FORMAT="Signed-off-by: NAME LASTNAME <USER@DOMAIN.TOPLEVELDOMAIN>"
+SOB_REGEX='^Signed-off-by:[[:space:]]+[^<>[:space:]].*<[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+>\s*$'
+
+echo "Checking commits for Signed-off-by label..."
+```
+
+The regex now ends with `>\s*$` instead of `>$`. `\s*` matches zero or more whitespace characters
+(space, tab, `\r`, vertical tab, form feed) before the end-of-line anchor. This allows:
+
+- `Signed-off-by: John Doe <jdoe@example.com>` (no trailing whitespace) — matched
+- `Signed-off-by: John Doe <jdoe@example.com> ` (trailing space) — matched
+- `Signed-off-by: John Doe <jdoe@example.com>\r` (trailing `\r`) — matched
+
+The prior version's `>$` anchor required the closing `>` to be immediately followed by EOL,
+rejecting any trailing whitespace. This was a robustness gap because:
+
+1. `git commit` and `git am` strip trailing per-line whitespace by default (cleanup is standard).
+2. `git commit-tree` (the plumbing command used by GitLab/GitHub web UIs, libgit2-based tooling,
+   and API-driven squash/rebase flows) stores the message byte-for-byte with no cleanup. Trailing
+   whitespace from a GUI text box or a mailing-list patch passed through various clients is
+   preserved.
+
+The GRUB corpus receives patches from mailing lists (kernel.org/grub-devel), making the
+commit-tree path plausible. A well-formed trailer that happens to carry a trailing space or `\r`
+(e.g., Windows line ending from a cross-platform mail client) now passes the format check instead
+of failing with a misleading "Wrong Signed-off-by format" error.
+
+The check still fails closed: it rejects valid input (false negative) at worst, never accepts
+invalid input (no false positive), so the prior version's gap was not exploitable — the fix purely
+eliminates false rejections.
+
+== Verification of fix 2: Stale comment ==
+
+The comment at lines 7-10 now reads:
+
+```sh
+# Simple SOB regex, currently matching the presense of SOB (case sensitive) and the format
+#
+#     Signed-off-by: NAME LASTNAME <USER@DOMAIN.TOPLEVELDOMAIN>
+#
+```
+
+This matches the `SOB_FORMAT` constant on line 15 (`Signed-off-by: NAME LASTNAME <...>`) and the
+actual `SOB_REGEX` pattern below it (which enforces at least one non-space, non-angle-bracket
+token before the opening `<`, accommodating `NAME LASTNAME` and longer forms). The old comment
+showed the two-field-less format (`NAME <...>`, missing `LASTNAME`), which was stale — left over
+from an earlier version of the script that did not enforce the name format as strictly.
+
+This is a documentation-only change with no behavioral effect: the `SOB_REGEX` was already correct
+(accepting `NAME LASTNAME` and longer), and the `SOB_FORMAT` example string was already correct;
+only the comment was stale. The fix brings the comment in sync.
+
+== Additional findings re-verification ==
+
+The prior review's Additional findings noted the stale comment — now fixed (covered above). No
+other findings or observations from the prior review.
+
+== Conclusion ==
+
+Both issues from the prior review are fixed correctly, matching the suggested draft fixes. The
+regex now handles the range of commit-creation tools in the wild (tolerates trailing whitespace
+from `git commit-tree`), and the documentation is consistent (comment matches the format constant
+and regex).
