@@ -18,8 +18,7 @@ for mr in `echo $N`; do
 
     w="origin/master..pr${mr}"
 
-    git log --stat "$w" ||:
-    git log -p "$w" ||:
+    git log --stat -p "$w" ||:
 
     echo
 done

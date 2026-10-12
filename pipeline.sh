@@ -142,15 +142,15 @@ while :; do
     [[ -n "$R" && "$R" != ' ' ]]
     run "git commit -am 'Add review(s): $R'"
 
-    git show
+    git show --stat -p
     con "Push the reviews to git"
     run "git push"
     run "${H}cleanup-new.sh"
 
-    run "cd grub && gitc main && ./sync.sh"
-    ( cd grub && git show )
+    run "cd grub && git checkout main && ./sync.sh"
+    ( cd grub && git show --stat -p )
     con "Push the reviews to git (gitlab)"
-    run "cd grub && git push && gitc master"
+    run "cd grub && git push && git checkout master"
 done
 
 echo '=> DONE'

@@ -9,9 +9,9 @@ N="$(grep -E '^[0-9]$' ../data/new.txt)"
 
 [[ -n "$N" ]]
 
-gitc master
+git checkout master
 
 echo "$N" \
-  | xargs -i zsh -c "echo; echo -e '\n>>> {}'; gitc 'pr{}' || exit 255; giteo || { echo 'gitea: pr{}' >> ../fail.log; gitea; : }"
+  | xargs -i zsh -c "echo; echo -e '\n>>> {}'; git checkout 'pr{}' || exit 255; git rebase origin/master || { echo 'git rebase failed: pr{}' >> ../fail.log; git rebase --abort; : }"
 
-gitc master
+git checkout master

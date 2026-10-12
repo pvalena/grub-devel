@@ -12,23 +12,23 @@ N="$(cat "$N" 2>/dev/null)"
 
 [[ -n "$N" ]]
 
-gitc master
-gitp
+git checkout master
+git pull
 
 for mr in `echo $N`; do
 
     echo ">> $mr"
 
-    gitc "pr${mr}" || \
-        gitpr "${mr}"
+    git checkout "pr${mr}" || \
+        git fetch origin "refs/merge-requests/$mr/head:pr$mr"
 
-    gitc "pr${mr}"
+    git checkout "pr${mr}"
 
-    giteo
+    git rebase origin/master
 
     gits
 
     echo
 done
 
-gitc master
+git checkout master
