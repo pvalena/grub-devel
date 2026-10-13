@@ -1,0 +1,52 @@
+== MR !307: Fix NVMe boot device path handling for IEEE1275 (4 commits) ==
+
+Files read:
+- grub-core/osdep/unix/platform.c (pr307)
+- grub-core/osdep/unix/platform.c (origin/master)
+
+== Issue 1: Trailing space not removed from boot-device path (platform.c) ==
+
+Discovery:
+Reading the diff for commit 0d42502e0, the original code ended with:
+  *--ptr = '\0';
+This was removed in the fix to prevent buffer underflow when no entries are added. However, no
+alternative method was added to remove the trailing space when entries ARE added.
+
+Source trace:
+Original code (origin/master, lines 274-301):
+- Allocated multipath_boot buffer with xmalloc (no initialization)
+- Each boot device path was appended with a trailing space:
+  * non_splitter_path format: "%s/namespace@%x:1 " (line 276, note trailing space)
+  * path format: "%s/namespace@%x " (line 291, note trailing space)
+- After all entries added, line 301: *--ptr = '\0';
+  * If entries were added: ptr points one past last char (space), --ptr moves back, overwrites space
+  * If NO entries added: ptr at buffer start, --ptr writes one byte BEFORE buffer (underflow)
+
+New code (pr307, lines 281-337):
+- Initialize buffer with *ptr = '\0'; (line 281)
+- Each append keeps buffer NUL-terminated (lines 294, 322)
+- Same format strings with trailing spaces (lines 287, 313)
+- Line 333-337: Check if buffer empty, return NULL if so
+- Line 338: return multipath_boot - NO trailing space removal
+
+The result: if one or more entries were added, the returned string has a trailing space.
+
+Consequence:
+The boot-device variable will have a trailing space where it didn't before. For example:
+- Old: "path1/namespace@1 path2/namespace@1"
+- New: "path1/namespace@1 path2/namespace@1 "
+
+IEEE1275 nvsetenv typically ignores trailing spaces, so this is unlikely to cause boot failures.
+However, it is a behavioral change from the original code and could affect parsers that are
+strict about whitespace.
+
+Fix assessment:
+The suggested fix checks if ptr > multipath_boot (buffer is non-empty) and the last character
+is a space, then overwrites it with '\0'. This is safe because:
+- ptr > multipath_boot ensures we're not at the start of the buffer
+- *(ptr - 1) only reads one byte back, within the allocated buffer
+- The check for ' ' ensures we only modify when there's actually a trailing space
+- The fix is placed before the empty buffer check, so the NUL terminator is correct
+
+The fix restores the original behavior of removing the trailing space while avoiding the
+buffer underflow bug that the MR was trying to fix.
