@@ -37,9 +37,9 @@ L="${my}/helpers/gitlab-lib.sh"
 
             g='^# AI Review: MR !'
 
-            G="$(head -n 1 "$F" | grep "$g")"
+            G="$(head -n 1 "$F" | grep "$g")" ||:
 
-            [[ -n "$G" ]] || fail "Wrong review [$m] header: '$(head -n 1 "$F")'"
+            [[ -n "$G" ]] || fail "Wrong review [$m] header: '$(head -n 1 "$F")' (expected '$g')"
 
             [[ "$m" == "$(echo "$G" | cut -d'!' -f2 | cut -d' ' -f1)" ]]
 
