@@ -1,0 +1,185 @@
+AI Review Investigation: pr320 - Only blit dirty scanlines on buffer swap
+==========================================================================
+
+Author: Misha Nasledov (Assisted-by: Opus 5.5)
+Commits: 1
+Scope: grub-core/video/efi_gop.c, grub-core/video/fb/video_fb.c, include/grub/video_fb.h
+Result: CLEAN - dirty-scanline tracking is correct across the edge cases traced below
+
+Source files read (at pr320 branch, full functions unless noted):
+- grub-core/video/efi_gop.c (full file: grub_video_gop_setup, grub_video_gop_swap_buffers,
+  grub_video_gop_init/_fini, grub_video_gop_get_info_and_fini, adapter struct)
+- grub-core/video/fb/video_fb.c (framebuffer struct and dirty struct, lines 1-120; dirty(),
+  grub_video_fb_set_dirty_tracking, grub_video_fb_take_dirty and surrounding callers, lines
+  840-1120; grub_video_fb_create_render_target_from_pointer/_delete_render_target, lines
+  1300-1430; grub_video_fb_set_active_render_target, doublebuf_blit_update_screen,
+  grub_video_fb_doublebuf_blit_init, doublebuf_pageflipping_update_screen,
+  doublebuf_pageflipping_init, lines 1430-1630)
+- include/grub/video_fb.h (new declarations and existing EXPORT_FUNC precedent)
+- include/grub/fbfill.h (struct grub_video_fbrender_target definition)
+- include/grub/video.h (grub_video_mode_info field types; GRUB_VIDEO_MODE_TYPE_UPDATING_SWAP)
+- include/grub/efi/graphics_output.h (grub_efi_gop_blt_t function pointer signature)
+- grub-core/term/gfxterm.c (lines 330-365, UPDATING_SWAP / double_redraw usage)
+- grub-core/video/video.c (grub_video_swap_buffers dispatcher; grub_video_set_mode's
+  init()/setup() retry loop)
+- origin/master grub-core/video/efi_gop.c (grub_video_gop_setup, to separate pre-existing
+  behavior from what this patch changes)
+
+Full diff: 69 lines across 3 files, 1 commit
+
+
+== What changed ==
+
+grub-core/video/fb/video_fb.c:
+- Added `struct grub_video_fbrender_target *dirty_target` to the static `framebuffer` state,
+  zeroed in grub_video_fb_init()/_fini() alongside render_target/back_target.
+- dirty(y, height) (the function every fill_rect/blit/scroll call already routes through) now
+  also records the range when `framebuffer.render_target == framebuffer.dirty_target`, in
+  addition to the pre-existing `render_target == back_target` double-buffer case.
+- New grub_video_fb_set_dirty_tracking(target): stores dirty_target and marks [0, height) dirty
+  (or [0,0), i.e. nothing, if target is NULL), so the first swap after arming is a full repaint.
+- New grub_video_fb_take_dirty(first_line, last_line): reads current_dirty, clamps to
+  [0, dirty_target's height], resets current_dirty to the module's existing "nothing dirty"
+  sentinel (first_line = height, last_line = 0), and returns the range to the caller.
+
+grub-core/video/efi_gop.c:
+- grub_video_gop_setup(): after creating/activating the render target, calls
+  grub_video_fb_set_dirty_tracking(framebuffer.render_target) when the shadow (`offscreen`)
+  buffer is in use, else grub_video_fb_set_dirty_tracking(NULL).
+- grub_video_gop_swap_buffers(): takes the dirty range; if empty (first_line >= last_line),
+  returns without calling Blt() at all; otherwise Blt()s only rows [first_line, last_line).
+
+include/grub/video_fb.h: EXPORT_FUNC declarations for the two new functions (void-returning
+EXPORT_FUNC has precedent in this tree, e.g. grub_real_dprintf, grub_exit, grub_abort).
+
+
+== Trace 1: zero dirty lines (no draw since last swap / since arming) ==
+
+grub_video_fb_set_dirty_tracking() and grub_video_fb_take_dirty() both leave current_dirty in
+the same "empty" representation the pre-existing doublebuf code already uses: first_line ==
+height, last_line == 0, i.e. first_line >= last_line (see Trace 2 for why height, not 0).
+grub_video_gop_swap_buffers() calls grub_video_fb_take_dirty() unconditionally whenever
+framebuffer.offscreen is set, then checks `if (first_line >= last_line) return GRUB_ERR_NONE;`
+before touching gop->blt. Calling swap twice in a row with nothing drawn in between: the first
+take_dirty drains whatever was dirty and resets to empty; the second take_dirty returns the
+empty sentinel and short-circuits with no Blt() call. Confirmed by reading both functions
+together (video_fb.c:855-886, efi_gop.c:538-549).
+
+
+== Trace 2: all lines dirty (first swap after setup) ==
+
+grub_video_gop_setup() calls grub_video_fb_set_dirty_tracking(framebuffer.render_target)
+unconditionally (after mode_info is filled and the render target created), which sets
+current_dirty = [0, target->mode_info.height). target->mode_info was memcpy'd from
+&framebuffer.mode_info inside grub_video_fb_create_render_target_from_pointer()
+(video_fb.c:1382), so target->mode_info.height is the real display height, not a stale or zero
+value -- confirmed by reading that function's body end to end (video_fb.c:1356-1409). The first
+grub_video_gop_swap_buffers() call after setup therefore Blt()s rows [0, height), the full
+screen, matching the commit message's "first swap still paints everything."
+
+
+== Trace 3: a dirty range at the top/bottom edge ==
+
+dirty(y, height) updates first_line = min(current, y), last_line = max(current, y + height). All
+three in-tree callers of dirty() clamp y/height to the target's viewport/area bounds before
+calling it:
+- grub_video_fb_fill_rect (video_fb.c ~890-945): clamps x,y>=0 and width/height to area bounds
+  before `dirty (y, height);`.
+- grub_video_fb_blit_source, reached from blit_bitmap/blit_render_target (video_fb.c ~950-1057):
+  same clamps, plus source-bitmap bounds, before `dirty (y, height);`.
+- grub_video_fb_scroll (video_fb.c ~1090-1108): calls `dirty (viewport.y, viewport.height)`
+  directly with the target's own viewport, which is non-negative and within the target bounds
+  by construction.
+So y is never negative and y + height never exceeds the area height at any call site.
+grub_video_fb_take_dirty() additionally clamps defensively
+(`if (*first_line < 0) *first_line = 0; if (*last_line > height) *last_line = height;`), so even
+a hypothetical out-of-range caller could not hand efi_gop an out-of-bounds scanline range. A
+dirty call at y=0 (top edge) or at y=height-1,height=1 (bottom edge, giving last_line=height)
+both produce correct boundary-inclusive ranges: a Blt() of [0, N) or [height-1, height)
+respectively, each fully within [0, height].
+
+
+== Trace 4: overlapping updates between two swaps ==
+
+Draw at lines [100,200), swap: take_dirty returns [100,200) and resets current_dirty to empty.
+Draw at lines [50,80) before the next swap: dirty() sees render_target == dirty_target, updates
+first_line = min(empty-sentinel-height, 50) = 50, last_line = max(0, 80) = 80. The next
+take_dirty returns exactly [50,80) -- no residual range from the first swap leaks in, because
+take_dirty unconditionally resets current_dirty to empty on every call (video_fb.c:883-885). Two
+overlapping draws before a single swap (e.g. [10,50) then [30,90)) correctly union to [10,90) via
+the same min/max accumulation in dirty() -- this accumulation logic is unchanged by the patch;
+only the set of render targets it now applies to changed.
+
+
+== Cross-check: no interaction with the pre-existing back_target double-buffer path ==
+
+current_dirty/previous_dirty are shared module state also consumed by
+doublebuf_blit_update_screen and doublebuf_pageflipping_update_screen (video_fb.c:1461-1560),
+which are reached only via grub_video_fb_setup()'s doublebuf init helpers and
+framebuffer.update_screen / grub_video_fb_swap_buffers(). efi_gop never calls
+grub_video_fb_setup(); it creates its render target directly via
+grub_video_fb_create_render_target_from_pointer() and registers its own
+`.swap_buffers = grub_video_gop_swap_buffers` (not the generic grub_video_fb_swap_buffers).
+grub_video_gop_init() resets the shared "framebuffer" static via grub_video_fb_init(), which
+zeroes back_target/dirty_target/render_target together. So for efi_gop, back_target stays NULL
+for the adapter's lifetime and the doublebuf code paths are never entered; the only consumer of
+current_dirty while gop is active is the new dirty_target path. Grepped the whole pr320 tree for
+grub_video_fb_set_dirty_tracking / grub_video_fb_take_dirty: efi_gop.c is the only caller of
+either, so no other driver's behavior changes.
+
+
+== dirty_target lifetime / no dangling pointer ==
+
+grub_video_fb_init() and grub_video_fb_fini() both zero
+framebuffer.{render_target,back_target,dirty_target} together. grub_video_gop_init() calls
+grub_video_fb_init() on every entry to the adapter-selection loop in grub_video_set_mode()
+(grub-core/video/video.c: `for (p = ...) { ... err = p->init (); ... err = p->setup (...); }`),
+and grub_video_gop_fini() / grub_video_gop_get_info_and_fini() both call grub_video_fb_fini().
+Since dirty_target is reset in lockstep with render_target (the object it points into), it
+cannot outlive the render target or ever point at one that was freed without also being reset.
+
+
+== Blt() parameter correctness ==
+
+struct grub_efi_gop's blt function pointer type
+(include/grub/efi/graphics_output.h:94-103) is
+(this, buffer, operation, sx, sy, dx, dy, width, height, delta). The new call passes
+sx=0, sy=first_line, dx=0, dy=first_line, width=mode_info.width, height=last_line-first_line,
+delta=mode_info.width*4. framebuffer.offscreen is allocated as exactly
+height*width*sizeof(grub_efi_gop_blt_pixel) with no scanline padding (grub_video_gop_setup), so
+delta equals the buffer's real pitch and sy=first_line addresses the same row in both the source
+buffer and the on-screen destination. This is the same sx/dx/width/delta the pre-patch code used
+for the whole-screen case; only sy/dy/height are now scoped to the dirty range.
+
+
+== UPDATING_SWAP: why a partial blit is semantically safe ==
+
+grub_video_gop_fill_mode_info() (unchanged by this patch) already sets
+GRUB_VIDEO_MODE_TYPE_UPDATING_SWAP on every efi_gop mode. grub-core/term/gfxterm.c:345-349 and
+grub-core/gfxmenu/gfxmenu.c:106 both use this flag to decide whether a mode needs a
+"double redraw" (draw background, swap, draw background again) -- needed only for drivers whose
+"swap" flips between two independent buffers that don't share content. A driver with
+UPDATING_SWAP set is, by this existing convention, documented to have its buffer persist across
+swaps; efi_gop's shadow buffer does (it is a single buffer pushed to the display, never flipped),
+confirming untouched scanlines on screen already hold correct content from the prior swap and do
+not need to be repainted.
+
+
+== Pre-existing issue noted but out of scope ==
+
+grub_video_gop_setup() (both pre- and post-patch, confirmed by diffing against origin/master)
+reassigns framebuffer.offscreen = grub_malloc(...) without freeing a previous non-NULL value
+first, and grub_video_gop_init() grub_memset()s the whole local framebuffer struct to 0 (also
+discarding a previous offscreen pointer) rather than freeing it. Both are leaks on repeated mode
+changes, but both are present verbatim in origin/master before this patch -- not introduced or
+worsened by pr320, so not reported as a finding of this review.
+
+
+== Summary ==
+
+Traced the full dirty-range lifecycle (arm -> accumulate -> take -> reset) through zero-dirty,
+fully-dirty, edge-of-buffer, and cross-swap overlap scenarios; confirmed dirty_target's lifetime
+is tied to render_target so it cannot dangle; confirmed no other driver is affected; confirmed
+the Blt() parameter substitution matches the buffer's actual pitch; and confirmed the
+UPDATING_SWAP precondition the commit message relies on is genuinely set for this driver.
+No issues found.

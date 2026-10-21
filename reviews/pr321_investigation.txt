@@ -1,0 +1,50 @@
+AI Review Investigation: pr321 - Log which adapter grub_video_set_mode() picks
+================================================================================
+
+Author: Misha Nasledov (Assisted-by: Opus 5.5)
+Commits: 1
+Scope: grub-core/video/video.c (grub_video_set_mode())
+Result: CLEAN - two pure logging additions, no control-flow or behavior change
+
+Source files read (at pr321 branch, full function unless noted):
+- grub-core/video/video.c (grub_video_set_mode(), full function)
+- include/grub/err.h (grub_errmsg type/size)
+- include/grub/video.h (adapter ->name, current_mode, mode_info field types)
+- include/grub/misc.h (grub_dprintf / grub_real_dprintf format-check attribute)
+
+
+== What changed ==
+
+Two grub_dprintf ("video", ...) calls added to grub_video_set_mode()'s adapter-selection loop:
+one logs an adapter's setup() failure together with grub_errmsg, emitted before p->fini() and
+before grub_errno is reset to GRUB_ERR_NONE (so grub_errmsg still reflects the real error at the
+point it's printed); one logs the winning adapter's name, mode string, and resolution after
+grub_video_adapter_active = p is set, using mode_info fields already populated by p->get_info().
+
+
+== Control flow / behavior ==
+
+Read the full function end to end: both additions are debug=video-gated grub_dprintf calls with
+no side effects. Neither changes a return value, a branch condition, nor an existing assignment;
+removing both lines would leave the function's behavior identical.
+
+
+== Format-specifier verification ==
+
+p->name is `const char *`, current_mode is `char *`, grub_errmsg is `char[GRUB_MAX_ERRMSG]`
+(decays to char * for %s), and mode_info.width/height/bpp are all `unsigned int` -- all match
+their %s/%u specifiers. grub_dprintf expands to grub_real_dprintf(), which carries
+__attribute__ ((format (GNU_PRINTF, 5, 6))), so any mismatch would already be a compile-time
+warning independent of this review.
+
+
+== AI-assistance scrutiny ==
+
+Commit carries `Assisted-by: Opus 5.5`. The change is two added statements with no logic --
+too small and localized for AI assistance to plausibly introduce an error here.
+
+
+== Summary ==
+
+Pure logging addition, no control-flow or behavior change, format specifiers verified against
+actual field types. No issues found.

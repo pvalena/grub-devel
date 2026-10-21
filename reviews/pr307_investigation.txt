@@ -1,0 +1,225 @@
+== MR !307 re-review: Fix NVMe boot-device memory leaks, missing-path handling, and buffer
+   bounds (3 commits, was 4) ==
+
+Files read:
+- grub-core/osdep/unix/platform.c (pr307, full add_multiple_nvme_bootdevices() + call sites)
+- grub-core/osdep/unix/platform.c (origin/master, same function, pre-patch baseline)
+- grub-core/kern/misc.c (origin/master, grub_strchr implementation)
+- include/grub/misc.h (origin/master, grub_strstr implementation)
+- include/grub/util/ofpath.h (origin/master, of_path_get_nvme_nsid signature)
+- grub-core/kern/emu/misc.c (origin/master, grub_util_error implementation)
+
+Method: `rtb log --ref origin/master..pr307 --head 1000` for the current commit list, then for
+each old hash (from the prior reviews/pr307.md / pr307_reasoning.txt) the sole allowed raw git
+`git -C grub cat-file -t OLDHASH` confirmed the object still exists, followed by
+`diff <(rtb diff OLD^ OLD) <(rtb diff NEW^ NEW)` to compare patch content independent of
+rebase-induced blob-hash churn.
+
+== Commit mapping (old round -> current branch) ==
+
+Old round (4 commits, oldest to newest):
+1. 465d03f96 - Fix NULL dereferences in NVMe path parsing
+2. 5e971155a - Fix memory leaks in add_multiple_nvme_bootdevices()
+3. 8d17cec22 - Handle missing IEEE1275 NVMe boot path
+4. 0d42502e0 - Fix NVMe boot-device buffer bounds and termination [had the trailing-space bug]
+
+Current branch (3 commits, oldest to newest):
+1. 715e017d0 - Fix NVMe boot-device buffer bounds and termination
+2. 755624346 - Handle missing IEEE1275 NVMe boot path
+3. d8d315541 - Fix memory leaks in add_multiple_nvme_bootdevices()
+
+Mapping and verdicts:
+
+- 0d42502e0 -> 715e017d0: REWORKED. `diff <(rtb diff 0d42502e0^ 0d42502e0) <(rtb diff
+  715e017d0^ 715e017d0)` shows identical content except one added hunk: the old commit simply
+  deleted the final `*--ptr = '\0';` line and added nothing back; the new commit deletes the
+  same line and adds:
+    /* Remove trailing space if present */
+    if (ptr > multipath_boot && *(ptr - 1) == ' ')
+      *(ptr - 1) = '\0';
+  This is exactly the draft fix from reviews/pr307_reasoning.txt Issue 1 ("Fix assessment"),
+  adopted verbatim. See "Trailing-space fix verification" below.
+
+- 8d17cec22 -> 755624346: UNCHANGED, verified. `diff <(rtb diff 8d17cec22^ 8d17cec22)
+  <(rtb diff 755624346^ 755624346)` differs only in the `index abc..def` blob-hash line and the
+  `@@` hunk line-number offsets (shifted by the extra lines 715e017d0 now contributes earlier in
+  the file); every added/removed content line is byte-identical. Pure rebase.
+
+- 5e971155a -> d8d315541: UNCHANGED, verified. Same comparison method; the two patches are
+  line-for-line identical, including hunk line numbers (both chains net out to the same offset
+  at this point). Pure rebase/reorder (this commit moved from position 2 to position 3 in the
+  stack; see "Reordering" below).
+
+- 465d03f96 -> DROPPED. No commit in the current branch carries this title or content (title
+  "Fix NULL dereferences in NVMe path parsing" does not appear in `rtb log`, and no other
+  commit's diff contains the `cntl_id == NULL` / `ext_dir == NULL` guards it added). Verdict:
+  safe to drop -- see "Dropped-commit analysis" below. This is case (b) ("no longer applicable"),
+  not a regression, though the mechanism is "was already unreachable" rather than "code was
+  restructured."
+
+Reordering: the current branch applies the commits in a different order than before. Old order
+(base to tip) was NULL-deref-fix, leak-fix, missing-path-fix, bounds-fix. Current order is
+bounds-fix, missing-path-fix, leak-fix (and the NULL-deref-fix commit is gone entirely). Since
+all three commits touch disjoint-enough regions of the same function and the full diff vs
+origin/master was read directly (not reconstructed from individual commit diffs), the final
+resulting source was verified as a whole regardless of internal commit order -- see "Full
+current source" below.
+
+== Dropped-commit analysis (465d03f96) ==
+
+The dropped commit added two guards:
+
+  1. In the `is_FC == false` branch:
+       cntl_id = grub_strstr (nvme_ns, "e");
+     + if (cntl_id == NULL) { free (sysfs_path); return NULL; }
+       dirR1 = xasprintf ("nvme%c", cntl_id[1]);
+
+  2. In the splitter-detection readdir loop:
+       ext_dir = grub_strchr (splitter_ep->d_name, 'e');
+     + if (ext_dir == NULL) continue;
+       if (grub_strchr (ext_dir, 'n') == NULL)
+
+Current pr307 code (grub-core/osdep/unix/platform.c, add_multiple_nvme_bootdevices(), read in
+full via `rtb cat ... --ref pr307 --lines 190,345`) has neither guard -- it is byte-identical
+to origin/master at these two spots, i.e. the pre-existing baseline behavior, not a regression
+introduced by this MR.
+
+Whether the missing guards are reachable was checked by tracing the invariants established
+earlier in the same function:
+
+- `nvme_ns = grub_strstr (install_device, "nvme");` (with an immediate `if (nvme_ns == NULL)
+  return NULL;` guard already present and unaffected by this MR). grub_strstr's implementation
+  (include/grub/misc.h:134-160) returns a pointer to the start of the first literal occurrence
+  of the needle, so by construction `nvme_ns[0..3] == "nvme"`. `nvme_ns` is never reassigned
+  before `cntl_id = grub_strstr (nvme_ns, "e")` is reached (confirmed by reading the whole
+  function top to bottom; the only things computed from it in between -- `nsid`, `sysfs_path`,
+  `ofpath` -- are local temporaries, none mutate `nvme_ns` itself, and
+  `of_path_get_nvme_nsid()`'s declared signature is `(const char *devname)`, so it cannot
+  mutate the buffer either). Since positions 0-2 of "nvme" are 'n','v','m' and position 3 is
+  'e', `grub_strstr (nvme_ns, "e")` is guaranteed to match at or before offset 3 -- it can never
+  return NULL. `cntl_id` cannot be NULL at this call site.
+
+- `ext_dir = grub_strchr (splitter_ep->d_name, 'e');` is only reached inside
+  `if (grub_strstr (splitter_ep->d_name, "nvme"))`, i.e. only when `d_name` is already known to
+  contain the literal substring "nvme" (which itself contains 'e'). `grub_strchr`
+  (grub-core/kern/misc.c:437-444) scans left to right for the first matching byte and returns
+  NULL only if the character never occurs; since "nvme" is present somewhere in `d_name`, at
+  least one 'e' exists, so `grub_strchr (d_name, 'e')` is guaranteed to return non-NULL.
+  `ext_dir` cannot be NULL at this call site.
+
+Conclusion: both conditions the dropped commit guarded against are unreachable given the
+invariants the surrounding code already enforces (and enforced identically on origin/master
+before this whole MR). Dropping the commit does not reintroduce a live bug -- the defensive
+checks were protecting against something that cannot happen by construction, both before and
+after the drop. This is recorded as an observation, not treated as a regression.
+
+Caveat: this is a code-reading/invariant-tracing conclusion (grub_strstr/grub_strchr source
+read and the call-site guards traced by hand), not a compiled/fuzzed proof. Readable, auditable
+logic was used instead of an assumption, but no tool run (e.g. a static analyzer or test)
+confirmed it independently.
+
+== Trailing-space fix verification ==
+
+The sole issue from the prior round was: the pre-decrement `*--ptr = '\0';` was removed (fixing
+the buffer-underflow-on-empty-result bug) but nothing was added back to strip the trailing space
+left by the per-entry format strings ("%s/namespace@%x:1 " and "%s/namespace@%x ", both of which
+end in a literal space).
+
+Current code (grub-core/osdep/unix/platform.c, read via `rtb cat ... --ref pr307 --lines
+190,345`):
+
+    ptr = multipath_boot = xmalloc (BOOTDEV_BUFFER);
+    *ptr = '\0';
+    ... (append loop keeps *ptr = '\0' after every append) ...
+
+    /* Remove trailing space if present */
+    if (ptr > multipath_boot && *(ptr - 1) == ' ')
+      *(ptr - 1) = '\0';
+
+    closedir (dp);
+    free (sysfs_path);
+    free (dirR1);
+    free (dirR2);
+
+    if (*multipath_boot == '\0')
+      {
+        free (multipath_boot);
+        return NULL;
+      }
+
+    return multipath_boot;
+
+Traced three concrete cases:
+
+1. Empty result (no entries appended -- e.g. the non-splitter append hits the `len >=
+   BOOTDEV_BUFFER` overflow branch, or the splitter readdir loop finds zero matching entries):
+   `ptr` is never advanced past `multipath_boot`, so `ptr == multipath_boot`. The guard
+   `ptr > multipath_boot` is false, the strip is skipped (no out-of-bounds read, no
+   re-introduction of the old underflow). `multipath_boot[0] == '\0'` from the initial
+   `*ptr = '\0'`, so the subsequent `if (*multipath_boot == '\0')` frees the buffer and returns
+   NULL. Correct and safe.
+
+2. Single entry, non-splitter path (`is_splitter == false && is_FC == false`): `non_splitter_path`
+   is built from the format `"%s/namespace@%x:1 "` (trailing space always present). After
+   `memcpy` + `*ptr = '\0'`, the buffer ends ".../namespace@N:1 \0" -- the byte at `ptr - 1` is
+   the literal trailing space from the format string. The guard fires, `*(ptr - 1) = '\0'`
+   replaces that space with the terminator. Result: ".../namespace@N:1" with no trailing space.
+   Correct.
+
+3. Multiple entries via the splitter/FC readdir loop: each `path` is built from
+   `"%s/namespace@%x "` (also trailing-space-terminated) and appended with `*ptr = '\0'` after
+   each entry, so entries are space-separated as they accumulate (e.g.
+   "path1 \0" -> "path1 path2 \0" after the second append overwrites the first '\0' with the
+   separator-preserving space from path1 and appends path2). After the loop, `ptr - 1` is the
+   trailing space belonging to the *last* appended entry; the guard strips exactly that one
+   trailing space and leaves the inter-entry spaces intact. Result: "path1 path2" with a single
+   separating space and no trailing space. Correct.
+
+All three cases match the behavior of the pre-regression original code (which used
+`*--ptr = '\0'` for cases 2/3 and crashed/underflowed on case 1) without reintroducing the
+underflow. This is the same fix proposed as the draft patch in reviews/pr307_reasoning.txt
+Issue 1, now adopted verbatim in commit 715e017d0.
+
+== Full current source re-read (not just the delta) ==
+
+Read the complete add_multiple_nvme_bootdevices() function and the two call sites in
+grub_install_register_ieee1275() end to end (not just the three commits' individual diffs), to
+check for anything the per-commit comparison could miss:
+
+- `ofpath = get_ofpathname (nvme_ns);` (no more `xasprintf ("%s", ...)` wrapper) is freed once,
+  `free (ofpath);`, right after the if/else that builds `sysfs_path`. get_ofpathname()
+  (platform.c:36-ff) returns an `xmalloc`'d buffer the caller owns, so this is a correct
+  single alloc/single free -- the previous double-leak (the xasprintf copy, and the
+  get_ofpathname result it wrapped) is gone.
+- `sysfs_path` is freed on the `!splitter_dp` early-return path (new in this MR) in addition to
+  the pre-existing `!dp` early-return and the success path; no earlier free of `sysfs_path`
+  exists on that path, so this is not a double free.
+- Both `get_ofpathname()` results used to build `non_splitter_path` and (in the loop) `path` are
+  captured in a local `p`, freed immediately after the `xasprintf()` call that consumes them,
+  before any early-exit branch -- no leak on either the success or the `break`/overflow-warning
+  paths (`non_splitter_path`/`path` themselves are also freed on every path).
+- `dirR1`/`dirR2` are initialized to NULL and only allocated inside the `is_FC == false` block;
+  every return path frees both (freeing a NULL pointer is a no-op per the C standard), so no
+  leak or double-free regardless of which branch runs.
+- The buffer-bounds checks were re-verified arithmetically: BOOTDEV_BUFFER is 1000
+  (grub-core/osdep/unix/platform.c:34). Non-splitter path: `if (len < BOOTDEV_BUFFER)` allows
+  len up to 999, after which the terminator is written at offset `len` (<= 999) -- the last
+  valid index in a 1000-byte buffer. Loop path: `if ((strlen (multipath_boot) + strlen (path))
+  >= BOOTDEV_BUFFER) { warn; break; }` otherwise proceeds, so cur_len + path_len <= 999 is
+  guaranteed before the memcpy + terminator write, again landing the terminator at or before
+  offset 999. The old `>` (now `>=`) would have allowed cur_len + path_len == 1000 exactly,
+  writing the terminator one byte past the end -- this off-by-one is confirmed fixed.
+- `grub_install_register_ieee1275()`'s two call sites now check `if (boot_device == NULL)
+  grub_util_error (...)`. grub_util_error() (grub-core/kern/emu/misc.c:79-90) prints the message
+  and calls `grub_exit ()`, i.e. it does not return, matching the same fire-and-exit idiom used
+  elsewhere in this file's error paths -- no further use of the NULL `boot_device` occurs.
+
+No new issues found beyond the single historical trailing-space issue, which is fixed.
+
+== Commit-message note (not an issue) ==
+
+The current 715e017d0's message describes removing "the final pre-decrement write" but does not
+mention that a replacement trailing-space-strip was added in its place. The message is accurate
+as far as it goes (the pre-decrement write genuinely is removed) but is incomplete about the
+replacement logic. This is a documentation completeness gap, not a correctness problem or a
+message/code mismatch, so it is not reported as an issue.
