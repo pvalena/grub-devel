@@ -26,6 +26,17 @@
 #   4. every _reasoning/_investigation link resolves to a file     [FAIL]
 #   5. clean review with no _investigation.txt (ok if small)       [WARN]
 #   6. a "**Commits:**" list is present                            [WARN]
+#   7. header line is "# AI Review: MR !NN - <title>"              [FAIL]
+#        - for a prNN id, NN must equal the number in the id (catches a
+#          copy-pasted/wrong MR number -- a real mistake seen in practice)
+#        - for other ids (e.g. YYYY-MM-NNNN), only the format is checked;
+#          their MR number comes from a separate upstream mapping, not
+#          the filename, so it isn't cross-checked here
+#   8. "## Additional findings" is at most ~6 lines                [WARN]
+#        - the section is a gist; detail belongs in _investigation.txt
+#   9. a "**Re-review**:" intro paragraph is at most ~4 lines      [WARN]
+#        - state what changed, don't re-argue it; full analysis goes in
+#          Additional findings (gist) and _investigation.txt (detail)
 #
 # Exit status: 0 if no FAILs, 1 if any FAIL, 2 on usage error.
 
@@ -104,6 +115,36 @@ for raw in "$@"; do
 
   # 6. commit list present
   grep -qE '^\*\*Commits:\*\*' "$md" || warn "no '**Commits:**' list found"
+
+  # 7. header line format, and (for prNN ids) MR number matches the filename
+  header="$(head -n1 "$md")"
+  if [[ "$header" =~ ^#\ AI\ Review:\ MR\ \!([0-9]+)\ -\ .+$ ]]; then
+    hdr_num="${BASH_REMATCH[1]}"
+    if [[ "$id" =~ ^pr([0-9]+)$ ]]; then
+      id_num="${BASH_REMATCH[1]}"
+      if [ "$hdr_num" != "$id_num" ]; then
+        err "header says 'MR !$hdr_num' but filename is $id -> fix line 1 to 'MR !$id_num'"
+      else
+        ok "header: 'MR !$hdr_num' matches $id"
+      fi
+    else
+      ok "header format ok ('MR !$hdr_num'; number not cross-checked for non-prNN id $id)"
+    fi
+  else
+    err "header malformed -- line 1 must be '# AI Review: MR !NN - <title>', got: ${header:-<empty>}"
+  fi
+
+  # 8. "Additional findings" is a gist, not the analysis -- detail belongs in _investigation.txt
+  af_lines=$(awk '/^## Additional findings/{p=1; next} /^For more details/{p=0} p && NF' "$md" | wc -l)
+  if [ "$af_lines" -gt 6 ]; then
+    warn "'## Additional findings' is $af_lines lines (target <=6) -- move detail to ${id}_investigation.txt, keep only the gist"
+  fi
+
+  # 9. a "**Re-review**:" intro paragraph states what changed, briefly -- not the full analysis
+  rr_lines=$(awk '/^\*\*Re-review\*\*:/{p=1} p{print; if (!NF) exit}' "$md" | grep -c '[^[:space:]]')
+  if [ "$rr_lines" -gt 4 ]; then
+    warn "'**Re-review**:' intro is $rr_lines lines (target <=4) -- state what changed, move analysis to Additional findings / ${id}_investigation.txt"
+  fi
 done
 
 printf '\n'
