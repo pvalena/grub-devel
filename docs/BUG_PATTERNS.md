@@ -17,23 +17,27 @@ before reporting it, because that guard is what protects the zero-false-positive
 
 This is a companion to `docs/REVIEW_PROCESS.md` (the workflow) and the global `review` skill, and is
 the **authoritative home for bug-class knowledge** — `MEMORY.md` points here rather than keeping a
-parallel case list. Cross-cutting API facts live in the "GRUB API contracts" section below.
+parallel case list. It is the **GRUB-specific extension of the global `bug-patterns` skill**
+(`~/.claude/skills/bug-patterns/` — the generalized, language-neutral catalog): consult that skill for
+cross-language patterns and this file for GRUB specifics, and promote a GRUB finding that generalizes
+up into the skill. Cross-cutting API facts live in the "GRUB API contracts" section below.
 
 ## Class frequency
 
 | Class | Findings | One-line |
 |-------|----------|----------|
-| resource-leak-error-path | ~14 | alloc/open then early return/goto before the matching free/close |
+| resource-leak-error-path | ~15 | alloc/open then early return/goto before the matching free/close |
+| docs-ci-build            | ~11 | build breakage, doc/code mismatch, CI misclassification, shell portability |
 | driver-device-lifecycle  | ~9  | DMA/ring/queue/protocol handle not stopped/reset/balanced |
 | logic-deadcode-ordering  | ~9  | wrong branch order, zero-as-flag, missing guard, wrong table |
-| docs-ci-build            | ~10 | build breakage, doc/code mismatch, CI misclassification |
+| buffer-bounds            | ~7  | overflow, off-by-one, truncated length, underflow, validation bypass |
 | null-deref               | ~6  | pointer used before its NULL check |
 | return-value-semantics   | ~6  | ignored return, errno leak, error/success conflation |
-| buffer-bounds            | ~6  | overflow, off-by-one, truncated length field, validation bypass |
+| api-contract             | ~5  | missing format attr, wrong enum domain, incomplete table, message consistency |
 | double-free-uaf-dangling | ~4  | free twice, dangling pointer across free, wrong allocator |
 | low-level-ub-platform    | ~4  | shift UB, `sizeof(long)`, `%lx` on 64-bit, address ceiling |
-| api-contract             | ~4  | missing format attr, wrong enum domain, incomplete table |
 | const-storage-mutation   | ~2  | writing through `grub_env_get()` result |
+| ci-secret-exposure       | ~1  | secrets printed to CI logs (`set -x`) or passed on argv |
 
 ---
 
@@ -56,6 +60,10 @@ lives. Even "once per invocation" leaks in host tools are real defects.
   invalid, not a leaked fd.
 - Does a sink **take ownership**? `grub_env_set()` *copies* its value, so the source buffer must still
   be freed by the caller (pr124, pr160). Confirm ownership before concluding leak-or-not.
+- Does an **insert/constructor helper take ownership only on success**? A function that stores the
+  passed pointer when it succeeds but, on failure, frees only its *own* allocations leaves the argument
+  owned by the caller — so a fix that adds a new early-return/`goto` must free it on that path. Check
+  every newly-added exit against the contract the other paths honour (pr233).
 - Is there **cleanup outside the diff hunk** later in the function? Read the full function via
   `rtb cat file --ref BRANCH` (the read-only wrapper), not just the diff.
 - Compare with a **sibling function** in the same file — the correct pattern next door confirms the
@@ -65,8 +73,9 @@ lives. Even "once per invocation" leaks in host tools are real defects.
 terminal cursor left disabled after an alloc failure (2025-12-0012). Treat "disable X … early return …
 (never re-enable X)" like a leak.
 
-**Seen in:** pr115#2, pr124#1/#5, pr127, pr146#3, pr160#1/#2, pr196#2/#3/#4, pr225, pr226#1,
-2025-05-0103 (MOD_FINI DMA), 2025-06-0010 (awk fd), 2025-12-0012 (cursor).
+**Seen in:** pr115#2, pr124#1/#5, pr127, pr146#3, pr160#1/#2, pr196#2/#3/#4, pr225, pr226#1, pr233
+(ofdisk_hash_add new early-return), 2025-05-0103 (MOD_FINI DMA), 2025-06-0010 (awk fd),
+2025-12-0012 (cursor).
 
 ## driver-device-lifecycle
 
@@ -175,7 +184,10 @@ RTC-less powerpc_ieee1275); `grub_strtoul` signals failure via `grub_errno`, nev
 (`grub_uint8_t *p; *p++ = wide_len`) that truncates while the full data is copied; a length loop with a
 **double increment** (`for (t=…; *t; t++)` whose body also does `*t++`); a disk driver that never sets
 `disk->log_sector_size` while using a native (4K) block size internally; a prefix concatenated with no
-separator (first token swallowed).
+separator (first token swallowed); size math on header-derived values with bare `-`/`+` (e.g.
+`file_size - real_size - SECTOR`) that can **underflow** to a huge `grub_size_t`; a refactor that
+replaces a bounds-checked `grub_file_read()` with `grub_memcpy` from a preloaded buffer, dropping the
+read's implicit short-read check.
 
 **Why GRUB:** these run on attacker-influenced on-disk/on-wire data (filesystem parsers, DHCP options,
 menu titles) in a shared heap, so an overflow corrupts `grub_mm` metadata. The 4K-sector case forwards
@@ -189,6 +201,10 @@ menu titles) in a shared heap, so an overflow corrupts `grub_mm` metadata. The 4
   counts by `block_size` (pr155).
 - Check the sibling path: pr127's IPv6 option length is 16-bit and fine — only the 8-bit IPv4 path
   wraps; do not flag the correct one.
+- Underflow in size math: confirm the subtraction can go negative on crafted input (small file, large
+  header-derived `setup_sects`) and is **not** guarded by `grub_sub`/`grub_add` (safemath.h) — the
+  correct fix errors out on wrap. A sibling loader that does use `grub_sub` confirms the omission
+  (pr240: `i386/pc/linux.c` checks, `i386/linux.c` did not).
 - Validation-exemption bypass: when a bounds-check loop exempts certain entries by type/kind (e.g.
   skips `SHT_NOBITS` sections), confirm nothing **else** later dereferences one of the exempted entries
   by following an index/link field (`e_shstrndx`, `sh_link`) without separately checking that specific
@@ -196,7 +212,8 @@ menu titles) in a shared heap, so an overflow corrupts `grub_mm` metadata. The 4
   are different claims, and conflating them lets a crafted input pick an exempted entry as the target.
 
 **Seen in:** pr127#4 (DNS option length), pr146#2 (strcat), pr155#3 (log_sector_size),
-pr159 (missing separator), 2025-05-0221 (title length double-increment), pr286 (ELF section-bounds
+pr159 (missing separator), pr240 (i386/linux.c prot_file_size underflow / memcpy dropped read bounds),
+2025-05-0221 (title length double-increment), pr286 (ELF section-bounds
 validation skipped `SHT_NOBITS` sections, but `e_shstrndx`/`sh_link`-indexed lookups dereferenced an
 exempted section's `sh_offset` unconditionally — a crafted object file could set the string/symbol-table
 target to `SHT_NOBITS` with an arbitrary offset to force an out-of-bounds read).
@@ -271,7 +288,9 @@ copy — a `grub_strdup`'d buffer is fine to mutate. Fix: `grub_strdup` before m
 struct member that does not exist; a new module that `#include`s a header not added in the same commit;
 a header include-guard macro that collides with another file; a CI test whose `TYPE:` differs from its
 origin matrix; docs and code disagreeing on a delimiter; `AC_CHECK_TOOL` given an already-prefixed tool
-name (double prefix); `mv` replacing a file's inode (dropping mode/ownership/ACLs/SELinux context).
+name (double prefix); `mv` replacing a file's inode (dropping mode/ownership/ACLs/SELinux context); a
+CI/shell script with `#!/bin/sh` using bash-only syntax (`set -o pipefail`, `[[ … ]]`, `=~`) that
+aborts under the job image's dash/busybox `ash`.
 
 **Why GRUB:** the compile-break variants stop the whole tree building; the doc/CI variants silently
 mis-configure (a user following official docs gets a non-functional auth config; a CI job tests the
@@ -284,9 +303,13 @@ wrong platform).
 - Cross-check each moved CI test's `TYPE:` against `origin/master` (pr132).
 - For `mv` metadata: the temp file's mode must actually differ from the target and no `chmod` restores
   it; atomicity is a legitimate goal, so this is a trade-off needing an author decision (pr216).
+- For `#!/bin/sh` + bash-isms: confirm the job image's `/bin/sh` is really not bash (release-cli/alpine
+  = busybox ash; many CI images = dash) and that a sibling script uses `#!/bin/bash` deliberately — the
+  lower-risk fix is POSIX syntax, not the bash shebang unless the image is confirmed to ship bash (pr238).
 
-**Seen in:** pr89#2, pr124 (guard), pr132, pr216, 2025-03-0102 (ARGON2ID enum), 2025-03-0211
-(phantom member), 2025-06-0183 (stale "sorted" comment), 2025-07-0005 (missing TPCM header).
+**Seen in:** pr89#2, pr124 (guard), pr132, pr216, pr238 (`#!/bin/sh` + `pipefail`/`[[`), 2025-03-0102
+(ARGON2ID enum), 2025-03-0211 (phantom member), 2025-06-0183 (stale "sorted" comment), 2025-07-0005
+(missing TPCM header).
 
 ## api-contract
 
@@ -308,8 +331,35 @@ failures, or extra `--users` becoming stray positionals that lock users out.
   string (2025-06-0183).
 - Confirm GRUB's documented syntax (comma-separated `--users`) and that 2+ names are really emitted
   space-separated (pr89).
+- When a patch applies the **same annotation to several call sites** (a status code, a `0x` prefix, a
+  separator), diff the touched sites against each other — the outlier is the bug (a dropped `0x` in one
+  of five EFI status messages, a stray space in another) (pr265).
 
-**Seen in:** pr89#3, pr135, 2025-06-0183 (error table), 2025-07-0005 (wrong enum mask).
+**Seen in:** pr89#3, pr135, pr265 (EFI status-message `0x` prefix outlier), 2025-06-0183 (error table),
+2025-07-0005 (wrong enum mask).
+
+## ci-secret-exposure
+
+**Signature:** a CI/shell script that handles a secret (GPG private key, passphrase, `CI_JOB_TOKEN`,
+registry password) while running under `set -x` (xtrace) — every command, with variables expanded, is
+printed to the job log; or a secret passed on a command line (`gpg --passphrase "$X"`, `curl --header
+"JOB-TOKEN: $T"`) where it appears in the trace and the process argument list.
+
+**Why GRUB:** release jobs sign tarballs with a long-lived GPG key, and CI job logs are visible to
+project members (public for public projects, and leaking via forks/artifacts). A leaked signing key +
+passphrase lets anyone forge valid signatures on GRUB releases — defeating the entire signing step.
+GitLab log masking is opt-in per variable and only applies to values meeting its charset/length rules
+(a passphrase often will not qualify), so it is not a reliable control.
+
+**False-positive guards:**
+- Confirm the script both runs with `-x` (or passes a secret on argv) **and** actually touches a secret
+  variable on a traced line — a `-x` script with no secrets is fine (keep it for debugging).
+- Do not count GitLab masking as mitigation; it is opt-in and constrained.
+
+**Fix:** drop `-x` from secret-handling scripts (or bracket only the secret commands with `set +x` …
+`set -x`); pass secrets via `--passphrase-fd`/a file or the environment rather than argv.
+
+**Seen in:** pr238 (`sign-artifacts.sh`/`upload-artifacts.sh` traced the GPG key, passphrase, job token).
 
 ---
 
@@ -328,6 +378,9 @@ Facts that turn a "looks fine" into a bug (or a false positive into a non-issue)
 - `grub_malloc(0)` return is implementation-defined and may be NULL — do not treat a legitimately
   empty allocation as an error.
 - `grub_free(NULL)` is safe (no guard needed before it).
+- Size arithmetic on untrusted/header-derived values uses `grub_sub`/`grub_add`/`grub_mul`
+  (`include/grub/safemath.h`), which return non-zero on wrap — bare `-`/`+` can underflow a `grub_size_t`
+  to a huge value. Prefer the helper and error out on wrap.
 - EFI `loaded_image->file_path` is freed by firmware with the **pool allocator (FreePool)**, not
   `grub_free` — never leave a `grub_malloc`'d pointer installed there across `UnloadImage`.
 - `sizeof("literal")` includes the NUL (`sizeof("BOOT_IMAGE=") == 12`).
@@ -354,7 +407,13 @@ Before Phase 1, read the class entries listed for the subsystem the MR touches:
   api-contract (wrong enum mask).
 - **grub-mkconfig / `*.in` shell**: logic-deadcode-ordering (case order, empty-var guard), docs-ci-build
   (delimiter, `mv` metadata), api-contract (`--users` comma).
-- **CI / `.gitlab-ci.yml` matrices**: docs-ci-build (test `TYPE:` classification).
+- **Boot loaders** (linux, linux16, chainloader, efi linux): buffer-bounds (header-derived size
+  underflow, `grub_memcpy` replacing a bounds-checked `grub_file_read`), double-free-uaf-dangling (EFI
+  `file_path` pool-vs-malloc), api-contract (diagnostic-message consistency across sibling call sites).
+- **Firmware disk** (ieee1275 ofdisk): resource-leak-error-path (insert helper takes ownership only on
+  success; a new early-return must free the argument), null-deref / UAF (canonical-path handling).
+- **CI / `.gitlab-ci.yml` + `.gitlab-ci/script/`**: docs-ci-build (test `TYPE:` classification,
+  `#!/bin/sh` running bash-isms), ci-secret-exposure (`set -x` / argv with GPG key, passphrase, token).
 - **Paging / MMU** (lspaging, page tables): low-level-ub-platform (`%lx` on uint64, wrong table level).
 - **Build** (configure.ac, awk, headers): docs-ci-build (enum drop, include guard, missing header in
   commit, AC_CHECK_TOOL prefix), resource-leak (awk fd close).
