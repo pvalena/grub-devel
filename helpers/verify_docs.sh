@@ -102,10 +102,8 @@ echo "  MEMORY.md: $memory_date"
 echo "  docs/REVIEW_PROCESS.md: $docs_date"
 echo "  Today: $today"
 
-if [ "$claude_date" != "$memory_date" ]; then
-    echo -e "  ${YELLOW}⚠ CLAUDE.md and MEMORY.md dates differ -- verify if intentional${NC}"
-    warnings=$((warnings + 1))
-fi
+# (CLAUDE.md vs MEMORY.md date-equality check dropped: the two files have different update
+#  cadences by design, so a mismatch is expected and not a useful signal.)
 
 # Warn (don't fail) if MEMORY.md itself is stale -- auto-memory skill: >2 weeks is unreliable.
 if [ -n "$memory_date" ]; then

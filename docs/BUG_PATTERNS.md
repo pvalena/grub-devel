@@ -33,7 +33,7 @@ up into the skill. Cross-cutting API facts live in the "GRUB API contracts" sect
 | buffer-bounds            | ~7  | overflow, off-by-one, truncated length, underflow, validation bypass |
 | null-deref               | ~6  | pointer used before its NULL check |
 | return-value-semantics   | ~6  | ignored return, errno leak, error/success conflation |
-| api-contract             | ~5  | missing format attr, wrong enum domain, incomplete table, message consistency |
+| api-contract             | ~4  | missing format attr, wrong enum domain, incomplete table |
 | double-free-uaf-dangling | ~4  | free twice, dangling pointer across free, wrong allocator |
 | low-level-ub-platform    | ~4  | shift UB, `sizeof(long)`, `%lx` on 64-bit, address ceiling |
 | const-storage-mutation   | ~2  | writing through `grub_env_get()` result |
@@ -101,8 +101,7 @@ it completes in order and keeps AQA/ASQ/ACQ across disable — real hardware doe
   reset — a bare `dev->opened = 0` without `grub_ieee1275_close()` looks like a close but isn't (pr255).
 
 **Seen in:** pr133#1/#2/#3, pr156, 2026-02-0008 (GOP/EDID close), pr255#1 (I/O-error paths bypassed
-`close_disk()`, leaving the firmware `ihandle` open; a retry then opened a second instance on the same
-controller — reproduces the "Fast Data Access MMU Miss" fault the series existed to fix).
+`close_disk()`, leaving the firmware `ihandle` open → double-open on retry).
 
 ## logic-deadcode-ordering
 
@@ -130,9 +129,8 @@ survive casual testing.
   differently-cased/spaced input (pr278).
 
 **Seen in:** pr89#1, pr114 (dead `free(NULL)`), pr127#2/#3, pr155#1, pr196#5, 2025-03-0206
-(AC_CHECK_TOOL double-prefix), 2025-04-0236 (paging), 2026-02-0010 (empty ZFS fallback), pr278
-(shim-path `case` match ran before the script's own `tr 'A-Z' 'a-z'` normalization, so a
-non-canonical-case path skipped the UTF-16LE chainload-target decode the commit added).
+(AC_CHECK_TOOL double-prefix), 2025-04-0236 (paging), 2026-02-0010 (empty ZFS fallback),
+pr278 (shim-path `case` match ran before the script's own `tr` lowercase normalization).
 
 ## null-deref
 
@@ -213,10 +211,7 @@ menu titles) in a shared heap, so an overflow corrupts `grub_mm` metadata. The 4
 
 **Seen in:** pr127#4 (DNS option length), pr146#2 (strcat), pr155#3 (log_sector_size),
 pr159 (missing separator), pr240 (i386/linux.c prot_file_size underflow / memcpy dropped read bounds),
-2025-05-0221 (title length double-increment), pr286 (ELF section-bounds
-validation skipped `SHT_NOBITS` sections, but `e_shstrndx`/`sh_link`-indexed lookups dereferenced an
-exempted section's `sh_offset` unconditionally — a crafted object file could set the string/symbol-table
-target to `SHT_NOBITS` with an arbitrary offset to force an out-of-bounds read).
+2025-05-0221 (title length double-increment), pr286 (ELF `SHT_NOBITS` section-bounds exemption bypass).
 
 ## double-free-uaf-dangling
 
@@ -331,12 +326,8 @@ failures, or extra `--users` becoming stray positionals that lock users out.
   string (2025-06-0183).
 - Confirm GRUB's documented syntax (comma-separated `--users`) and that 2+ names are really emitted
   space-separated (pr89).
-- When a patch applies the **same annotation to several call sites** (a status code, a `0x` prefix, a
-  separator), diff the touched sites against each other — the outlier is the bug (a dropped `0x` in one
-  of five EFI status messages, a stray space in another) (pr265).
 
-**Seen in:** pr89#3, pr135, pr265 (EFI status-message `0x` prefix outlier), 2025-06-0183 (error table),
-2025-07-0005 (wrong enum mask).
+**Seen in:** pr89#3, pr135, 2025-06-0183 (error table), 2025-07-0005 (wrong enum mask).
 
 ## ci-secret-exposure
 
@@ -409,7 +400,7 @@ Before Phase 1, read the class entries listed for the subsystem the MR touches:
   (delimiter, `mv` metadata), api-contract (`--users` comma).
 - **Boot loaders** (linux, linux16, chainloader, efi linux): buffer-bounds (header-derived size
   underflow, `grub_memcpy` replacing a bounds-checked `grub_file_read`), double-free-uaf-dangling (EFI
-  `file_path` pool-vs-malloc), api-contract (diagnostic-message consistency across sibling call sites).
+  `file_path` pool-vs-malloc).
 - **Firmware disk** (ieee1275 ofdisk): resource-leak-error-path (insert helper takes ownership only on
   success; a new early-return must free the argument), null-deref / UAF (canonical-path handling).
 - **CI / `.gitlab-ci.yml` + `.gitlab-ci/script/`**: docs-ci-build (test `TYPE:` classification,
@@ -433,8 +424,7 @@ already represented:
 Do not transcribe whole reasoning files here — this is an index of *patterns and guards*, with pointers
 back to the reviews that hold the full analysis.
 
-**Iterate periodically.** This file is the single home for bug-class knowledge — `MEMORY.md` points
-here instead of keeping a parallel case list. A one-off finding is not a class; when a pattern
-**recurs** (or clearly generalizes), promote it: sweep new `reviews/*_reasoning.txt` for repeat shapes
-during doc refreshes and after each review batch, and fold them into the right class (signature +
-false-positive guard + "Seen in"). Don't let a recurring pattern live only in individual reviews.
+**Iterate periodically.** A one-off finding is not a class; when a pattern **recurs** (or clearly
+generalizes), promote it: sweep new `reviews/*_reasoning.txt` for repeat shapes during doc refreshes
+and after each review batch, and fold them into the right class (signature + false-positive guard +
+"Seen in"). Don't let a recurring pattern live only in individual reviews.
