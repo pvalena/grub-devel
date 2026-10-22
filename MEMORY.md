@@ -1,6 +1,6 @@
 # Repository Memory - Current State
 
-**Last updated**: 2026-10-08
+**Last updated**: 2026-10-22
 
 Quick reference for working in this repository. See `CLAUDE.md` for repository overview
 and `docs/REVIEW_PROCESS.md` for detailed procedures.
@@ -174,31 +174,13 @@ caught a real bug (PR155 Issue 3) that the initial review missed.
 
 ### Re-reviewing Updated MRs
 
-When `reviews/prNN.md` already exists, treat it as a re-review — don't start from
-scratch. Verify old commit hashes still exist (`git -C grub cat-file -t OLD_HASH` — a quick
-existence probe `rtb` doesn't wrap), then diff patch content ignoring rebase noise:
-`diff <(rtb diff OLD^ OLD) <(rtb diff NEW^ NEW)`.
-Zero output means that commit is unchanged in substance even if its hash changed (e.g.
-because `origin/master` moved). Update the review with a "Re-review" header stating
-what changed; only fully re-review reworked/new commits. See global review skill
-v3.10.0+ for the full procedure.
-
-**When a re-review becomes clean** (the prior issue is fixed and no new issue is found,
-often because the whole area was reworked — so re-review it fully, not just the fix):
-
-- **Keep the prior round's `prNN_reasoning.txt` unchanged** — it is the traceability
-  record of the issue that was found and fixed. Do not edit or delete it (deleting
-  loses history; editing rewrites what a past review actually said).
-- **Add a new `prNN_investigation.txt`** for the current clean re-verification — this
-  is the customary companion for an issue-free review (Phase 4). Put the reworked-code
-  re-verification (bounds, memory, enforcement, any latent bugs the rework also fixed)
-  there.
-- **Write `prNN.md` in the clean format**: a "## Re-review" section stating the prior
-  issue is fixed (show the applied fix), then "No issues found" + "## Additional
-  findings" + a link to the *investigation* file (not the reasoning file).
-- The linter accepts this exact shape: a clean review that retains a `_reasoning.txt`
-  is a WARN (not a FAIL) **only when** an `_investigation.txt` is also present; a clean
-  review with a lone `_reasoning.txt` is still a FAIL (a genuine leftover to remove).
+Full procedure (fresh commit list, dropped-commit handling, verify-current-behavior, the
+≤4-line Re-review intro, and the became-clean artifact rules) lives in the global review skill
+(`~/.claude/skills/review/SKILL.md` "Re-reviewing Updated MRs", v3.20.0+) and the agent brief
+`FACTS.md` — not duplicated here. Project gotcha worth remembering: **start from the CURRENT
+commit list** (`rtb log --ref origin/master..prNN --head 1000`), never the prior round's — a
+rework can drop a commit outright (see MR !307 in "Important Review Cases"), and a dropped commit
+is as reportable as a new one.
 
 ### Review Delegation Model (default)
 
@@ -341,6 +323,18 @@ against stack garbage (nondeterministic accept/reject of a signed kernel).
 untouched on failure — always check the return before use. libtasn1 note: for
 UTCTime/GeneralizedTime, `PUT_AS_STR_VALUE` sets `*len = data_size + 1` and appends a
 NUL, so `raw_time_len - 1` at the call site is correct, not an off-by-one.
+
+### MR !307 - NVMe boot-device path handling (pr307, re-review)
+**Not a bug** — a process case. Between rounds the branch went from 4 commits to 3: the old
+NULL-deref-guard commit was dropped entirely (not renamed). A naive diff-only re-review against
+the stale 4-commit list from the first round would have missed this. Fetching the commit list
+fresh, then checking whether the dropped commit's guarded conditions (`cntl_id`/`ext_dir` ==
+NULL) were still reachable in current source (they weren't — both are provably non-NULL from an
+earlier `grub_strstr` check), confirmed the drop was safe, not a regression.
+**Lesson**: a re-review must start from the CURRENT commit list, not the prior review's — see
+"Re-reviewing Updated MRs" above. The same round also caught an 8-line "Re-review" intro
+paragraph that duplicated the Additional findings/investigation file almost verbatim; keep that
+intro to ~4 lines (now WARNed by the linter).
 
 ---
 

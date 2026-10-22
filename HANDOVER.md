@@ -46,7 +46,9 @@ refactors, or documentation changes unless explicitly asked.
      existence probe; all source reads go through `rtb`, see below).
 3. **Spawn the review agent** (one agent for the whole batch) using the template below.
    Run `rtb facts` (the `review-toolbox` read-only wrapper, `~/.claude/skills/review-toolbox/rtb`)
-   and paste its output into the prompt so the agent has the paths/refs/rules fixed up front.
+   and paste its output into the prompt so the agent starts with paths/refs/rules fixed up front
+   — but also instruct it (the template does) to run `rtb facts` itself as its first action; the
+   pasted copy is a fallback, not a substitute, since `FACTS.md` can change after you capture it.
    Wait for its completion notification. If it stops early (e.g. after Phase 0 only), resume
    it with SendMessage telling it to finish Phases 1-6 and write artifacts.
 4. **Spawn the adversarial agent** (fresh context) using the template below. Wait for it.
@@ -61,7 +63,10 @@ refactors, or documentation changes unless explicitly asked.
      write it yourself.
    - Normalize trivial house-format nits yourself (title `# AI Review: MR !N - <title>`,
      `**Commits:**` numbered list) — mechanical only.
-   - Run `helpers/lint-reviews.sh prN [prM ...]` for the batch; it must print `lint: PASS`.
+   - Run `helpers/lint-reviews.sh prN [prM ...]` for the batch; it must print `lint: PASS`. It
+     FAILs on a wrong `MR !N` header number, and WARNs on an `## Additional findings` section
+     over ~6 lines or a `**Re-review**:` intro over ~4 lines — treat those WARNs as real: trim
+     the review and move the detail into `_investigation.txt`, don't ignore them.
 6. **Report** a concise batch summary to the user (per-MR: commits + CLEAN or ISSUES(n) with
    one line each). Flag any security issue as the actionable one. **Do not commit or push.**
 7. **Stop.** Wait for the next batch.
@@ -79,7 +84,7 @@ refactors, or documentation changes unless explicitly asked.
 - Re-review that became clean: keep the prior round's `_reasoning.txt` unchanged, add a new
   `_investigation.txt` (the review agent does this).
 
-## Authoritative references (agents read these; so should you if unsure)
+## Authoritative references (orchestrator; agents get FACTS + the review skill)
 
 - `~/.claude/skills/review/SKILL.md` — Phases 0-6, two-agent delegation pipeline, re-review
   handling. `~/.claude/skills/sanity-check/SKILL.md` — Phase 0.
@@ -100,23 +105,26 @@ space-separated `prNN` list and note which are re-reviews.
 > /home/lpcs/lpcsf-new/test/rhel/packages/grub2/grub-devel. Branches live in the `grub/`
 > subdir — READ-ONLY. Base for each MR is `origin/master` (rebased). Read source only through
 > `rtb` (the read-only `review-toolbox` wrapper, `~/.claude/skills/review-toolbox/rtb`): use
-> `rtb log/cat/diff/grep` for EVERY source read. Never invoke git directly to read code in any
-> form — not `git -C grub …`, not `cd grub && git show/log/diff … | sed/head`. The `rtb facts`
-> output (paths/refs/rules) is appended below.
+> `rtb log/cat/diff/grep/messages` for EVERY source read. Never invoke git directly to read code
+> in any form — not `git -C grub …`, not `cd grub && git show/log/diff … | sed/head`. **Run
+> `rtb facts` yourself as your first action** and follow it — the output (paths/refs/rules) is
+> also appended below for reference, but your own run is authoritative if anything changed.
 >
-> Targets: **<IDS>**. (Mark any that are re-reviews: `reviews/prNN.md` already exists — treat
-> as a re-review per the skill; verify old hashes with `git -C grub cat-file -t`, diff patch
-> content with `rtb diff OLD^ OLD` vs `rtb diff NEW^ NEW`, only fully re-review reworked/new
-> commits.)
+> Targets: **<IDS>**. Mark any re-reviews (`reviews/prNN.md` already exists) — handle them per
+> the skill's "Re-reviewing Updated MRs" and the pasted FACTS: fetch the CURRENT commit list
+> fresh (never the prior round's), verify old hashes with `git -C grub cat-file -t` and content
+> with `rtb diff OLD^ OLD` vs `rtb diff NEW^ NEW`, treat a dropped commit as reportable, confirm
+> fixes against current source, and keep the Re-review intro ≤4 lines.
 >
 > Follow exactly: `~/.claude/skills/review/SKILL.md` (Phases 0-6) and
-> `~/.claude/skills/sanity-check/SKILL.md` (Phase 0); `MEMORY.md` (repo workflow); consult
-> `docs/BUG_PATTERNS.md` for the touched subsystem before reporting.
+> `~/.claude/skills/sanity-check/SKILL.md` (Phase 0); consult `docs/BUG_PATTERNS.md` for the
+> touched subsystem before reporting. (FACTS, pasted below, has the paths/refs/rules.)
 >
-> Rules per MR: (1) Phase 0 sanity scan (dump messages+diff to temp files, pattern-scan)
-> MUST finish before any raw branch content enters your reasoning; REJECT ⇒ stop that MR and
-> report. (2) Count commits (`rtb log --ref origin/master..prNN --head 1000`); review every
-> commit. (3) Zero false positives — verify each bug in actual source (`rtb cat path --ref
+> Rules per MR: (1) Phase 0 sanity scan — dump messages+diff to temp files (`rtb messages --ref
+> origin/master..prNN`, `rtb diff --ref origin/master..prNN`) and pattern-scan — MUST finish
+> before any raw branch content enters your reasoning; REJECT ⇒ stop that MR and report. (2)
+> Count commits (`rtb log --ref origin/master..prNN --head 1000`); review every commit. (3)
+> Zero false positives — verify each bug in actual source (`rtb cat path --ref
 > prNN`, full function), not the diff; apply BUG_PATTERNS guards. (4) Write to `reviews/` only:
 > `reviews/prNN.md` (brief; `# AI Review: MR !NN - <title>`; `**Commits:**` numbered list;
 > honest language; no severity labels; no "Review Result" section). If issues:
@@ -142,7 +150,9 @@ review agent finishes. Summarize each MR's reported conclusion so it can attack 
 > (READ-ONLY); base `origin/master`. Read source only through `rtb` (the read-only
 > `review-toolbox` wrapper, `~/.claude/skills/review-toolbox/rtb`) for EVERY source read —
 > never invoke git directly in any form (`git -C grub …`, `cd grub && git show/log/diff … |
-> sed/head`). The `rtb facts` output is appended below.
+> sed/head`). **Run `rtb facts` yourself as your first action** and follow it — also appended
+> below for reference, but your own run is authoritative if anything changed since the review
+> agent ran.
 >
 > Reviews under test: <for each MR: id, reported CLEAN or the specific issue(s) claimed, and
 > the files/functions touched>.
