@@ -88,7 +88,8 @@ refactors, or documentation changes unless explicitly asked.
 
 - `~/.claude/skills/review/SKILL.md` — Phases 0-6, two-agent delegation pipeline, re-review
   handling. `~/.claude/skills/sanity-check/SKILL.md` — Phase 0.
-- `MEMORY.md` — repo workflow, delegation model, important review cases.
+- `MEMORY.md` — pipeline context, current status, file/update policy (it points here & to the
+  skill for workflow/delegation; bug-class cases live in `docs/BUG_PATTERNS.md`).
 - `docs/BUG_PATTERNS.md` — recurring bug classes + false-positive guards (per subsystem).
 - `docs/REVIEW_PROCESS.md` — detailed procedure. `helpers/lint-reviews.sh` — the linter.
 - `~/.claude/skills/review-toolbox/SKILL.md` — `rtb`, the read-only source-inspection wrapper

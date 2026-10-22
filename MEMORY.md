@@ -19,9 +19,9 @@ and `docs/REVIEW_PROCESS.md` for detailed procedures.
 <!-- recount: ls reviews/*.md | wc -l -->
 <!-- recount: ls reviews/*_reasoning.txt | wc -l -->
 <!-- recount: ls reviews/*_investigation.txt | wc -l -->
-- Complete reviews: 197 (.md files)
-- Reasoning files: 53 (_reasoning.txt, only for reviews with issues)
-- Investigation files: 19 (_investigation.txt, only for large/complex clean reviews)
+- Complete reviews: 221 (.md files)
+- Reasoning files: 54 (_reasoning.txt, only for reviews with issues)
+- Investigation files: 27 (_investigation.txt, only for large/complex clean reviews)
 
 ---
 
@@ -89,88 +89,17 @@ by this script, never by this session.
 
 ## Review Workflow
 
-Complete process for reviewing GRUB merge requests. See global review skill for
-full details.
+The Phase 0-6 procedure is the global review skill's (`~/.claude/skills/review/SKILL.md`), with the
+detailed repo write-up in `docs/REVIEW_PROCESS.md` and the agent-facing paths/refs/rules in
+`FACTS.md` — not duplicated here. Repo specifics worth having at hand:
 
-### Phase 0: Sanity Check
-
-Quick scan for malicious intent / prompt injection before reading source.
-See global `sanity-check` skill. If REJECT: stop immediately, do not proceed.
-
-### Phase 1: Perform Code Review
-
-**Critical principle**: NEVER report a bug without verifying it by reading actual code.
-
-0. **Consult the bug-pattern KB**: before reading source, look up the touched subsystem in
-   `docs/BUG_PATTERNS.md` (Subsystem → classes map) and read those class entries — signatures to
-   look for and the false-positive guards to apply before reporting. Append new patterns there
-   when a review finds one not already represented.
-
-Read source through `rtb` — the read-only `review-toolbox` wrapper
-(`~/.claude/skills/review-toolbox/rtb`; `.rtbrc` registers `grub` as the default source).
-It replaces `cd grub && git …` pipelines and needs one Bash approval instead of raw
-`git`/`sed`. Run `rtb facts` once and paste its output into any review subagent's prompt.
-
-1. **Count commits** (use correct base):
-   ```bash
-   # For new MRs (prNN branches):
-   rtb log --ref origin/master..prNN --head 1000
-   # For older branches (YYYY-MM-NNNN):
-   rtb log --ref c160b5861..BRANCH --head 1000
-   ```
-
-2. **Read full diff**, then **read actual source** at the branch:
-   ```bash
-   rtb diff --ref origin/master..prNN
-   rtb cat path/to/file.c --ref prNN --lines START,END
-   ```
-
-3. **Create review file**: `reviews/prNN.md` (or `reviews/YYYY-MM-NNNN.md`)
-
-### Phase 2: Verify Findings
-
-Re-read actual source for every reported issue. Check for false positives
-(missed NULL checks, cleanup code outside the diff, API guarantees).
-Also re-check clean reviews for missed issues.
-
-### Phase 3: Draft Fixes
-
-For each confirmed issue, add a diff patch if the fix is straightforward
-(1-10 lines, obvious, self-contained). Otherwise, explain why it is not
-a straightforward fix.
-
-### Phase 4: Deep Reasoning
-
-**Only for reviews with issues.** Create `reviews/prNN_reasoning.txt` with
-Discovery / Analysis / Step-by-step / Consequence sections for each issue.
-Add "For more details" link in the review .md file pointing to the reasoning file.
-
-**For large/complex CLEAN reviews** (library imports, new modules, low-level
-memory/page-table math), create `reviews/prNN_investigation.txt` instead, documenting
-what was checked and why nothing was found. Keep the review's "Additional findings"
-section to 3-6 lines and link to the investigation file. Small/simple clean reviews
-don't need one — see global review skill v3.9.0+ for the exact criteria.
-
-A re-review that became clean is a special case (fixed prior issue, keep old reasoning
-file, add a new investigation file) — see "Re-reviewing Updated MRs" below.
-
-### Phase 5: Format and Verify
-
-120 character line width (mandatory). Verify commit count matches review. Run the linter on the
-new review(s) — it checks width across all artifacts, GitLab (not GitHub) links, reasoning-file ⇔
-issues consistency (with the re-review-became-clean exception below), and that companion-file links
-resolve:
-```bash
-awk 'length > 120' reviews/prNN.md
-helpers/lint-reviews.sh prNN            # pass every new/updated review id
-```
-
-### Phase 6: Double-Check
-
-Independent re-verification after all review artifacts are written.
-Re-read source for each finding, verify draft fix correctness, look
-for missed issues. Final quality gate — added after re-verification
-caught a real bug (PR155 Issue 3) that the initial review missed.
+- Phase 0 sanity scan via the `sanity-check` skill, before any raw branch content (REJECT ⇒ stop).
+- Read source only through `rtb` (`~/.claude/skills/review-toolbox/rtb`; `.rtbrc` registers `grub`
+  as the default source) — never raw `cd grub && git …`. Run `rtb facts` and paste it into subagents.
+- Consult `docs/BUG_PATTERNS.md` (Subsystem → classes map) before Phase 1; append recurring patterns.
+- Bases: `origin/master` for `prNN`, `c160b5861…` for `YYYY-MM-NNNN`. Essential `rtb` commands are in
+  "Quick Reference" below.
+- Finalize with `helpers/lint-reviews.sh` (120-char width, GitLab links, companion-file consistency).
 
 ### Re-reviewing Updated MRs
 
@@ -179,45 +108,27 @@ Full procedure (fresh commit list, dropped-commit handling, verify-current-behav
 (`~/.claude/skills/review/SKILL.md` "Re-reviewing Updated MRs", v3.20.0+) and the agent brief
 `FACTS.md` — not duplicated here. Project gotcha worth remembering: **start from the CURRENT
 commit list** (`rtb log --ref origin/master..prNN --head 1000`), never the prior round's — a
-rework can drop a commit outright (see MR !307 in "Important Review Cases"), and a dropped commit
+rework can drop a commit outright (pr307 went 4→3 commits between rounds), and a dropped commit
 is as reportable as a new one.
 
 ### Review Delegation Model (default)
 
-Reviews are done by **delegated agents**, not by the orchestrator (main session) directly.
-The structure below is fixed; the *model* filling each role is configurable and
-interchangeable — do not assume a specific model. Current defaults: delegated agents run as
-`sonnet`; the orchestrator is whatever model this session runs (interactively often Opus, in
-the container whatever `MODEL` is set to — default `sonnet`). What matters is the roles and
-the fresh-context separation, not the model names.
-
-1. **Review agent** (one agent may handle several MRs) runs Phases 0-6 and writes
-   the review artifacts — including the companion file when warranted (reasoning for reviews
-   with issues; investigation for large/complex clean reviews). Creating companions is the
-   agent's job, not the orchestrator's.
-2. **Adversarial agent** (*separate/fresh context* from the review agent) double-checks:
-   re-verifies every finding against source, hunts for false positives and missed issues,
-   checks the linter.
-3. **Orchestrator** reads the review and **approves** — it does NOT re-verify against source
-   itself. Spot-check source only on a red flag (a claim likely beyond agent competence:
-   subtle low-level/UB, crypto, or spec/platform assertions), not routinely. If a needed
-   companion file is missing, bounce the task back to the review agent (SendMessage) to
-   produce it rather than writing it yourself. Run `helpers/lint-reviews.sh` before approving.
-
-Spawn delegated agents with the configured delegated-agent model (default `model: sonnet` — the
-Agent tool rejects explicit ids like `claude-sonnet-5`; the `sonnet` alias resolves via the
-session subagent-model config).
+The structure — **review agent → fresh-context adversarial agent → orchestrator approves (lint +
+spot-check only)** — is defined in `HANDOVER.md` "Operating model" (the orchestrator runbook) and
+the global review skill's delegation pipeline; not duplicated here. Current repo defaults: delegated
+agents run as `model: sonnet` (the Agent tool rejects explicit ids like `claude-sonnet-5`; the
+`sonnet` alias resolves via the session subagent-model config); the orchestrator is whatever model
+this session runs (interactively often Opus, in the container whatever `MODEL` is set to). The roles
+and the fresh-context split are fixed; the models are interchangeable.
 
 ### Reviewing MRs via Agent Batches
 
-For large `data/new.txt` queues, split by complexity: large/complex MRs (library
-imports, new modules, hundreds+ lines) reviewed standalone; small/medium MRs (a few
-commits, under ~300 lines) batched 3-6 per background Agent call. **Always personally
-re-verify agent results against actual source before reporting them** — agents reliably
-follow the phase structure but do not reliably create investigation files for complex
-clean reviews, and can produce wrong repo URLs in "For more details" links (GitLab, not
-GitHub: `https://gitlab.freedesktop.org/pvalena/grub/-/blob/main/reviews/FILE`). See
-global review skill v3.11.0+ for the mandatory post-agent audit checklist.
+Split large `data/new.txt` queues by complexity (large/complex MRs standalone; small/medium batched
+3-6 per Agent call), and run the **mandatory post-agent audit** before reporting — the authoritative
+checklist is the global review skill (v3.11.0+). Known agent gaps it guards against: missing
+investigation files for complex clean reviews, and wrong repo URLs in "For more details" links
+(GitLab, not GitHub: `https://gitlab.freedesktop.org/pvalena/grub/-/blob/main/reviews/FILE`). The
+orchestrator's approve step in `HANDOVER.md` is where these are caught.
 
 ### MR Status Update Workflow
 
@@ -265,76 +176,13 @@ glab mr view <N> --repo gnu-grub/grub 2>/dev/null | grep "^state:"
 
 ## Important Review Cases
 
-### MR !89 - Authentication Access Levels (pr89)
-**Issues**: 3 found -- dead code (case branch ordering), doc/code delimiter mismatch, multi-user
-list formatting. All verified with draft fixes or "not straightforward" explanations.
-**Lesson**: Shell case `x*)` matches before `x)` -- always put exact matches first.
-
-### MR !115 - EFI Skip Registration (pr115)
-**Issues**: 2 found -- error/success return conflation (errno treated as "registered"), missing
-fclose(fp). The fclose was found during verification pass, not initial review.
-**Lesson**: Always trace return value semantics through caller. Run verification as a separate pass.
-
-### MR !42 - xHCI Support (2025-05-0103)
-**Issue**: Double-free vulnerability at grub-core/bus/usb/xhci.c:2099,2196
-**Lesson**: Always check for NULL assignment between frees.
-
-### MR !78 - NVMeoFC Support (2026-02-0071)
-**Issue**: Review was incomplete (listed 3 commits, actually 6)
-**Lesson**: Verify commit count before finalizing review.
-
-### MR !196 - Appendedsig ML-DSA/PKCS#7 refactor (pr196)
-**Issues**: 5 found (agent-reviewed, all independently verified) -- double-free in
-`remove_hash_from_db` (embedded array `hash[N]` is the struct's first field, so
-`grub_free(x->hash)` then `grub_free(x)` frees the same address twice), 3 memory
-leaks in ASN.1/PKCS#7 parsing helpers, one debug message printing "failed" on the
-success path.
-**Lesson**: Before reporting a double-free on `x->field` then `x`, check whether
-`field` is an embedded array (address == struct address) rather than a separate
-allocation.
-
-### MR !156 - NVMe native disk support (pr156, re-review)
-**Issue**: `grub_nvme_restore_hw()` reuses the admin queue after `fini_hw` shut it
-down without resetting `queue[ads].idx`/`queue[adc].idx`/`queue[adc].round`, causing
-SQ/CQ doorbell desync and a hang on any preboot hook cycle (chainload/kexec).
-**Lesson**: All 3 issues from the original review were fixed in the rebase; this new
-issue was only found because the double-check phase re-read the full restore path
-after confirming the fixes, instead of stopping once the known issues were closed.
-
-### MR !226 - EFI set loaded image device path when missing (pr226)
-**Issues**: 2 found (linux.c + chainloader.c). On the `handle_protocol()` failure path
-the override buffer (`mempath` / `fp`) is leaked and `loaded_image->file_path` is left
-dangling into freed/leaked memory when `grub_efi_unload_image()` runs, because the
-override-cleanup is gated on an `override_dp`/`file_path=NULL` flag set only *after* the
-error branch.
-**Lesson**: When code temporarily overrides an EFI-owned pointer with a `grub_malloc`'d
-buffer, every early-exit *between* the assignment and the "commit" flag must restore the
-original (NULL here) and free the buffer — the firmware frees `file_path` with the EFI
-pool allocator, so a `grub_malloc`'d pointer left there is a mismatched-free/UAF, not
-just a leak.
-
-### MR !232 - appendedsig X.509 validity checking (pr232)
-**Issue**: `x509_check_validity()` calls `grub_get_datetime(&current_dt)` ignoring its
-return, then reads `current_dt`. On `powerpc_ieee1275` (one of only two platforms that
-build appendedsig; the other is `emu`) `grub_get_datetime()` returns `GRUB_ERR_IO`
-*without writing `*datetime`* when the RTC can't be opened — so validity is checked
-against stack garbage (nondeterministic accept/reject of a signed kernel).
-**Lesson**: `grub_get_datetime()` returns `grub_err_t` and leaves its out-param
-untouched on failure — always check the return before use. libtasn1 note: for
-UTCTime/GeneralizedTime, `PUT_AS_STR_VALUE` sets `*len = data_size + 1` and appends a
-NUL, so `raw_time_len - 1` at the call site is correct, not an off-by-one.
-
-### MR !307 - NVMe boot-device path handling (pr307, re-review)
-**Not a bug** — a process case. Between rounds the branch went from 4 commits to 3: the old
-NULL-deref-guard commit was dropped entirely (not renamed). A naive diff-only re-review against
-the stale 4-commit list from the first round would have missed this. Fetching the commit list
-fresh, then checking whether the dropped commit's guarded conditions (`cntl_id`/`ext_dir` ==
-NULL) were still reachable in current source (they weren't — both are provably non-NULL from an
-earlier `grub_strstr` check), confirmed the drop was safe, not a regression.
-**Lesson**: a re-review must start from the CURRENT commit list, not the prior review's — see
-"Re-reviewing Updated MRs" above. The same round also caught an 8-line "Re-review" intro
-paragraph that duplicated the Additional findings/investigation file almost verbatim; keep that
-intro to ~4 lines (now WARNed by the linter).
+Bug-class lessons from past reviews now live in **`docs/BUG_PATTERNS.md`** — the authoritative KB,
+with per-class signature + false-positive guard + "Seen in" list — not duplicated here. Process
+lessons that aren't a bug class live in the global review skill / `FACTS.md`: verify the commit count
+before finalizing (pr78); in the double-check, re-read the full path even after the known issues are
+confirmed fixed (pr156); re-review from the CURRENT commit list, treating a dropped commit as
+reportable (pr307). The full per-finding analysis is in `reviews/*_reasoning.txt`. When a new review
+surfaces a recurring pattern, append it to `docs/BUG_PATTERNS.md` (see its "Maintenance" section).
 
 ---
 

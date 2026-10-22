@@ -15,8 +15,9 @@ before reporting it, because that guard is what protects the zero-false-positive
   sentinel, cleanup outside the diff hunk).
 - **After** a review finds a genuinely new pattern, append it here (see [Maintenance](#maintenance)).
 
-This is a companion to `docs/REVIEW_PROCESS.md` (the workflow), `MEMORY.md` (Important Review Cases),
-and the global `review` skill. Cross-cutting API facts live in the "GRUB API contracts" section below.
+This is a companion to `docs/REVIEW_PROCESS.md` (the workflow) and the global `review` skill, and is
+the **authoritative home for bug-class knowledge** — `MEMORY.md` points here rather than keeping a
+parallel case list. Cross-cutting API facts live in the "GRUB API contracts" section below.
 
 ## Class frequency
 
@@ -217,6 +218,10 @@ pointer left there is a mismatched free / UAF, not just a leak.
   address)? Then it is one double-free, not two frees (pr196).
 - Is the returned pointer a **static/borrowed** buffer, or is ownership transferred by NULLing the
   source? (2026-01-0039)
+- For `grub_free(x)` … later `grub_free(x)` on the **same** pointer: confirm `x` is not set to NULL
+  or reassigned between the two frees — `grub_free(NULL)` is a safe no-op, so an intervening
+  `x = NULL` makes the second free harmless; its *absence* is what makes the xHCI teardown a real
+  double-free (2025-05-0103).
 - For EFI: confirm the override pointer is still installed at the free/goto, restore the original
   (NULL here) and free the buffer before `grub_efi_unload_image()`; verify no *new* double-free is
   introduced (freeing the ctx does not free `ctx->file_path`) (pr226).
@@ -318,6 +323,8 @@ Facts that turn a "looks fine" into a bug (or a false positive into a non-issue)
   Correct check: `grub_errno == GRUB_ERR_NONE` or `endp[0] != '\0'`. `if (endp != NULL)` is dead code.
 - `grub_get_datetime()` returns `grub_err_t` and leaves its out-param **unwritten on failure** (e.g.
   `GRUB_ERR_IO` on RTC-less powerpc_ieee1275). Always check the return before reading the struct.
+- libtasn1 UTCTime/GeneralizedTime: `PUT_AS_STR_VALUE` sets `*len = data_size + 1` and appends a NUL,
+  so `raw_time_len - 1` at the call site is **correct, not an off-by-one** (pr232).
 - `grub_malloc(0)` return is implementation-defined and may be NULL — do not treat a legitimately
   empty allocation as an error.
 - `grub_free(NULL)` is safe (no guard needed before it).
@@ -366,3 +373,9 @@ already represented:
 
 Do not transcribe whole reasoning files here — this is an index of *patterns and guards*, with pointers
 back to the reviews that hold the full analysis.
+
+**Iterate periodically.** This file is the single home for bug-class knowledge — `MEMORY.md` points
+here instead of keeping a parallel case list. A one-off finding is not a class; when a pattern
+**recurs** (or clearly generalizes), promote it: sweep new `reviews/*_reasoning.txt` for repeat shapes
+during doc refreshes and after each review batch, and fold them into the right class (signature +
+false-positive guard + "Seen in"). Don't let a recurring pattern live only in individual reviews.
