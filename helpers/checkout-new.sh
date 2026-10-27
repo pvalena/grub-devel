@@ -24,8 +24,6 @@ for mr in `echo $N`; do
 
     git checkout "pr${mr}"
 
-    git rebase origin/master
-
     gits
 
     echo
