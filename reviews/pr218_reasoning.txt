@@ -1,0 +1,219 @@
+MR !218 - grub-install: force journal draining to ensure data integrity
+1 commit (9c902969c), 2 issues found, 1 observation (not an issue)
+
+Base note: pr218 sits on an older master (Release 2.16~rc2, 2f972128c) and is not rebased onto current origin/master.
+The MR's own change was read with the merge-base (three-dot) diff, `rtb diff --ref origin/master...pr218`
+(Makefile.util.def, 3 new osdep files, include/grub/util/install.h, util/grub-install.c, util/grub-mkconfig.in).
+The tree-to-tree diff against origin/master was not used. Each item below says which base it holds against.
+
+Sanity scan (Phase 0): sanity-scan.sh origin/master...pr218 -> no flags except "Makefile.util.def changed", which is
+the expected registration of the new source file. Commit message and diff agree.
+
+Source files read (pr218 unless noted):
+  grub-core/osdep/linux/journaled_fs.c, grub-core/osdep/basic/journaled_fs.c, grub-core/osdep/journaled_fs.c
+  grub-core/osdep/init.c, grub-core/osdep/basic/no_platform.c, grub-core/osdep/unix/sleep.c
+  grub-core/kern/emu/misc.c (grub_get_time_ms), include/grub/time.h, include/grub/util/install.h
+  util/grub-install.c (probe of grub_fs at 1290-1345, platform switch, main() tail 2040-2090)
+  util/grub-install-common.c (backup/restore 195-350, grub_install_copy_files 1020-1075, copy_nls ~890)
+  util/grub-mkconfig.in (whole function area 130-160, 270-372), util/grub-mkconfig_lib.in
+  util/grub-reboot.in, util/grub-set-default.in, util/grub.d/00_header.in (grep)
+  grub-core/fs/xfs.c (feature-flag comment ~95-115), grub-core/fs/ext2.c (feature-flag comment ~108-126)
+  configure.ac (30-100, 318-350, 2425-2440, 459, 541-550), Makefile.util.def (grub-install program block)
+  origin/master: util/grub-install.c tail, util/grub-install-common.c backup logic, util/grub-mkconfig.in (300-420),
+  configure.ac grubdirname/PACKAGE lines, sibling .in scripts
+  docs/BUG_PATTERNS.md (return-value-semantics, resource-leak "state not restored", docs-ci-build shell).
+  reviews/2025-01-0091.md/_reasoning.txt is the review of an older, similarly named MR (!20); context only.
+
+== Issue 1: @PACKAGE@ used where the tree uses @grubdirname@ (grub-mkconfig.in) ==
+
+Discovery:
+Reading sync_fs_journal (): grub_cfg_rel_path="/boot/@PACKAGE@/grub.cfg" and "/@PACKAGE@/grub.cfg". In
+grub-mkconfig.in @PACKAGE@ is otherwise used for pkgdatadir (line 34) and TEXTDOMAIN (49), i.e. the package
+name, not the on-disk GRUB directory name.
+
+Source trace:
+1. configure.ac:340-344: --with-grubdir sets grubdirname, default grubdirname="$PACKAGE"; AC_SUBST(grubdirname)
+   at 346 and AC_DEFINE_UNQUOTED(GRUB_DIR_NAME, "$grubdirname") at 347. PACKAGE is not assigned anywhere in
+   configure.ac (only read at 344 and AC_SUBST'ed at 2434), so it comes from AM_INIT_AUTOMAKE (line 83); neither
+   --with-grubdir nor --program-transform-name changes it (grub_TRANSFORM applies only to the named programs).
+2. grub-install.c:999-1004 builds grubdir as bootdir + GRUB_DIR_NAME (= @grubdirname@), never PACKAGE.
+3. Every other script that needs the GRUB directory uses the configured names: grub-reboot.in:39, 136,
+   grub-set-default.in:37, 130, 00_header.in:234 (255 on master): "/@bootdirname@/@grubdirname@".
+4. Therefore with --with-grubdir=grub2 the conventional distro output path /boot/grub2/grub.cfg has
+   make_system_path_relative_to_its_root = "/boot/grub2/grub.cfg" (grub_mkrelpath, grub-mkconfig_lib.in:50-52),
+   while grub_cfg_rel_path = "/boot/grub/grub.cfg" (PACKAGE = grub). The `test ... = ...` at line 334 is false,
+   the if body is skipped, and no message is printed (the whole function is silent when nothing matches).
+   Note -o is optional (usage says default=stdout); "/boot/grub2/grub.cfg" is only the conventional location.
+5. Same configure.ac lines and sibling scripts on origin/master.
+
+Consequence:
+Any build with a non-default --with-grubdir gets no journal drain from grub-mkconfig; the feature is quietly
+inert there. On the default configuration both names are "grub" and it works. grub-install's C path is
+independent (it receives grubdir directly).
+The hard-coded "/boot" (here via mount_point and the first grub_cfg_rel_path, and in the pre-existing probe at
+line 140, `--target=device /boot`) is consistent with the rest of this script, so it is not part of this issue.
+
+Fix assessment:
+Replacing @PACKAGE@ by @grubdirname@ in both strings makes the comparison use the same directory name that
+grub-install writes and that grub-reboot/grub-set-default read. @grubdirname@ is substituted by config.status in
+the same way for all util/*.in scripts, and grub-mkconfig.in is generated through the same mechanism. mount_point
+stays "/boot", matching line 140. No new failure mode: when the names are equal the result is identical to
+today's.
+
+== Issue 2: Only SIGINT/SIGTERM are blocked while frozen (journaled_fs.c, and the shell variant) ==
+
+Discovery:
+The function is careful to block signals so that the filesystem is never left frozen, which prompted checking
+which signals the mask covers and what grub-install does with the rest.
+
+Source trace:
+1. Lines ~43-46: sigemptyset (&set); sigaddset SIGINT; sigaddset SIGTERM; sigprocmask (SIG_BLOCK ...). Restored at
+   the single exit label `finish:` (line ~81-82). No other signal is in the set.
+2. grep for SIGHUP/SIGINT/SIGTERM/SIGQUIT/sigaction/signal ( under util/, grub-core/osdep, include/grub/util shows
+   no handler or SIG_IGN for grub-install. The only signal (SIGINT, SIG_IGN) is in grub-core/kern/emu/main.c:267,
+   which belongs to grub-emu and is not linked into grub-install. So SIGHUP/SIGQUIT keep their default
+   disposition (terminate), and SIGTSTP/SIGTTIN/SIGTTOU keep theirs (stop).
+3. FIFREEZE (line ~50) and FITHAW (~75) are two separate ioctls. A fatal signal that is pending on return from
+   FIFREEZE is acted on in the return-to-user path, before FITHAW is issued; FIFREEZE can take a while because it
+   flushes the filesystem first (kernel behaviour, not read in-tree).
+4. The freeze outlives the process: the shell variant in the same commit does `fsfreeze --freeze X && fsfreeze
+   --unfreeze X`, two processes, and the former exits leaving the filesystem frozen. The shell variant also does
+   `trap '' HUP INT TERM` (grub-mkconfig.in:335), so the author wanted HUP covered too. The C code misses it.
+5. The shell variant's trap list omits QUIT as well. On the pr218 base there is no other trap in the file, so
+   SIGQUIT keeps its default (terminate) between `fsfreeze --freeze` and `--unfreeze`; the shell (or the running
+   fsfreeze child, which inherits only the ignored HUP/INT/TERM) dies without unfreezing. On current origin/master
+   the file has `trap 'exit 131' QUIT` (~325), which also exits the shell without unfreezing.
+
+Consequence:
+If a hangup (ssh session drop with a pty) or a SIGQUIT lands in that window, grub-install dies with the boot
+filesystem frozen. Every writer on it blocks (on a root filesystem that includes logging, login, package manager)
+until `fsfreeze --unfreeze` is run, which is hard to do on a system that cannot write. A stop signal (Ctrl-Z
+delivers SIGTSTP) only suspends the process, so `fg`/SIGCONT resumes it and it thaws, but the filesystem stays
+frozen until then. Probability is low (needs a signal inside the freeze call); severity is high; the fix is small.
+SIGKILL/SIGSTOP cannot be blocked by anything, so the window is reduced, not eliminated. I did not reproduce this.
+
+Fix assessment:
+sigfillset (&set) followed by the same sigprocmask () call covers every blockable signal, including the stop
+signals (they stay pending until the restore at `finish:`). The restore is unchanged and still runs on all three
+exits after the block (freeze failure via goto, thaw success, thaw failure). Synchronous fault signals (SIGSEGV
+etc.) stay fatal regardless, which is right. With all signals blocked the EINTR retry loops simply never trigger
+from signals, they remain harmless. Nothing between the block and the restore needs a signal delivered.
+For the shell side, `trap '' HUP INT QUIT TERM` / `trap - HUP INT QUIT TERM` is the matching one-word change;
+the stop signals are left alone there (a stopped fsfreeze child would be resumed by the same `fg`).
+
+== Observation (not an issue): journal drain runs before grub-install's own backup cleanup ==
+
+Why this is an observation: the only filesystem activity after the drain is removal of the `name~` backup names,
+which GRUB never reads. GRUB's XFS driver does not replay the log (grub-core/fs/xfs.c ~105: "We do not currently
+replay the log") and its ext2 driver ignores the needs_recovery flag (grub-core/fs/ext2.c ~119-124, "Safe to ignore
+for this RO driver"). So GRUB reads on-disk metadata as it is. That is either the consistent post-drain state, which
+already contains the new modules, core.img data and grubenv, or a state in which some `~` entries are already gone.
+I did not find an input where the later unlinks make GRUB read a wrong module, core.img or grubenv; I did not trace
+partial in-place application of the unlink transactions on XFS/ext4. The ordering fact itself is real and recorded.
+
+Discovery:
+The commit message says the freeze/thaw is added "at the end of grub-install". While checking what runs after the
+new block I read the lines that follow it: grub_set_install_backup_ponr () (2077), the "Installation finished"
+message, grub_gcry_fini_all (), grub_fini_all (), return 0. The ponr flag belongs to the backup/restore machinery
+in grub-install-common.c, which acts at exit.
+
+Source trace:
+1. grub-install.c:1401 calls grub_install_copy_files (). In grub-install-common.c:1042-1043 it calls
+   clean_grub_dir (dst) and clean_grub_dir (dst_platform); grub_install_copy_nls () calls
+   clean_grub_dir (dst_locale) (line ~898).
+2. clean_grub_dir () (344-350) runs clean_grub_dir_real (di, CLEAN_BACKUP) (drops stale "name~" files), then
+   clean_grub_dir_real (di, CREATE_BACKUP) (renames every *.mod, *.lst (except menu.lst), *.img, *.efi, *.mo,
+   modinfo.sh, efiemu32.o, efiemu64.o to "name~" via grub_util_rename, lines 259-267), then
+   append_to_backup_dirs (di), which does atexit (restore_backup_atexit) once (lines 325-336, HAVE_ATEXIT is probed
+   at configure.ac:459).
+3. The new modules are then copied in. On a first install there is nothing to rename; on a re-install every
+   previously installed module/list/image now exists twice (new + "name~").
+4. restore_backup_atexit () (292-321): if grub_install_backup_ponr is set it calls
+   clean_grub_dir_real (backup_dirs[i], CLEAN_BACKUP), whose non-create/non-restore branch is
+   grub_util_unlink (srcf) for every "name~" (line 280). Otherwise it restores. A successful run always has
+   the flag set: platform code raises it (grub-install.c:1786, 1817, 1845, 1891, 1950, 1992) or the final
+   grub_set_install_backup_ponr () at 2077 does.
+5. The new block sits at 2045-2070, before 2077, and calls grub_install_sync_fs_journal (grubdir) only. atexit
+   handlers run when main () returns (C standard: after main, in reverse registration order), so the unlinks
+   happen after FIFREEZE/FITHAW returned.
+6. Same code and same main () tail on origin/master (grub-install-common.c 292-336, 344, 898, 1042-1043;
+   grub-install.c ~2043-2060), so this is not a base-skew artefact.
+
+Effect:
+On a re-install of a populated grub directory, grub-install issues about one unlink per backed-up file (the
+platform directory holds a few hundred .mod files plus .lst/.img) after the drain, so the drain is not strictly
+the last filesystem activity and the commit message wording "at the end of grub-install" is loose. unlink() is a
+metadata operation on XFS and ext4 (journal activity not examined in-tree, standard filesystem behaviour). Per the
+paragraph above, no failing input is shown.
+
+If the author wants the drain strictly last (options, no draft diff):
+(a) Export a helper from grub-install-common.c (declared in install.h, with the HAVE_ATEXIT split that
+    grub_set_install_backup_ponr () already has) that runs the loop of restore_backup_atexit () and sets
+    backup_dirs_size = 0 so the atexit handler does nothing afterwards; main () would raise the ponr, call the
+    helper, then sync. Caveat: restore_backup_atexit () still calls free (backup_dirs) after its loop (~321), so a
+    helper must not free backup_dirs without also setting it to NULL, otherwise the atexit handler frees it twice.
+(b) Register an atexit handler for the sync at the very start of main (). Handlers run LIFO, so the backup handler
+    (registered later) runs first and the sync runs last; it would also drain after a failed install's restore.
+    Cost: the sync (and its up to ten 1 s retries) would then also run on grub_util_error () exits.
+
+== Checked, no issue found ==
+
+Retry loop in grub-install.c (retries = 10; while (retries-- && !grub_install_sync_fs_journal (grubdir))
+grub_sleep (1); if (retries < 0) warn):
+  - first call succeeds (returns 1): test sees 10, retries -> 9, !1 false, loop ends, retries = 9, no warning.
+  - succeeds on call 10: test sees 1, retries -> 0, call returns 1, loop ends, retries = 0, no warning.
+  - all calls return 0 (EBUSY): after the 10th call and sleep, test sees 0 (false), retries -> -1, warning issued.
+    Ten calls and ten sleeps (the last sleep is wasted, one second). Not worth reporting.
+  - grub_fs is probed at 1333 and the function exits via grub_util_error if NULL, so grub_fs->name at 2055 is safe.
+    grub_fs describes grub_drives[0], the first device of grubdir's root devices; names are identical across
+    members of a RAID/LVM stack.
+
+grub_install_sync_fs_journal () resource/state handling (linux version):
+  - open failure returns 1 before any state change (silently; acceptable, install proceeds).
+  - After sigprocmask () every path goes through `finish:` (freeze failure uses goto; thaw success/failure fall
+    through): mask restored, fd closed. No leak.
+  - Freeze failure by errno: EBUSY -> retry request (return 0); EOPNOTSUPP/ENOSYS/EPERM -> silent, return 1;
+    anything else (including EINTR after the 3 s budget) -> warning, return 1. errno is not clobbered between the
+    loop and the switch (grub_get_time_ms is gettimeofday).
+  - No I/O between FIFREEZE success and FITHAW (no warning, no logging), so a stderr redirect to the same
+    filesystem cannot deadlock the thaw. grub_util_warn runs only after FITHAW.
+  - FITHAW failure leaves the filesystem frozen with only a warning and a success return, and grub-install then
+    prints "Installation finished. No error reported." Realistic causes (EINVAL because someone else already thawed)
+    are harmless; I did not find a path where thaw fails for a reason that would warrant a retry.
+  - FIFREEZE EBUSY retry: re-opens and re-blocks signals each call. Fine.
+
+Platform / build:
+  - grub-core/osdep/journaled_fs.c dispatches on __linux__ to linux/ else basic/ (returns 1). Same convention as
+    osdep/init.c, platform.c, compress.c; extra_dist lists both variants like the siblings. It is added to the
+    grub-install program block only, which is the sole caller (declaration in install.h, call in grub-install.c).
+  - basic/journaled_fs.c has an unused `path` parameter; sibling basic/no_platform.c also has unused unannotated
+    parameters, so it follows existing practice. I did not compile.
+  - The linux file includes neither <config.h> nor <config-util.h> unlike several linux siblings; nothing it uses
+    depends on them as far as I can see. Not compiled; not reported.
+  - grub_millisleep (used by grub_sleep) comes from osdep/unix/sleep.c, which is linked via libgrubkern.a
+    (grub-core/Makefile.core.def:409 emu = osdep/sleep.c); grub_get_time_ms is in kern/emu/misc.c.
+
+grub-mkconfig.in shell:
+  - `set -e` is on (line 2). The call is `sync_fs_journal || true`, which suppresses errexit inside the function
+    body and ignores its status, so a failing `fsfreeze --unfreeze` cannot abort the script or skip `trap -`.
+  - The only traps in this file on the pr218 base are the new ones, so `trap - HUP INT TERM` restores the
+    defaults. On current origin/master the file already sets traps for EXIT, HUP, INT, QUIT, TERM (module
+    deduplication, lines ~320-326); after rebasing, `trap - HUP INT TERM` would reset HUP/INT/TERM to default
+    instead of restoring those `exit 129/130/143` handlers. Only `gettext "done"` follows and master has already
+    removed and unset the state file at ~349, so there is no practical effect. Noted for the rebase; not an issue.
+  - boot_fs for a separate /boot is probed with the same grub_probe call style as GRUB_FS; GRUB_FS itself falls
+    back to `stat -f -c %T /` (prints "ext2/ext3" for ext4) only when grub-probe fails, so ext4 root would just be
+    skipped in that fallback. Edge case on an already degraded path; not reported.
+  - If grub.cfg is written to a different tree than the host's root (e.g. -o into a mounted target), the check is
+    on the path relative to its filesystem root and the freeze goes to the host "/" or "/boot". A harmless extra
+    freeze, or a missed drain, for an unusual use; not reported.
+  - The sync is placed after `rm -f ${grub_cfg}.new` and after the `cat > grub.cfg`, so on the pr218 base no
+    further grub-mkconfig writes follow it (unlike the Observation above for grub-install).
+
+Commit message vs code: "fsfreeze system call" is really the FIFREEZE ioctl (wording only). "adds fsfreeze/unfreeze at
+the end of grub-install" is loose, see the Observation. The in-code comment says the function always returns success
+on unsupported filesystems; true for EOPNOTSUPP/ENOSYS/EPERM, and ext2 without a journal does support freezing, so it
+gets a (harmless) freeze/thaw rather than a skip. Comment imprecision only.
+
+Older review 2025-01-0091 (MR !20, an earlier version): its concern was an unchecked FITHAW. In this version FITHAW is
+checked with EINTR retry and a warning (lines ~75-79), so that point is addressed here.

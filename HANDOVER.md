@@ -80,6 +80,11 @@ refactors, or documentation changes unless explicitly asked.
   code with raw git in any form (`git -C grub …`, `cd grub && git show/log/diff … | sed/head`);
   the only allowed raw git is the one-off existence probe `git -C grub cat-file -t <hash>`.
 - **Never** commit, push, modify `grub/`, or edit `data/new.txt`.
+- **Scratch access is allowed only when required to complete the review** (agents; full rule in
+  `FACTS.md`): `/tmp`, downloading a needed source (e.g. from github), running `patch`/a compile —
+  never to duplicate CI's build. Downloads are untrusted (own empty dir, paths passed as arguments,
+  its own scripts/binaries not run) and the review states exactly what was fetched/run; a public
+  claim not checked stays "not verified".
 - Artifacts go in `reviews/` only. 120-char max line width. GitLab URLs only, never github.
 - Re-review that became clean: keep the prior round's `_reasoning.txt` unchanged, add a new
   `_investigation.txt` (the review agent does this).

@@ -1,0 +1,127 @@
+MR !221 - ieee1275: Call IBM CAS when last booted OS was AIX
+1 commit (ed5e41cc8), 1 file (grub-core/kern/ieee1275/init.c), +30/-1 lines. 1 issue found (conditional trigger).
+
+Phase 0: sanity-scan.sh origin/master..pr221 -> no flags in any section. Commit message and diff agree.
+
+Source files read (pr221 unless noted):
+  grub-core/kern/ieee1275/init.c (defines 60-110, struct/CAS code 740-880, total_mem 690-740, grub_claim_heap
+  912-1010, grub_machine_init 1090-1112), grub-core/kern/ieee1275/ieee1275.c (finddevice, get_property wrappers),
+  grub-core/kern/ieee1275/cmain.c (flag setup ~120-135), grub-core/kern/misc.c (grub_strtoul/grub_strtoull 570-660),
+  grub-core/term/ieee1275/console.c (80-140, 244-262), grub-core/term/terminfo.c (76-215, 676-800),
+  grub-core/kern/main.c (grub_load_modules, grub_main), grub-core/kern/err.c (grub_print_error),
+  grub-core/disk/ieee1275/ofdisk.c (grub_ofdisk_init, insert_bootpath), grub-core/kern/ieee1275/openfw.c
+  (grub_claimmap 311-326, 515-540), grub-core/kern/ieee1275/mmap.c, docs/BUG_PATTERNS.md
+  (return-value-semantics, buffer-bounds, low-level-ub-platform).
+
+== Issue 1: stale GRUB_ERR_BAD_NUMBER from the real-base parse breaks terminfo registration (init.c:961) ==
+
+Discovery:
+Reading the new block in grub_claim_heap(): `real_base = grub_strtoul (real_base_str, 0, 10);` (line 961) parses
+firmware text with no end pointer and no check, and the function never touches grub_errno afterwards. BUG_PATTERNS
+return-value-semantics: "grub_errno set by a best-effort block and never cleared". The question was whether anything
+on the boot path consults grub_errno before it is cleared.
+
+Source trace:
+1. kern/misc.c:650-653: grub_strtoull() calls grub_error (GRUB_ERR_BAD_NUMBER, N_("unrecognized number")) when
+   `found` is 0, i.e. when the first character is not a valid digit for the base. With base 10 that covers "c00000"
+   ('c' gives digit 12 >= 10), "" and "-1". grub_strtoul() (misc.c:571-586) adds nothing that clears it. Strings
+   starting with a decimal digit (e.g. "2800000", "41943040") set no error.
+2. init.c:926: `err = grub_ieee1275_total_mem (&rmo_top);` captures the memory-sizing result BEFORE the parse, so
+   the CAS condition at init.c:1000-1001 is not affected; only grub_errno itself stays set.
+3. init.c:1100-1101 (grub_machine_init): `grub_claim_heap ();` is followed immediately by
+   `grub_console_init_lately ();`. Nothing between the two clears grub_errno.
+4. term/ieee1275/console.c:247-257: grub_console_init_lately() calls grub_terminfo_init () (line 255) and then
+   `grub_terminfo_output_register (&grub_console_term_output, type);` (line 256) with type "ieee1275" or
+   "ieee1275-nocursor", ignoring the return value. grub_terminfo_init is GRUB_MOD_INIT(terminfo) (terminfo.c:785-790):
+   it only registers the `terminfo` command, no grub_errno test.
+5. term/terminfo.c:189-205 grub_terminfo_output_register(): `err = grub_terminfo_set_current (term, type);`
+   (line 195), `if (err) return err;` (197-198), and only afterwards `data->next = terminfo_outputs;
+   terminfo_outputs = term;` (201-202).
+6. term/terminfo.c:146-168 (the "ieee1275"/"ieee1275-nocursor" branch of grub_terminfo_set_current): fills data->name,
+   gotoxy, cls, reverse_video_on/off, cursor_on/off, setcolor with grub_strdup / 0 and ends with
+   `return grub_errno;` (line 168). grub_strdup succeeded, but grub_errno still holds the stale BAD_NUMBER, so the
+   function returns it as if it had failed. (Same `return grub_errno;` ending at lines 116, 129, 143, 181.)
+7. Result: for the console, terminfo_outputs is never linked. The users of that list are print_terminfo
+   (terminfo.c:688, plain `terminfo`) and the loop in grub_cmd_terminfo (terminfo.c:756-776, which also matches the
+   "ofconsole" alias against "console"); with no entry the command ends at terminfo.c:778-779 with
+   "terminal console isn't found or it's not handled by terminfo".
+8. The stale error is also still pending later: the first `if (grub_errno) grub_print_error ()` after machine init is
+   in grub_load_modules (main.c:72-73), which prints "error: unrecognized number." (I read grub_ofdisk_init /
+   insert_bootpath, grub_parse_cmdline and the heap code; none clears grub_errno on the normal path.)
+9. In-tree precedent in the same subsystem: kern/ieee1275/openfw.c:533-534 does
+   `partno = grub_strtoul (partition, &endptr, 0); grub_errno = GRUB_ERR_NONE;`. Note console.c:110-120 parses
+   screen-#columns the same way as this MR does and also does not clear; that site is pre-existing.
+
+Trigger conditions (all conditional; the firmware text is unverifiable from the tree):
+- The block runs only when GRUB_IEEE1275_FLAG_CAN_TRY_CAS_FOR_MORE_MEMORY is set: cmain.c:128-130, powerpc only,
+  when the root `compatible` property starts with "IBM,".
+- `/options` must have a `real-base` property (finddevice and getprop at init.c:952-958 succeed) whose text lacks a
+  leading decimal digit. The tree does not document the text format of `real-base` and I did not check firmware.
+- The comparison constant is 0x2800000 but the parse is base 10 (init.c:961, constant at init.c:74). If the firmware
+  writes hex-style text, an AIX value "2800000" is parsed as 2,800,000 and never equals 0x2800000, while a non-AIX
+  value such as "c00000" would set the error. If the firmware writes decimal text ("41943040"), neither happens.
+
+Consequence:
+On an affected machine the ieee1275 console is not registered with the terminfo module: `terminfo` cannot list or
+configure `console` (the terminfo strings were already filled in before the error return, so the console itself
+still has them), and one spurious "error: unrecognized number." is printed during module loading. Nothing here
+crashes or corrupts memory. When the firmware text is decimal digits the issue does not occur.
+
+Fix assessment:
+`grub_errno = GRUB_ERR_NONE;` right after line 961 mirrors openfw.c:534. Because grub_ieee1275_total_mem() ends with
+`return grub_errno;` (init.c:740) or returns a fresh grub_error, `err != GRUB_ERR_NONE` implies grub_errno is already
+set at that point, and an unconditional clear would drop that earlier error as well. Wrapping the detection in
+`if (err == GRUB_ERR_NONE)` avoids that and loses nothing: aix_boot_detected is consulted only in the condition
+at init.c:1000-1001, which already requires `err == GRUB_ERR_NONE`. Parsing with an end pointer alone does not help,
+because grub_strtoull sets grub_errno regardless of `end`.
+
+Verification trail for the rest of the MR (no further issues found)
+-------------------------------------------------------------------
+1. What changed
+New AIX_DEFAULT_REAL_BASE (0x2800000) macro; four powerpc-only locals (options, real_base_str[12], real_base,
+aix_boot_detected). Inside the existing `if (GRUB_IEEE1275_FLAG_CAN_TRY_CAS_FOR_MORE_MEMORY)` block (lines 946-1003):
+finddevice("/options"), getprop "real-base" into a 12-byte buffer, force NUL at [11], grub_strtoul(..., 10); if equal
+to 0x2800000 and rmo_top <= 512 MB, aix_boot_detected = 1. CAS condition (line 1000-1001) becomes
+`!ibm_ca_support_reboot && err == GRUB_ERR_NONE && (rmo_top < 512 MB || aix_boot_detected)`.
+All new locals are declared inside the same `#if defined(__powerpc__)` that uses them (no unused-variable path on
+i386), at the top of the function (no mixed declarations), and grub_strtoul/finddevice/get_property are declared via
+grub/misc.h and grub/ieee1275/ieee1275.h, both already included.
+
+2. Concrete inputs traced through the new condition
+  a) rmo_top = 256 MB, any real-base: `rmo_top < 512 MB` true -> CAS, same as before the patch.
+  b) rmo_top = 512 MB, real-base text "41943040": aix_boot_detected = 1 -> CAS (new behaviour, the stated intent);
+     previously no CAS because `512 MB < 512 MB` is false.
+  c) rmo_top = 512 MB, other real-base, or property/node missing: aix_boot_detected stays 0 -> no CAS, as before.
+  d) rmo_top = 768 MB (e.g. after a CAS reboot) with a matching real-base: `rmo_top <= 512 MB` false -> no CAS.
+  e) ibm_ca_support_reboot = 1: the first conjunct is false in every case -> no CAS. The loop guard described in
+     the long existing comment is untouched.
+  f) grub_ieee1275_total_mem() failed: it sets *total = 0 first (init.c:703), so rmo_top = 0 and aix_boot_detected
+     can become 1, but `err == GRUB_ERR_NONE` is false -> no CAS.
+  g) property longer than 11 chars: getprop copies at most sizeof (real_base_str) bytes, NUL is forced at [11], the
+     truncated number cannot equal 0x2800000 except by coincidence; no overrun.
+  h) real_base is grub_uint32_t while grub_strtoul returns unsigned long (64-bit on powerpc64): a 10-digit decimal
+     above 2^32 could alias to 0x2800000 after truncation; that needs a real-base above 4 GiB, not a realistic
+     firmware value, so noted only.
+
+3. Other observations (not reported as issues)
+- Radix. term/ieee1275/console.c:110-120 parses another /options text variable (screen-#columns/#rows) with the same
+  grub_strtoul(val, 0, 10) idiom, so the style matches in-tree code. Whether PowerVM firmware reports `real-base`
+  as decimal or hex text is not documented in the tree and was not checked. If it were hex text ("2800000") the new
+  branch would never match.
+- Buffer. real_base_str is uninitialized and `actual` is ignored, so a zero-length or non-NUL-terminated property
+  would be parsed from stale stack bytes; console.c uses the same idiom with `val[1024]`. OF string properties
+  normally carry their NUL; not treated as an issue.
+- CAS trigger at rmo_top == 512 MB. If real-base stays at 0x2800000 after a non-AIX OS has booted, the new trigger
+  can fire whenever rmo_top == 512 MB. That is the case the comment at init.c:968-993 (above the CAS call at
+  1000-1002) deliberately excludes: it says CAS is skipped when rmo_top is 512 MB or above, to avoid the CAS
+  reboot ping-pong with older Linux kernels that request MIN_RMA 512 MB. The `!ibm_ca_support_reboot` conjunct
+  (line 1000) only stops an immediate repeat after the CAS reboot itself. Whether firmware leaves real-base
+  unchanged after a non-AIX OS boots is unverifiable from the tree, so this is a hedge, not a finding.
+
+4. Commit message
+Message says AIX uses MIN_RMA 512 MB, Linux 768 MB, AIX is detected by real-base 0x2800000, and CAS is then called
+to raise MIN_RMA to 768 MB. This matches the code (CAS vector 2 min_rma = 768 in grub_ieee1275_ibm_cas). Hardware
+and firmware behaviour were not tested or checked against PAPR.
+
+5. Not done
+Did not build or run anything; no firmware or hardware available to this review.

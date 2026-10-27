@@ -207,3 +207,334 @@ garbage in the upper 4 bytes or reject the variable as malformed.
 
 Fix: Use grub_uint64_t for the variable type and sizeof(grub_uint64_t)
 for the size parameter. This is consistent across all platforms.
+
+======================================================================================================================
+RE-REVIEW 2026-10-27 -- PR124 (11 commits, fresh `rtb log` list; prior round also 11)
+======================================================================================================================
+
+Source files read in this round (all through rtb, branch pr124):
+- grub-core/commands/bli.c, bls_bumpcounter.c (full files); blsuki.c (all hunks of the MR diff, plus
+  blsuki_is_default_entry, blsuki_create_entries, blsuki_cmd, bls_create_entry in full)
+- grub-core/normal/menu.c (grub_menu_execute_entry, menuentry_eq, get_entry_number, run_menu, timeout helpers)
+- grub-core/commands/menuentry.c (grub_normal_add_menu_entry), grub-core/script/execute.c (cmdline/sourcecode),
+  grub-core/script/script.c (grub_script_parse), grub-core/kern/err.c (grub_print_error/grub_error_pop)
+- grub-core/kern/efi/efi.c (grub_efi_get/set_variable*), grub-core/kern/misc.c (grub_strtoull, grub_strndup,
+  grub_utf8_to_utf16_alloc), grub-core/kern/mm.c (grub_memalign size 0), include/grub/charset.h (conversions)
+- include/grub/efi/filesystem.h, include/grub/command.h, include/grub/dl.h, gentpl.py (efi group),
+  grub-core/Makefile.core.def (bli, bls_bumpcounter stanzas), docs/grub.texi (blscfg options)
+External pages fetched with WebFetch (model-summarised text, not independently checked):
+systemd.io/BOOT_LOADER_INTERFACE (LoaderFeatures type, LoaderEntries purpose, identifier suffix rule) and systemd
+boot.c on GitHub. No finding depends on the boot.c summary. The UEFI spec pages returned HTTP 403, so no UEFI spec
+text was checked.
+Follow-up pass 2026-10-27: an independent adversarial check raised six candidates (M1-M6). Re-derived from source:
+M1 confirmed (Issue 2 item 4), M2 and M3 confirmed (Issue 5), repeat-call overwrite confirmed (Issue 6); M4, M5, M6
+are recorded under "Observations" below. This pass also covered uki_create_entry (blsuki.c 1152-1227) and the
+filename/extension handling in blsuki.c 596-672 and 1518-1590.
+
+Phase 0: sanity-scan.sh origin/master..pr124 returned no pattern matches; the only flag was "Build/CI files changed:
+grub-core/Makefile.core.def", which is the expected new bls_bumpcounter module stanza. Messages and diff then read.
+
+-- Old -> new commit mapping (git cat-file -t confirmed all 11 old hashes still exist; patch compare with
+   diff <(rtb diff OLD^ OLD) <(rtb diff NEW^ NEW)) --
+ 1. 764c31b21 -> 85d8eb930  zero diff                                   UNCHANGED
+ 2. 73e4c06ff -> ebe60d582  menu.c: *ext='\0' hack replaced by strndup   REWORKED (introduces Issue 1 below)
+ 3. 2f9a4bc00 -> 7421c783c  adds the two grub_free() calls               REWORKED (fixes prior #1)
+ 4. 17b6a9bec -> cbd8b1182  only `index` blob ids and `@@` offsets differ UNCHANGED (inherited from 2 and 3)
+ 5. 51d86b25b -> ff33bae6e  errno checks, blsdir strdup, handle Close,
+                            include guard rename, 3 constants realigned  REWORKED (prior #2/#4/#5/#6)
+ 6. d9e801efa -> 46455a546  1ULL constants, TPM2 PCR bank bit,
+                            sizeof(loader_features)                      REWORKED (prior #7 only partly)
+ 7. b15f985eb -> 129f6d180  zero diff                                   UNCHANGED
+ 8. 8597bc803 -> 07bc58584  zero diff                                   UNCHANGED
+ 9. a4fe7f274 -> a79569077  zero diff                                   UNCHANGED
+10. bf816a47f -> e9912d4a4  adds #include <grub/safemath.h> to bli.c and
+                            bls_bumpcounter.c; rest is index/@@ noise    REWORKED (trivial)
+11. 419f172bd -> 6ec25d7e5  only `index` and `@@` offsets differ        UNCHANGED
+No old commit is DROPPED and there is no NEW commit. Because the count did not change and every old commit has a
+content match, the delta comparison was used for scoping, but the resulting functions were still read in full.
+
+-- Prior issues against CURRENT behaviour --
+Prior #1 (leak in set_loader_default_entry): FIXED. bli.c lines 218-239: oneshot_entry and default_entry are each
+  passed to grub_env_set() (which copies) and then grub_free()d. (Cosmetic: `grub_free (default_entry);` is
+  indented with spaces.)
+Prior #2 (endptr != NULL test): FIXED. bls_bumpcounter.c lines 63 and 73 now test grub_errno == GRUB_ERR_NONE after
+  grub_strtol(). Residual behaviour left in grub_errno on the failure branches is reported as Issue 3.
+Prior #3 (write through const env pointer in get_entry_number): the write is gone, but the replacement is broken,
+  see Issue 1. Net: prior #3 is not "fixed", it turned into a functional regression.
+Prior #4 (blsdir mutated in env storage): the env value is no longer mutated (lines 157-164 strdup first), but the
+  copy is never freed, see Issue 2 item 1.
+Prior #5 (file handle not closed on error paths): FIXED for `handle`. Every path after root->Open() succeeded
+  (lines 194, 207, 213, 223, 228, 245, 254) reaches `finish:` (line 278) which now calls handle->Close(); the success
+  path closes at line 259 and no later statement jumps to `finish`, so there is no double close. The Open-failure
+  return (line 180) correctly has no handle to close. The separate `root` handle is still never closed (Issue 2
+  item 3).
+Prior #6 (include guard GRUB_EFI_TPM_HEADER): FIXED. filesystem.h lines 18-19 now use GRUB_EFI_FILESYSTEM_HEADER;
+  `rtb grep GRUB_EFI_FILESYSTEM_HEADER --ref pr124` finds exactly that one definition tree-wide.
+Prior #7 (LoaderFeatures size): STILL OPEN, see Issue 4.
+
+== Issue 1: .conf default never matched, val_dup unused (menu.c get_entry_number) ==
+
+Discovery:
+The commit 2 delta between rounds is only the replacement of `*ext = '\0'; res = menuentry_eq (e->id, val);
+*ext = '.';` with a strndup. Reading the resulting loop in full (menu.c lines 523-590) showed the strndup result is
+only freed, never compared.
+
+Source trace:
+- menu.c 548: `if (menuentry_eq (e->title, val) || menuentry_eq (e->id, val)) { entry = i; break; }`.
+- menu.c 554-568: for an entry with ->blsuki and val ending in ".conf": `val_dup = grub_strndup(val, ext - val);`
+  then `res = menuentry_eq (e->id, val);` (line 562, argument is val) and `grub_free (val_dup);`.
+- Reaching line 562 means the line-548 call menuentry_eq (e->id, val) just returned 0 for the same e and the same
+  val. menuentry_eq (menu.c 498-519) is a pure function of its two strings, so line 562 returns 0 again; res is 0
+  whenever val_dup != NULL. The block can never set `entry`.
+- Where `default` gets a value: bli.c set_loader_default_entry() copies LoaderEntryOneShot/LoaderEntryDefault
+  verbatim into the `default` variable (lines 218-239); a user can also `set default=foo.conf` by hand, the form
+  commit 2 is written to accept (the BLI page itself describes identifiers with the .conf/.efi suffix removed, so
+  the suffix form is not claimed to come from the BLI variables). blsuki_is_default_entry() only decides which entries
+  blscfg creates (it compares against entry->filename); the boot-time selection is get_entry_number() via run_menu()
+  (menu.c 627-641). The menuentry id of a BLS entry is the file name without ".conf" and without the boot counter
+  (bls_create_entry, blsuki.c 1034-1082, commit 11), so "foo.conf" can only match "foo" through this block.
+- res is declared `int entry, res;` (line 527) without initialiser; when grub_strndup() returns NULL line 560 is
+  false, line 565 `if (res)` reads an indeterminate value. (OOM-only; the tail at lines 581-584 resets grub_errno
+  and returns -1 if the allocation failure is the last error.)
+
+Consequence:
+A `default` value ending in ".conf", the case commit 2 is written to accept, silently falls through to the first
+menu entry (get_entry_number returns -1, run_menu falls back to entry 0, menu.c 640-641). The
+pre-rework code (in-place NUL write) did select the entry; the rework fixed the UB and broke the feature.
+
+Fix assessment:
+Comparing val_dup removes the dead comparison. `res = 0;` before the strndup makes the OOM case defined. The tail
+of get_entry_number() already clears grub_errno from a failed strndup. Hoisting the strndup out of the loop would
+avoid a malloc per entry, but is not required for correctness.
+
+== Issue 2: leaks and a double free in grub_cmd_bls_bumpcounter() (bls_bumpcounter.c) ==
+
+Discovery:
+Re-reading the whole function after the prior-issue fixes, tracking each allocation/handle to every exit.
+
+Source trace (line numbers of the pr124 file):
+1. blsdir: line 157 grub_env_get(); line 160 `blsdir = grub_strdup (blsdir)` replaces the const env pointer with a
+   heap copy (prior #4 fix). Exits afterwards: 180 (Open failed: frees old_path only), 272 and 276 (free
+   new_path via 262, loader_boot_count_path via 267, file_info), `finish` 278-281 (Close, free file_info). The
+   copy is used until line 261 and never freed. When `blsdir` is unset the pointer is the string literal, so a
+   fix needs a separate `char *` owner variable (as in the draft).
+2. new_path: allocated by grub_xasprintf in bump_counter() (lines 87/89), assigned line 226. Freed only at line 262
+   on the success path. `goto finish` at 245 (len16 >= capacity) and 254 (SetInfo failure) skip it; finish does
+   not free it.
+3. root: `volume->OpenVolume (volume, &root)` line 149. `root` is referenced only at lines 99, 149 and 172 (the
+   Open call); there is no root->Close anywhere in the file, so the handle returned by OpenVolume is dropped on
+   every path. No other OpenVolume user exists in this tree (`rtb grep OpenVolume` finds only this file, so there
+   is no in-tree sibling to compare with; the finding rests on the code alone).
+4. Double free (added in the follow-up pass, confirmed by re-reading lines 184-217 and 278-281): line 200
+   `grub_free(file_info);` runs inside `if (err == GRUB_EFI_BUFFER_TOO_SMALL)` and leaves `file_info` pointing at the
+   freed block. Line 204 `if (grub_add (size, 4, &size_info))` (grub_add is __builtin_add_overflow, safemath.h 29;
+   `size` and `size_info` are 64-bit) takes `goto finish` at line 207 when size + 4 wraps. `finish` (278-281) calls
+   grub_free(file_info) on the same pointer. The other jump after the free, line 213, is reached with file_info
+   assigned the NULL from the failed grub_malloc, so it is harmless. The overflow check and its `goto finish` were
+   introduced by commit 10 (the delta of e9912d4a4 on bls_bumpcounter.c).
+5. Lines 269-273 `if (err != GRUB_EFI_SUCCESS)` after Close/Flush: err was last assigned by SetInfo (line 248) and
+   the SUCCESS check at 250 already left via `goto finish`, so this block is unreachable. Harmless, noted only.
+
+Consequence:
+Items 1 and 2 are small heap leaks (path length) in the pre-boot heap, per invocation (item 1 whenever `blsdir` is
+set; item 2 on rename failure / over-long name). Item 3 leaves one firmware file handle per invocation open on the
+ESP; the command runs once per boot attempt of each counted entry, so the impact is small but it is an unbalanced
+Open, the same class as prior #5. Item 4 is a double free of the same address, which corrupts the grub_mm free
+list; it needs GetInfo to answer BUFFER_TOO_SMALL with a required size within 4 of 2^64 (size + 4 wraps), i.e. a
+broken firmware, so it is not expected in normal operation, but it is the path the new overflow check exists for.
+
+Fix assessment:
+The draft keeps the strdup copy in `blsdir_dup`, frees it and closes `root` at the three exits that can follow
+OpenVolume success (Open failure, success epilogue, finish) and frees new_path at finish. new_path is NULL
+until line 226, so freeing it at finish is safe for the earlier gotos (194, 207, 213, 223, 228). `file_info = NULL;`
+after the first free makes the free in `finish` a no-op on the overflow path (grub_free(NULL) is safe), and `finish`
+frees file_info exactly once, so the draft does not introduce a second double free. On the success path root is
+closed after handle->Close().
+
+== Issue 3: '+' that is not a boot counter leaves GRUB_ERR_BAD_NUMBER set (bls_bumpcounter.c) ==
+
+Discovery:
+After confirming prior #2 was fixed, traced the failure branches of the new `grub_errno == GRUB_ERR_NONE` tests to
+see what state the caller observes. Compared with the two other counter parsers added in the same MR.
+
+Source trace:
+- bls_bumpcounter.c 124: any '+' means "counting in effect". The argument is menu.c 310-321 `blsuki->filename`:
+  the file name with ".conf" already removed in place by bls_create_entry (blsuki.c 1035-1036), counter kept if
+  present. bump_counter() 56-91: `*tmp = '\0'`, then grub_strtol (++tmp, ...). For a "+" at the end of the name,
+  the string is "" and grub_strtoull (misc.c, `if (! found)`
+  branch, 650-657) calls grub_error (GRUB_ERR_BAD_NUMBER, "unrecognized number") and sets *end = str.
+- bump_counter() line 80-82: `else { return NULL; }`; grub_errno stays BAD_NUMBER. Caller lines 226-228
+  `goto finish`, line 281 returns GRUB_ERR_BUG. menu.c line 321 calls grub_command_execute() and discards the
+  result; nothing between there and the script run clears grub_errno.
+- bls_create_entry (blsuki.c 1042-1076) and tries_left() (blsuki.c 254-288) both treat a non-numeric '+' as "no
+  counter" (error_push/pop resp. `grub_errno = GRUB_ERR_NONE`), i.e. the MR itself expects names such as
+  "fedora-6.8.0-rc1+" (kernel version with a trailing '+').
+- Stale error reporting: grub_script_execute_cmdline() ends with grub_print_error() (execute.c 1117-1120); that
+  prints "error: unrecognized number." and bumps grub_err_printed_errors. menu.c 329-330: `if (errs_before !=
+  grub_err_printed_errors) grub_wait_after_message ();`, which waits for a key press for up to 10 s
+  (menu.c 65-77). grub_script_parse() (script.c from line 343) does not consult grub_errno, so the script still runs.
+- Second-number case: lines 69-79; `tries = grub_strtol (...)` failing sets BAD_NUMBER, the else branch only sets
+  tries = -1; the function still returns a name, the rename proceeds and the command returns GRUB_ERR_NONE (line
+  276) while grub_errno remains set; the same print/wait follows.
+
+Consequence:
+A BLS entry whose file name contains a '+' that is not followed by digits shows an error and a key-press wait on every
+boot attempt (and no counter rename happens, which is the correct outcome). With the old `tmp != NULL` check the
+same entry would have been renamed to "...+0-1.conf" (prior #2 consequence); now it is reported instead of being
+treated as "no counter".
+
+Fix assessment:
+Clearing grub_errno where the parse failure is consumed makes the non-counter case silent (dprintf only, as for the
+other "no counter" exits). The only caller of bump_counter() is line 226, and OOM from grub_xasprintf is a separate
+NULL return that is not touched by the change.
+
+== Issue 4: LoaderFeatures still written through `long` (bli.c set_loader_features) ==
+
+Discovery:
+Re-checking prior #7 against the rework (1ULL constants, sizeof(loader_features)).
+
+Source trace:
+- bli.c 51-63: `static long loader_features = <ORed 1ULL flags>;` and
+  `grub_efi_set_variable("LoaderFeatures", &bli_vendor_guid, &loader_features, sizeof(loader_features))`. The size
+  is now spelled sizeof(loader_features), which is sizeof(long): 8 on LP64, 4 on ILP32.
+- Makefile.core.def 2851-2856: module bli, `enable = efi`. gentpl.py 55-56: GROUPS["efi"] = i386_efi, x86_64_efi,
+  ia64_efi, arm_efi, arm64_efi, loongarch64_efi, riscv32_efi, riscv64_efi. i386_efi, arm_efi and riscv32_efi are
+  32-bit platforms in this group.
+- BLI spec (systemd.io, fetched): LoaderFeatures "contains a 64-bit unsigned integer with a number of flags bits".
+  The highest flag set here is bit 18, so the value itself fits in 32 bits; the defect is the stored size, not
+  truncated flag values.
+
+Consequence:
+On i386-efi, arm-efi and riscv32-efi the variable is written with a 4-byte payload instead of the 64-bit integer the
+interface defines. I did not check how a given consumer reacts to a 4-byte value; the size mismatch against the
+spec is the finding.
+
+Fix assessment:
+`static grub_uint64_t loader_features` makes sizeof() 8 on every platform and needs no other change (the macros are
+already 1ULL; the call passes sizeof(loader_features)).
+
+== Issue 5: advertised LoaderEntries ids differ from menu ids (UKI, non-numeric '+') (blsuki.c, menu.c) ==
+
+Discovery:
+Raised by the follow-up pass (candidates M2/M3). Both code paths live in commit 1 (unchanged between rounds), so this
+is a first-round miss, not a regression. Re-derived from source by comparing, for the same entry, the id that
+set_bli_loader_entries() advertises with the id that ends up in the menu and with what get_entry_number() accepts.
+
+Source trace:
+- Advertised id: set_bli_loader_entries() size loop blsuki.c 1520-1540 and copy loop 1573-1590:
+  `boot_counting_idx = grub_strrchr (entry->filename, '+')`; if found, len = idx - filename (no check of what
+  follows); else drop a trailing ".conf" (1531-1533, 1582-1584) or ".efi" (1534-1536, 1585-1587).
+- entry->filename keeps its extension: blsuki.c 658 `entry->filename = grub_strndup (filename + path_len, ...)` after
+  the loader accepted only names ending in ext (".conf" or ".efi", lines 609-630).
+- UKI menu id: uki_create_entry() blsuki.c 1156 `char *id = entry->filename;` and 1219
+  `grub_normal_add_menu_entry (1, argv, NULL, id, ...)`; nothing strips ".efi" (the same string is used as the file
+  name in the chainloader command, line 1215, so it must keep the extension). Menu id of "fedora-6.8.0.efi" is
+  therefore "fedora-6.8.0.efi"; advertised id is "fedora-6.8.0".
+- BLS menu id: bls_create_entry() strips ".conf" in place (1035-1036) and removes a "+..." suffix only when the text
+  between the last '+' and the next '-' (or the end) parses completely as a number (1042-1076:
+  `n_end != n && *n_end == '\0'`). For "fedora-6.8.0-rc1+.conf": tries = "+", done = NULL, n = "", grub_strtol fails,
+  default branch, no id_dup; menu id "fedora-6.8.0-rc1+"; advertised id "fedora-6.8.0-rc1" (cut at '+').
+  For plain names and numeric counters ("fedora-6.8.0+3-1.conf" -> "fedora-6.8.0") both sides agree.
+- Matching: get_entry_number() menu.c 546-568 compares `val` with e->title and e->id; its only suffix handling is
+  ".conf" (line 557). For val = "fedora-6.8.0" and a UKI entry with id "fedora-6.8.0.efi", or val = "fedora-6.8.0-rc1"
+  and id "fedora-6.8.0-rc1+", menuentry_eq() returns 0 for every entry, get_entry_number() returns -1 and run_menu()
+  uses entry 0 (menu.c 640-641).
+- The BLI page (fetched, model-summarised) says an identifier for BLS entries is "derived directly from the file
+  name" with the ".conf" (Type #1) or ".efi" (Type #2) suffix removed, which is what LoaderEntries follows here.
+
+Consequence:
+An OS that reads LoaderEntries and writes one of those ids back to LoaderEntryDefault/LoaderEntryOneShot (or a user
+who sets `default` to it) does not get that entry; the first menu entry boots instead, without a message. Affects
+every UKI entry and every BLS entry whose name has a '+' not followed by a number.
+
+Fix assessment:
+No draft diff: the clean fix is a shared canonical-id helper used by bls_create_entry(), uki_create_entry() and both
+loops of set_bli_loader_entries(). It changes the menu id of UKI entries from "foo.efi" to "foo", which may break
+existing `default=foo.efi` configurations unless get_entry_number() keeps accepting the old form; that trade-off is
+the author's decision. Patching only set_bli_loader_entries() to advertise "foo.efi" would contradict the id rule
+quoted above.
+
+== Issue 6: LoaderEntries overwritten by repeated same-command calls (blsuki.c) ==
+
+Discovery:
+Observation from the first pass, promoted after the follow-up pass pointed out the concrete call sequence.
+
+Source trace:
+- blsuki_cmd() blsuki.c 1762-1804: `entries = NULL;` at line 1772 before blsuki_load_entries(); the list is rebuilt
+  from the directory on every call; entries are allocated with grub_zalloc (639), so `visible` starts false.
+- blsuki_create_entries() 1723-1759 marks `entry->visible = true` (1748) only for entries it creates in this call,
+  filtered by --show-default / --show-non-default / --entry (1738-1740).
+- set_bli_loader_entries() lists only `entry->visible` entries (1522, 1575). The previous LoaderEntries value is
+  read only if the OTHER command's flag is "1": blscfg reads GRUB_BLSUKI_ENTRIES_UKI (1547), uki reads
+  GRUB_BLSUKI_ENTRIES_BLS (1549); the own flag is only written (1708, 1710) and never consulted.
+- Sequence: `blscfg --show-default` -> LoaderEntries = {default entry}; `blscfg --show-non-default` -> new list, the
+  default entry is neither created nor visible, no merge (UKI flag unset) -> LoaderEntries = {non-default entries},
+  the default entry (which is in the menu) is gone. Likewise `blscfg -e A` then `blscfg -e B` leaves only B.
+- docs/grub.texi 7245-7270 documents the three options as filters for which entries are added to the menu, so
+  calling blscfg more than once with different filters is the documented use. No in-tree script does this
+  (`rtb grep blscfg -- util` finds nothing).
+- The BLI page (fetched, model-summarised): LoaderEntries "may be used to let the OS know which boot menu entries
+  were discovered by the boot loader", listed "in the order the entries are shown on screen".
+
+Consequence:
+After the second call the variable no longer matches what is on screen; the first call's entries are not advertised.
+
+Fix assessment:
+No draft diff. Also consulting the command's own flag would merge, but the merge compares the stored (canonical)
+id with `entry->filename` (1641), which still has the counter and, for UKI, the extension, so the duplicate check
+(rc == 0 only for identical strings) would miss re-added entries or, for plain names, abort with "duplicate file".
+A correct fix needs the canonical-id helper from Issue 5 first.
+
+-- Fresh read of the unchanged / trivially changed code (Issues 5 and 6 came out of the follow-up pass) --
+- set_bli_loader_entries (blsuki.c 1507-1718): buffer arithmetic. Allocation = 2*size + prev_start_size bytes;
+  remaining_size starts at size + prev_start_size/2 units and is decreased by exactly the units written (new
+  entries: written+1 <= len+1, checked against remaining_size first; previous entries: len16+1). The leftover
+  append copies prev_entries_size bytes with remaining_entries_size <= remaining_size; with an odd trailing byte
+  that is 2*remaining+1 bytes, which is exactly the slack the allocation still has, so no overflow. An odd-sized
+  variable that is consumed unit by unit ends in the "malformed LoaderEntries variable" error, not an overread.
+- UTF-8 buffers: grub_utf16_to_utf8 (charset.h 201-) emits at most 4 bytes per UTF-16 unit (3 for BMP, 4 per
+  surrogate pair of 2 units, 1 for '?'), and GRUB_MAX_UTF8_PER_UTF16 is 4 (charset.h 39), so size16*4+1 (bli.c
+  199-211, blsuki.c 1623) always holds the result plus NUL; grub_mul/grub_add guard the arithmetic.
+- get_efivar: grub_efi_get_variable_with_attributes initialises *data_out = NULL and *datasize_out = 0 up front
+  (efi.c 226-227), so reading `size` before the status test is defined; val_efi is freed once at `finish`.
+- grub_malloc(0) returns a valid block here (mm.c grub_memalign: n = ((size + ALIGN - 1) >> LOG2) + 1), so an
+  empty LoaderEntries does not trip the `efi_entries == NULL` check.
+- bls_create_entry: id_dup is freed at finish (blsuki.c 1144); grub_normal_add_menu_entry strdups the id
+  (menuentry.c, `menu_id = grub_strdup (id ? : menu_title)`), so there is no use after free. grub_error_push/pop
+  around grub_strtol() preserves the caller's errno.
+- blsuki_add_entry ordering (commit 7): the override only fires when exactly one of the pair has 0 tries left, so
+  non-zero entries are inserted before the first 0-tries entry and a 0-tries entry stays after all others; both at
+  0 fall back to filevercmp.
+- bls_bumpcounter buffer bound (commit 10): size_info = offsetof(FileName) + 512 bytes; GetInfo is offered
+  size_info-4; destination capacity for grub_utf8_to_utf16 is (size_info - offsetof)/2 units (loop stops at
+  destsize, charset.h 125-); len16 >= capacity bails; otherwise the NUL at index len16 is in range. After a
+  BUFFER_TOO_SMALL retry, size_info = size+4, i.e. two more UTF-16 units than the old name needs. Not reported:
+  an astral character that does not fit makes grub_utf8_to_utf16 stop one unit early, so the check passes and a
+  truncated name would be written; unreachable for realistic ~250-character BLS names. (The overflow branch of the
+  same retry has the double free reported as Issue 2 item 4.)
+- run_menu "disabled" style: handled in the same early-return as timeout == 0 (menu.c 707-713), so it behaves like
+  an existing timeout=0 configuration; get_timeout_style() maps the new name.
+- file_info->Size is not updated after the name changes and SetInfo gets the buffer size (not reported: I have no
+  in-tree or independently checked reference for what firmware expects; a WebFetch summary of systemd's
+  boot_entry_bump_counters describes the same behaviour, which I did not verify further).
+
+-- Observations not reported (no concrete failing input established, or not verifiable from source) --
+- set_bli_loader_entries: `if (efi_entries == NULL) return grub_errno;` leaks prev_entries_start on that OOM path
+  (the other error returns free both buffers).
+- M4 (UNVERIFIED as a defect): set_loader_features() calls grub_efi_set_variable(), which adds
+  GRUB_EFI_VARIABLE_NON_VOLATILE to BS|RT (efi.c 203-211), while the other BLI variables set in bli.c use explicit
+  BS|RT attributes only (LoaderInfo, LoaderDevicePartUUID, LoaderTpm2ActivePcrBanks). The attribute behaviour is read
+  from source; whether a persistent LoaderFeatures is wrong is not established (the fetched BLI page does not
+  state it), so it is not reported.
+- M5: bls_bumpcounter.c 116-119 ignores the return of grub_efi_set_variable_to_string("LoaderEntrySelected").
+  When SetVariable fails, grub_efi_set_variable_with_attributes() leaves GRUB_ERR_IO in grub_errno (efi.c 200); for
+  a name without '+' the command then returns GRUB_ERR_NONE (line 128) with errno set, the same stale-error print and
+  key-press wait as Issue 3. Needs a firmware that rejects the write; not reported.
+- M6: docs/grub.texi 3971-3977 lists only menu/countdown/hidden for timeout_style, so the new "disabled" value
+  (commit 4) is undocumented; no docs mention bls_bumpcounter or the LoaderEntries/blsuki_entries_* variables
+  (`rtb grep ... -- docs` finds none). Documentation gap, not a defect in the code.
+- bls_bumpcounter.c 169-170: results of grub_xasprintf / grub_utf8_to_utf16_alloc are not checked (OOM only).
+- UKI menu entries also carry ->blsuki (blsuki.c 1219), so menu.c calls bls_bumpcounter for them too; it looks for
+  "<blsdir><id>.conf" and fails with a dprintf only.
+- grub_menu_set_timeout(0) is a no-op (menu.c 157-166), so a numeric LoaderConfigTimeout such as "00" leaves the
+  existing timeout untouched.

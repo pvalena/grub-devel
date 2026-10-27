@@ -1,0 +1,371 @@
+pr325 reasoning -- Update gnulib and adapt the build to the newer gnulib (5 commits)
+
+Commits, in apply order (oldest first; `rtb log --ref 370eb4f81..pr325` shows the other four after it, and
+`origin/master..370eb4f81` is that single commit, so 370eb4f81 is the first one applied):
+  1. 370eb4f81 - tests, osdep/unix/sleep: Include config.h before system headers
+  2. 8ee84f56f - Makefile.am: Preprocess each libgrub library with its own flags
+  3. 701acd1d3 - gensymlist: Only include config-util.h for emu builds
+  4. 8a915a5f8 - posix_wrap/assert: Use the C library's assert in utility builds
+  5. 326d5c0df - gnulib: Update gnulib version and drop patches no longer needed
+
+All five carry "Assisted-by: Claude:Opus-5.5", so every claim in the commit messages was cross-checked against the
+tree or upstream gnulib rather than taken at face value (see "Commit message claims" below).
+
+Source files read (at pr325 unless noted): conf/Makefile.extra-dist, conf/Makefile.common, Makefile.am,
+Makefile.util.def, gentpl.py (library()/program() generators), grub-core/Makefile.am, grub-core/Makefile.core.def,
+bootstrap.conf, config.h.in, configure.ac (flags, emu handling), grub-core/gensymlist.sh,
+grub-core/lib/posix_wrap/assert.h (both refs), grub-core/lib/gnulib-patches/*.patch (both refs),
+grub-core/osdep/unix/sleep.c, grub-core/osdep/platform.c and osdep/{basic,linux,unix,windows}/platform.c,
+grub-core/lib/reed_solomon.c, include/grub/util/{misc,install,windows}.h, include/grub/emu/*.h (first includes),
+tests/*.c(.cc) touched by commit 1, util/import_gcry.py, grub-core/lib/zstd/common/debug.h and zstd_deps.h,
+.gitlab-ci/script/create-artifacts.sh, .gitlab-ci/yml/release.yml and release-artifacts.yml, docs/BUG_PATTERNS.md
+(docs-ci-build, Build map entry). Earlier history read for the convention check: commits 2b7902459, cd37d3d39,
+ea780522e (conf/Makefile.extra-dist, bootstrap.conf, grub-core/lib/gnulib-patches).
+
+How and what was checked, and the limits:
+- GRUB tree: read only through rtb (cat/grep/diff/log/ls). GRUB itself was not built or run (CI does that), so
+  build/runtime outcomes below are read from source, not tested.
+- Upstream gnulib: it is not vendored (./bootstrap fetches it at GNULIB_REVISION), so the commit message is only the
+  author's claim about it. I fetched raw files from the upstream gnulib repository at the exact commit
+  5df606bbd0ef54a8f150c3303c870b9381a661f0 (through the project's public mirror, coreutils/gnulib) into new, empty
+  scratch directories under /tmp, with the two patches (saved from rtb output) kept in a separate directory. Files:
+  lib/{argp-fmtstream.c, argp-help.c, mbswidth.c, mbswidth.h, regexec.c, regcomp.c, regex_internal.h, base64.c,
+  base64.h, assert.in.h, verify.h, stdio.in.h, stdlib.in.h, string.in.h, sys_types.in.h, time.in.h},
+  m4/{assert_h.m4, c-bool.m4}, modules/{getdelim, getline, stdio-h}. They are untrusted data: they were only read
+  with grep/sed and used as input to `patch`; nothing from them was executed and no interpreter or build tool was run
+  on them. Every statement of the form "upstream gnulib has X" below comes from these files.
+- What was run on them: (a) first pass (those scratch directories have since been removed): both patches applied in
+  sequence to a copy with `patch -d <dir> -p2 < patch` (fix-width, then fix-unused-value); every hunk reported
+  "succeeded", no fuzz or offset notes, exit 0. (b) second pass, on freshly fetched files: `patch -d <dir> -p2
+  --dry-run < patch` for each patch, no hunk messages, exit 0 for both. (c) first pass: modules/<name> fetched for
+  each of the 15 entries of `gnulib_modules` (HTTP 200 for all), and the four upstream commit ids from the commit
+  message looked up through the mirror's commits and compare API (see commit 5 notes).
+- One more experiment, corroboration only: a throwaway automake project in its own /tmp directory (separate from the
+  GRUB tree and the gnulib files) with one EXTRA_DIST entry naming an absent file, taken through autoreconf,
+  ./configure and make dist, to see what automake prints. Issue 1 stands on the tree reads (steps 1-4 and 6 below);
+  GRUB's own `make dist` was not run.
+
+
+======================================================================================================
+== Issue 1: conf/Makefile.extra-dist still lists the four deleted gnulib patches (make dist fails) ==
+======================================================================================================
+
+Discovery:
+Commit 5 (326d5c0df) deletes four files under grub-core/lib/gnulib-patches/. In the diff, the only other place that
+mentions the patches is bootstrap.conf (loop trimmed to fix-width and fix-unused-value). The project keeps a second
+list of these patches for tarball packaging: MR !259 (reviews/pr259.md) added fix-dropped-const.patch to both the
+bootstrap.conf loop and conf/Makefile.extra-dist. The diff of this MR does not touch conf/Makefile.extra-dist, so I
+read that file at pr325.
+
+Source trace:
+1. `rtb grep` for each of the six patch names over the whole tree at pr325:
+     fix-dropped-const / fix-regcomp-resource-leak / fix-regexec-resource-leak / fix-gcc-15-compile:
+       only conf/Makefile.extra-dist (lines 33, 34, 35, 36 respectively)
+     fix-width: bootstrap.conf:22,86 and conf/Makefile.extra-dist:32
+     fix-unused-value: bootstrap.conf:87 and conf/Makefile.extra-dist:37
+2. conf/Makefile.extra-dist lines 32-37 at pr325:
+     EXTRA_DIST += grub-core/lib/gnulib-patches/fix-width.patch
+     EXTRA_DIST += grub-core/lib/gnulib-patches/fix-dropped-const.patch
+     EXTRA_DIST += grub-core/lib/gnulib-patches/fix-regcomp-resource-leak.patch
+     EXTRA_DIST += grub-core/lib/gnulib-patches/fix-regexec-resource-leak.patch
+     EXTRA_DIST += grub-core/lib/gnulib-patches/fix-gcc-15-compile.patch
+     EXTRA_DIST += grub-core/lib/gnulib-patches/fix-unused-value.patch
+3. `rtb ls grub-core/lib/gnulib-patches/ --ref pr325` lists only fix-unused-value.patch and fix-width.patch
+   (origin/master lists all six), so lines 33-36 now name files that do not exist.
+4. Makefile.am:11 is `include $(top_srcdir)/conf/Makefile.extra-dist`, so these entries feed the top-level
+   EXTRA_DIST/distdir.
+5. Corroboration (scratch automake project, not GRUB; see "How and what was checked"): with `EXTRA_DIST +=
+   sub/real.patch` and `EXTRA_DIST += sub/deleted.patch` (file absent), `make dist` printed
+     make[2]: *** No rule to make target 'sub/deleted.patch', needed by 'distdir-am'.  Stop.
+   The wording is that of the automake version installed here; other versions may word it differently.
+6. Who runs `make dist`: .gitlab-ci/script/create-artifacts.sh line 3 is `set -xeu -o pipefail`; line 54 is
+   `make -j $CPU_COUNT dist` (followed by dist-xz, dist-bzip2, dist-lzip, dist-zstd). That script is the
+   `create-artifacts` job in .gitlab-ci/yml/release-artifacts.yml, which .gitlab-ci/yml/release.yml triggers only
+   `if: $CI_COMMIT_TAG`.
+7. Project convention (rtb diff of each commit, restricted to the two files): the earlier commits that dropped
+   gnulib patches removed the matching EXTRA_DIST lines in the same commit:
+     2b7902459 "gnulib: Update gnulib version and drop most gnulib patches": deletes six patch files and the six
+       matching `EXTRA_DIST += grub-core/lib/gnulib-patches/...` lines (fix-null-deref, fix-null-state-deref,
+       fix-regcomp-uninit-token, fix-regexec-null-deref, fix-uninit-structure, fix-unused-value);
+     cd37d3d39 "gnulib: Drop no-abort.patch": deletes no-abort.patch and its EXTRA_DIST line;
+     ea780522e "gnulib: Drop fix-base64.patch": deletes fix-base64.patch and its EXTRA_DIST line.
+   Commit 5 of this MR is the first to delete patch files without touching conf/Makefile.extra-dist.
+
+Consequence:
+After this MR, `make dist` (and `make distcheck`) would stop at the distdir step with a "No rule to make target ...
+needed by distdir" error (standard automake behaviour for a missing EXTRA_DIST file; exact wording varies by version).
+The tag-triggered release pipeline's create-artifacts job would then abort, so no release tarballs are produced and
+the sign/upload/release stages that depend on it do not run. Ordinary builds, `make check` and MR pipelines never run
+`make dist`, so nothing would flag it before a release is cut.
+
+Fix assessment:
+Deleting lines 33-36 removes exactly the four entries whose files are gone. The two remaining entries (fix-width and
+fix-unused-value) point at files that exist at pr325, and no other EXTRA_DIST line references a deleted file (the
+rtb grep in step 1 is tree-wide). The hunk header in the review, @@ -30,10 +30,6 @@, is 3 context lines + 4 removed
++ 3 context lines (old 10, new 6). The fix belongs in commit 5, since that commit deletes the files.
+
+
+======================================================================================================
+== Per-commit notes (no further issues found) ==
+======================================================================================================
+
+--- Commit 1 (370eb4f81): config.h first in 8 host-built files ---
+Files: grub-core/osdep/unix/sleep.c; tests/cmp_unit_test.c, date_unit_test.c, example_unit_test.c,
+tests/lib/unit_test.c, printf_unit_test.c, priority_queue_unit_test.cc, tpcm_unit_test.c.
+
+Why host files see gnulib headers: Makefile.am:22 has `CPPFLAGS_PROGRAM += $(CPPFLAGS_GNULIB)`; gentpl.py:840 builds a
+program's CPPFLAGS as `$(AM_CPPFLAGS) $(CPPFLAGS_PROGRAM) ...`; libgrubkern.a has
+`cppflags = '$(CPPFLAGS_GNULIB) -I$(srcdir)/grub-core/lib/json'` (Makefile.util.def:5-6). sleep.c is compiled into
+libgrubkern via the grub-core/osdep/sleep.c wrapper (`#include "unix/sleep.c"`), so config.h at the top of the
+included file is the first include of that translation unit.
+The premise of the commit (replacement headers refuse to be used before config.h) holds in the pinned gnulib: the
+templates lib/stdio.in.h:64-66, stdlib.in.h:58-60, string.in.h:50-52, sys_types.in.h:26-28 and time.in.h:26-28
+(and :59-61) each contain `#if !_GL_CONFIG_H_INCLUDED` / `#error "Please include config.h first."`.
+
+Standalone behaviour against the OLD gnulib: `#include <config.h>` as first include is the convention most utilities
+already follow; in a host build config.h takes the `GRUB_UTIL || !GRUB_MACHINE` branch and includes config-util.h
+(config.h.in:71-72). No behavioural change is expected. For the C++ test, the util branch of config.h.in contains
+only #undef/#define/#include lines, no C-only constructs.
+
+Completeness check (static heuristic, in two passes):
+Pass 1: I collected the `common`/`nodist` sources of every `program` block and of libgrubkern.a in Makefile.util.def
+(137 files), plus every .c/.S under grub-core/osdep, grub-core/kern/emu, util and tests, pulled their #include lines
+with `rtb grep`, and flagged any file whose first includes were libc headers placed before config.h, config-util.h or
+a <grub/...> header. Pass 1 assumed that every <grub/...> header reaches config.h before any libc header. That
+assumption is false for three headers (first includes, via `rtb grep`):
+  include/grub/util/misc.h:   <stdlib.h> <stdio.h> <stdarg.h> <setjmp.h> <unistd.h> (lines 22-26), <config.h> only
+                              at line 28
+  include/grub/util/install.h: <sys/types.h> (22), <stdio.h> (23), then <grub/device.h> (25)
+  include/grub/util/windows.h: <windows.h> (22)
+(the other headers directly under include/grub/util and include/grub/emu start with <config.h>, <grub/types.h> or
+<grub/disk.h>; header chains deeper than their first include were not traced).
+Pass 2: for every file under grub-core, util, tests and include/grub/emu that includes one of those three headers, I
+compared its line number with the file's first direct config.h/config-util.h include and listed the files where the
+util header comes first (12 files), then read each file's first four includes:
+  - reach config.h through an earlier GRUB header (grub/pci.h, grub/cryptodisk.h, grub/dl.h, grub/misc.h,
+    grub/types.h): grub-core/bus/emu/pci.c, disk/cryptodisk.c, disk/diskfilter.c, disk/geli.c, kern/partition.c,
+    osdep/basic/no_platform.c, osdep/linux/ofpath.c, and lib/reed_solomon.c (see observation A);
+  - osdep/unix/compress.c starts with <grub/emu/exec.h>, whose first include is <config.h> (exec.h:22);
+  - util/grub-module-verifier.c and grub-module-verifierXX.c are $(BUILD_CC) tools (grub-core/Makefile.am:44-45), not
+    built with the gnulib flags;
+  - grub-core/osdep/basic/platform.c starts with <grub/util/install.h> and nothing earlier: observation B.
+Other hits of pass 1:
+  - the osdep/kern-emu files flagged all start with <config-util.h>, which is the established form there; not a
+    problem;
+  - wrapper files (osdep/*.c, util/grub-mkimage32.c, setup_bios.c, commands/file32.c, ...) only `#include "x.c"`;
+    the included files were covered by the directory scans;
+  - util/bin2h.c, garbage-gen.c, grub-gen-asciih.c, grub-gen-widthspec.c, grub-module-verifier*.c, spkmodem-recv.c
+    start with libc headers but are not built with gnulib flags: garbage-gen / grub-gen-* / module-verifier use
+    $(BUILD_CC) rules (Makefile.am:100-111, grub-core/Makefile.am:44-45), bin2h.c and spkmodem-recv.c only appear in
+    EXTRA_DIST (conf/Makefile.extra-dist:103,106) in the *.def/*.am/*.ac/conf files I grepped;
+  - tests/fortify_unit_test.c starts with "../grub-core/tests/fortify_test.h", whose first includes are
+    <grub/misc.h>, <grub/mm.h>, <grub/test.h>, <grub/types.h> (lines 41-44): fine.
+Net result: besides the eight files fixed by commit 1, the scan finds one host-built file with a libc-first header
+chain ahead of config.h (observation B) and one with libc <assert.h> ahead of config.h (observation A). Not built.
+
+--- Commit 2 (8ee84f56f): per-library .pp files in Makefile.am ---
+Read Makefile.am lines 48-90 at pr325. The new rules:
+  libgrubkern.pp: config-util.h grub_script.tab.h grub_script.yy.h $(libgrubkern_a_SOURCES)  -> own CPPFLAGS
+  libgrubmods.pp: config-util.h grub_script.tab.h grub_script.yy.h $(libgrubmods_a_SOURCES)  -> own CPPFLAGS
+  libgrub.pp: libgrubmods.pp libgrubkern.pp   -> `cat $^`
+Traces:
+- Flags match how each library is compiled: gentpl.py:799 sets `libX_a_CPPFLAGS = $(AM_CPPFLAGS) $(CPPFLAGS_LIBRARY)`
+  plus the library's `cppflags`. libgrubkern.a: `$(CPPFLAGS_GNULIB) -I.../json` (Makefile.util.def:5-6).
+  libgrubmods.a: `-I minilzo -I xzembed -I zstd -DMINILZO_HAVE_CONFIG_H $(CPPFLAGS_ZSTD)` (Makefile.util.def:61-62),
+  no gnulib path. So the commit's statement that libgrubmods never sees the gnulib include path when compiled holds.
+- Prerequisites: gentpl.py:796-797 puts the `common_nodist` files (grub_script.tab.c, grub_script.yy.c,
+  libgrub_a_init.c) into `nodist_libgrubmods_a_SOURCES`, so `$(libgrubmods_a_SOURCES)` does not contain
+  libgrub_a_init.c; no dependency loop with libgrub_a_init.c <- .lst <- libgrub.pp (same as before the change).
+- `$^` includes the three header prerequisites in both rules, so config-util.h and the two grub_script headers are
+  preprocessed twice and appear twice in libgrub.pp. libgrub_a_init.lst is `grep '^@MARKER@' | sed ... | sort -u`
+  (Makefile.am:68-69) and those headers have no GRUB_MOD_INIT, so the duplicates do not matter.
+- Consumers of the name libgrub.pp: libgrub_a_init.lst (Makefile.am:68) and grub_fstest_init.lst (Makefile.am:82),
+  both still valid. Concatenation order is mods then kern, the same as the old prerequisite order; irrelevant after
+  `sort -u` anyway.
+- Error handling: each recipe keeps `|| (rm -f $@; exit 1)`, so a failed preprocess leaves no partial .pp that make
+  would consider up to date. CLEANFILES covers both new files. The two preprocess rules are independent, so
+  parallel make is fine.
+- "libgrub_a_init.lst is unchanged": read, not run. The only flags that differ per source are -DMINILZO_HAVE_CONFIG_H,
+  $(CPPFLAGS_ZSTD) (previously also seen by kern sources) and the gnulib/json include paths (previously also seen by
+  mods sources); none of them gates a GRUB_MOD_INIT use that I could find.
+
+--- Commit 3 (701acd1d3): gensymlist.sh only includes config-util.h for emu ---
+Read grub-core/gensymlist.sh in full. The #ifdef/#include/#endif lines are emitted from the unquoted `cat <<EOF`
+heredoc, not read from stdin, so the `grep -v '^#'` filter later in the script (stdin only) does not drop them; the
+new text has no `$`, backtick or backslash that the unquoted heredoc would expand.
+Callers: grub-core/Makefile.am:343-346 runs it as `gensymlist.sh $(top_builddir)/config.h $(KERNEL_HEADER_FILES)`;
+symlist.c is built for emu (Makefile.core.def:452 `emu_nodist`) and non-emu (:176 `noemu_nodist`). GRUB_MACHINE_EMU
+is defined on the command line by configure.ac:280 -> machine_CPPFLAGS -> TARGET_CPPFLAGS (:308), so the #ifdef
+works in the same compile that uses symlist.c.
+Interaction worth knowing (not a defect): before this commit a non-emu symlist.c included <../config-util.h> first.
+config.h.in's target block is wrapped in `#ifndef _GL_INLINE_HEADER_BEGIN`; presumably the gnulib-configured
+config-util.h is what defines it (inferred from the guard, not checked in gnulib), in which case that block was
+skipped in this one translation unit. After the commit non-emu symlist.c sees the same target block as every other
+kernel TU. symlist.c only includes GRUB headers from KERNEL_HEADER_FILES, which every other kernel file also
+includes, so nothing there relied on config-util.h.
+Against the OLD gnulib this is harmless; per the commit message, against the new one it keeps the config-util.h
+shim (an appended `#include <assert.h>`, whose text is in gnulib's m4/assert_h.m4) out of -nostdinc kernel builds.
+
+--- Commit 4 (8a915a5f8): posix_wrap/assert.h uses libc assert in utility builds ---
+Read the file at both refs. New shape: `#if defined (GRUB_UTIL) || !defined (GRUB_MACHINE)` -> `#include_next
+<assert.h>` (outside any guard); `#else` -> the original guarded body; two `#endif`s balanced.
+- The condition is the same as config.h.in:71, the branch that includes config-util.h, so exactly the translation
+  units that receive gnulib's `static_assert` shim get libc assert.h. The pinned gnulib's m4/assert_h.m4
+  (AH_VERBATIM zzstatic_assert) confirms the shim: when the compiler's static_assert is not a keyword (as with
+  -std=gnu99) and `assert` is not already defined, it appends `#include <assert.h>` followed by `#undef assert`.
+  That is why the include_next branch is deliberately outside the include guard (a later `#include <assert.h>` has
+  to define assert again); libc's assert.h is designed to be re-included.
+- Where posix_wrap meets that branch: libgrubgcry.a (util/import_gcry.py:104-107: cflags $(CFLAGS_GCRY), cppflags
+  $(CPPFLAGS_GCRY); conf/Makefile.common:84-87 puts $(CPPFLAGS_POSIX) in CPPFLAGS_GCRY). It is a host library built
+  with HOST_CPPFLAGS, which carry -DGRUB_UTIL=1 (configure.ac:132). Before the change the shim's `#include <assert.h>`
+  resolved to posix_wrap/assert.h, whose `#include <grub/misc.h>` runs while grub/symbol.h (which includes config.h at
+  line 22) is still mid-inclusion, as the commit message says. Target and emu modules (no GRUB_UTIL in grub-core's
+  compile flags, as far as grep of Makefile.core.def/Makefile.am/gentpl.py/conf/Makefile.common shows) take the
+  unchanged #else branch.
+- Runtime effect: under the new branch `assert` is libc's (abort on failure) rather than assert_real (prints and
+  continues). I looked for live `assert()` calls in what libgrubgcry builds: libgcrypt's only live calls are
+  cipher/scrypt.c:81 (excluded by util/import_gcry.py:147-148, "TODO: Support scrypt KDF") and src/hmac256.c:664
+  (src/ contributes only const-time.c, import_gcry.py:111-112); libgcrypt-grub/ and libgcrypt_wrap/ have none. zstd's
+  assert is compiled out at the default DEBUGLEVEL 0 (debug.h:65-70 defines `assert(c) ((void)0)` unless assert is
+  already defined; zstd_deps.h:90-97 only includes <assert.h> under ZSTD_DEPS_NEED_ASSERT, set when DEBUGLEVEL >= 1).
+  So this is a runtime no-op for current callers, as the commit says. (grub-core/lib/reed_solomon.c calls assert
+  live, but it is not built with the posix_wrap include path; see observation A.)
+
+--- Commit 5 (326d5c0df): gnulib bump, patches, config.h.in, flags ---
+bootstrap.conf: loop is `for patchname in fix-width \ fix-unused-value; do patch -d grub-core/lib/gnulib -p2 < ...`;
+line continuation and `; do` are well-formed. GNULIB_REVISION matches the revision named in the commit message. All
+15 modules in `gnulib_modules` exist at 5df606bb (modules/<name> fetched in the first pass, HTTP 200 for each).
+`stdbool` is marked deprecated there ("Use the module 'bool' instead", Depends-on: bool); it still works, so I only
+note it.
+
+Dropped patches (each fix confirmed present in upstream at 5df606bb, in the scratch checkout):
+  fix-dropped-const    -> argp-help.c:1633 `char const *vt = strchr (doc, '\v');`
+  fix-gcc-15-compile   -> base64.c:62 `static const char b64c[64] _GL_ATTRIBUTE_NONSTRING =`
+  fix-regexec-resource-leak -> regexec.c:2359 `if (next_state != NULL && next_state->entrance_nodes != NULL)`
+  fix-regcomp-resource-leak -> regcomp.c create_initial_state (from line 991: `err = re_node_set_merge ...; if (err
+                               != REG_NOERROR) break;`, then `dfa->init_state = (err == REG_NOERROR ? ... : NULL)`)
+                               and calc_eclosure_iter (from line 1685, `re_node_set_free (&eclosure)` at 1750 on
+                               error), i.e. the structure the old patch introduced.
+The four upstream commit ids in the message (df17f4f37ed3, 25df6dc42534, 20183123b0d4, bfac2392196f) exist in
+coreutils/gnulib with matching titles (first pass: the mirror's commits API), and the compare API reported 5df606bb as
+ahead of each (977, 1794, 1528 and 1527 commits ahead respectively).
+
+Refreshed patches. Result of applying them to the pristine upstream files: see "What was run" above (all 13 hunks of
+fix-width -- argp-fmtstream.c 7, argp-help.c 2, mbswidth.c 3, mbswidth.h 1 -- and the single fix-unused-value hunk
+succeeded; second pass: `--dry-run` exit 0 for both). What changed in them, from `rtb diff origin/master..pr325 --
+<patch>`:
+  fix-width.patch: every `@@` position is shifted; argp-fmtstream.c hunks are otherwise identical; the second
+    argp-help.c hunk has its context and its changed `space (...)` line re-indented (6 -> 8 spaces); in mbswidth.c
+    the two MBSW_STOP_AT_NUL returns changed from `return width;` to `return (width > INT_MAX ? INT_MAX : width);`,
+    and the third hunk's context lines changed to the new upstream code (`width++;` /
+    `else if (!(flags & MBSW_REJECT_UNPRINTABLE))` instead of the old nested `{ if (width == INT_MAX)`); the
+    mbswidth.c FALLTHROUGH/`case '\0':` additions and the mbswidth.h flag are unchanged.
+  fix-unused-value.patch: the `---`/`+++` timestamps are dropped, the hunk moves from `@@ -807,7 +807,11 @@` to
+    `@@ -830,7 +830,11 @@`, and its three leading context lines changed (now `goto free_return;`,
+    `re_free (save_state_log);`, `save_state_log = NULL;`); the added `#ifdef DEBUG ... #endif` block is unchanged.
+The clamp matches upstream: the final return of mbsnwidth() is `return (width > INT_MAX ? INT_MAX : width);`
+(mbswidth.c:183) and `width` is a `size_t` (mbswidth.c:68). `case '\0':` is not among the listed case labels, so no
+duplicate label. fix-unused-value is still needed: upstream regexec.c still has `match_last = -1;` followed by
+`DEBUG_ASSERT (match_last != -1)` (lines 833 and 843), and the patch hides the store outside DEBUG as before.
+
+config.h.in additions, compared with the pinned gnulib (all in the target branch, inside the
+`#ifndef _GL_INLINE_HEADER_BEGIN` block, so they are skipped where config-util.h already defined that macro):
+- `_GL_CONFIG_H_INCLUDED 1`: base64.h:22 has `#if !_GL_CONFIG_H_INCLUDED` / `#error "Please include config.h first."`.
+- `_GL_EXTERN_INLINE extern inline`: base64.c:42 `#define BASE64_INLINE _GL_EXTERN_INLINE` before config.h (:43).
+  TARGET_CFLAGS is -std=gnu99 (configure.ac:128), i.e. C99 inline semantics, where `extern inline` emits the
+  one external definition and plain `inline` (`_GL_INLINE`) does not. Among the gnulib sources GRUB builds
+  (regex*, dynarray*, filevercmp, base64) only base64.c uses it (first pass: grep of those files for EXTERN_INLINE);
+  ialloc.c also does but is not built. base64.c is in exactly one module, luks2 (Makefile.core.def:1314), so the
+  comment's single-module condition holds.
+- `#include <stdbool.h>` under `#ifndef ASM_FILE`: matches gnulib's c-bool.m4 shim (AH_VERBATIM zzbool, line 42; the
+  include is at line 52), which includes <stdbool.h> for non-C23 compilers. Safe for -nostdinc kernels because
+  include/grub/types.h:23 already does the same include and configure.ac:2030 puts GCC's include dir on -isystem.
+- `static_assert(...)`: same preprocessor trick as gnulib's verify.h (_GL_SA1/_GL_SA2/_GL_SA3/_GL_SA_PICK, verify.h:
+  289-293, which gnulib uses for a different compiler case). Expansion traced:
+  `static_assert (c)` -> _GL_SA_PICK (c, _GL_SA3, _GL_SA2, _GL_SA1) picks x4=_GL_SA1 ->
+  `_Static_assert ((c), "static assertion failed")`; `static_assert (c, "m")` -> picks _GL_SA2 ->
+  `_Static_assert (c, "m")`. No in-tree conflict: no other definition or use of static_assert in include/ or
+  grub-core outside gnulib/zstd/libgcrypt's configure; zstd xxhash.h:2437-2439 uses two-argument forms. A single
+  argument containing a top-level comma would split, which verify.h has too.
+- `_REGEX_AVOID_UCHAR_H 1`: regex_internal.h:123-127 includes <wchar.h>/<wctype.h> instead of <uchar.h> under this
+  macro, and the block from :144 maps __btowc/__wcrtomb/... to the plain wchar functions; regcomp.c:26 and :288 skip
+  localeinfo.h and the case-folding path. posix_wrap provides wchar.h, wctype.h, langinfo.h, locale.h.
+- CFLAGS_GNULIB `-Wno-tautological-constant-out-of-range-compare`: base64.h:56-58 `isubase64` is
+  `ch < sizeof base64_to_int && ...` with `unsigned char ch` and a 256-element table, the always-true compare the
+  message describes. GCC ignores unknown -Wno-* options. luks2 (modules) and libgrubkern (host) both use
+  $(CFLAGS_GNULIB).
+
+Commit message claims checked (AI-assisted messages): upstream commit ids and titles; the config-util.h
+`#include <assert.h>` shim and `#undef assert` (assert_h.m4); `_REGEX_AVOID_UCHAR_H`; the isubase64 compare; the
+single-argument _Static_assert clang diagnostic (assert_h.m4's configure probe turns -Wc2x-extensions into an error);
+"No utility built with posix_wrap currently calls assert()"; `libgrub_a_init.lst` unchanged (read only). The
+messages are consistent with the code.
+
+Series ordering / interactions: commits 1-4 look valid against the OLD gnulib (an earlier config.h include, the
+per-library preprocess, a narrower config-util.h include, libc assert in util builds), and commit 5, which needs all
+of them, comes last, so the intermediate states should stay buildable (not built). Interplay: commit 3 and commit 4
+both avoid the config-util.h `<assert.h>` shim reaching a context where it cannot resolve (kernel vs posix_wrap);
+commit 2 and commit 1 both address gnulib's "include config.h first" rule on the host side.
+
+
+======================================================================================================
+== Observations (not issues) ==
+======================================================================================================
+
+A. grub-core/lib/reed_solomon.c: libc <assert.h> before config.h
+Lines at pr325: 29-31 `#ifndef STANDALONE` / `#include <assert.h>` / `#endif`; 33-43 `#ifndef STANDALONE` ... `#else`
+`#include <grub/types.h>` (38), <grub/reed_solomon.h>, <grub/util/misc.h>, <grub/misc.h>; line 397
+`assert (grub_memcmp (tmp, buffer, data_size) == 0);` in grub_reed_solomon_add_redundancy() (357-402), under
+`#ifndef TEST` (396-398). Six host programs compile the file, and Makefile.am:22 gives them the gnulib flags:
+grub-bios-setup (Makefile.util.def:412, file at 419), grub-sparc64-setup (435, 441), grub-mkrescue (604, 615),
+grub-mkstandalone (648, 659), grub-install (694, 704), grub-mknetdir (733, 743). -DSTANDALONE appears only in the
+target-side rule grub-core/Makefile.am:65 and no build file I grepped defines TEST, so these six builds take the
+!STANDALONE, !TEST path with the live assert. Of the 33 hits for `#include <assert.h>` under grub-core, util, include
+and tests (outside the vendored libgcrypt, zstd, minilzo, gnulib and libtasn1 trees), this is the only host file where
+it precedes every config include: for the other 31 (osdep/*, kern/emu/hostdisk.c, util/*) a config.h or config-util.h
+include has a lower line number (compared via `rtb grep`); the remaining hit is a comment in posix_wrap/assert.h.
+Interaction with commit 4's premise: the gnulib shim appended to config-util.h (m4/assert_h.m4, AH_VERBATIM
+zzstatic_assert) has the condition `... && !defined assert && ...` before its `#include <assert.h>` / `#undef assert`.
+Here libc assert.h has already defined `assert` (line 30) when config.h arrives through <grub/types.h> (38), so the
+shim is skipped, `assert` stays defined, and line 397 is an ordinary assert. gnulib's own lib/assert.in.h (a wrapper
+generated only when static_assert does not work; GL_GENERATE_ASSERT_H in assert_h.m4) is a plain `#include_next` with
+no config.h-first check. So I expect no failure from this ordering. This file was the one non-BUILD_CC hit of the
+first include-order scan that I set aside; the ground for setting it aside is the `!defined assert` guard, not that a
+system assert.h does not need config.h. The shim text is read from gnulib's m4 (what autoheader appends to
+config-util.h.in); I did not generate config-util.h or build. A question for the author or a build check, not a
+defect claim.
+
+B. grub-core/osdep/basic/platform.c: libc headers before config.h
+Line 19 `#include <grub/util/install.h>` is the file's first include, and include/grub/util/install.h:22-23 are
+`<sys/types.h>` and `<stdio.h>`, ahead of `<grub/device.h>` (:25). Siblings: linux/platform.c:19 `<config.h>`,
+unix/platform.c:19 `<config.h>`, windows/platform.c:19 `<config-util.h>`, basic/no_platform.c:19 `<grub/types.h>`.
+Commit 1 did not touch the file (`rtb diff --ref origin/master..pr325 -- grub-core/osdep/basic/platform.c` is empty).
+Who compiles it: grub-core/osdep/platform.c (9 lines, no includes) selects `basic/platform.c` in its final `#else`,
+i.e. when none of __linux__, __MINGW32__/__CYGWIN__ is defined (line 5 repeats the MINGW/CYGWIN test of line 3, so
+only __AROS__ can reach no_platform.c); the programs listing osdep/platform.c are
+grub-mkrescue (Makefile.util.def:618), grub-mkstandalone (662), grub-install (707) and grub-mknetdir (746), all with
+the gnulib flags (Makefile.am:22).
+gnulib side (pinned commit): lib/stdio.in.h:64-66, stdlib.in.h, string.in.h, sys_types.in.h:26-28 and time.in.h each
+carry `#error "Please include config.h first."`; modules getdelim and getline (both in bootstrap.conf) depend
+unconditionally on stdio-h, which depends on sys_types-h and stdlib-h. So the `<sys/types.h>`/`<stdio.h>` wrappers are
+expected to exist and to reject this include order. That last step is inferred from module dependencies: I did not
+run gnulib-tool or build, so which wrappers are generated here is not checked, and the effect could only show on hosts
+that take the basic/platform.c branch (not Linux, not MinGW/Cygwin), which a Linux CI run does not exercise. A
+one-line `#include <config.h>` at the top, as in linux/platform.c, would match commit 1's convention; a question for
+the author or a build on such a host, not a defect claim.
+
+Also not reported:
+- fix-width.patch's argp-fmtstream.c hunk replaces
+    `else if (fs->point_col + (nl - buf) < (ssize_t) fs->rmargin)`
+  with `else { size_t display_width = mbsnwidth (buf, nl - buf, MBSW_STOP_AT_NUL); if (display_width < ...rmargin)`,
+  which appears to drop `fs->point_col +` from the comparison (the partial-line branch above it keeps it). This is
+  identical in origin/master's copy of the patch; this MR only changes its line offsets, so it is not introduced
+  here and I did not analyse it further.
+- bootstrap.conf still lists the deprecated gnulib module `stdbool` (see commit 5 notes); harmless today.
+
+AI-assistance scrutiny: the patches handle each local build-order problem correctly (mirroring config.h's own
+condition in assert.h, keeping each .pp rule on the library's real flags, refreshing the patch hunks against the new
+sources), but the deletion in commit 5 was done only along the bootstrap.conf path; the second, packaging-side list of
+the same files in conf/Makefile.extra-dist was missed, which is the kind of global-consumer gap a diff-local view
+hides. Commit 1 likewise fixed the files that failed to build for the author, while basic/platform.c, which only
+non-Linux hosts compile, has the same shape.

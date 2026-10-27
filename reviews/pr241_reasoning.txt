@@ -1,0 +1,248 @@
+pr241 reasoning -- IBM client architecture (CAS) reboot support (1 commit)
+
+Commits:
+  1. eefdc8f34 - IBM client architecture (CAS) reboot support
+
+Source files read (at pr241 unless noted): grub-core/kern/ieee1275/openfw.c (whole new code plus
+grub_ieee1275_get_boot_dev), grub-core/kern/ieee1275/ieee1275.c (finddevice, get_property, get_integer_property,
+get_property_length, set_property), include/grub/ieee1275/ieee1275.h, grub-core/normal/main.c
+(grub_normal_execute, grub_enter_normal_mode), grub-core/script/execute.c (grub_script_execute_sourcecode and its
+getline helper, grub_script_execute_new_scope), grub-core/commands/eval.c, grub-core/commands/boot.c,
+grub-core/commands/menuentry.c, grub-core/normal/menu.c (grub_menu_execute_entry), grub-core/normal/menu_entry.c
+(caller of grub_script_execute_new_scope), grub-core/kern/mm.c (grub_memalign, grub_real_malloc, grub_realloc,
+get_header_from_pointer, grub_free), include/grub/mm_private.h, include/grub/types.h, include/grub/misc.h,
+grub-core/Makefile.core.def (openfw.c build condition), configure.ac (warning flags, --disable-werror),
+grep for the other %lu uses in openfw.c, docs/BUG_PATTERNS.md (double-free-uaf-dangling,
+resource-leak-error-path, buffer-bounds, null-deref, return-value-semantics; Firmware disk map entry).
+
+Method and limits: everything was read with rtb; nothing was built, run or tested on firmware, and no PAPR /
+IEEE 1275 documents or firmware source were read. Statements about what firmware returns or stores are therefore
+marked as not checked. The commit has no Assisted-by trailer. Messages checked: the commit message says GRUB will
+"check if the flag for CAS reboot is set. If so, grub will automatically boot the last booted kernel using the same
+parameters"; the code (main.c:290-303) matches that description, apart from the failures below.
+
+Issues reported: 4 (1 buffer ownership/realloc, 2 missing NUL terminator and empty label, 3 eval overwrites the
+label, 4 `%lu` with grub_size_t).
+
+Flow as read: grub_normal_execute (main.c) reads the config, then (IEEE 1275 only) allocates a 1024-byte buffer and
+calls grub_ieee1275_cas_reboot (script). That function reads /chosen "ibm,client-architecture-support-reboot" and
+/options "ibm,fw-nbr-reboots"; if either is non-zero and /options has "boot-last-label", it reads that property into
+`script` and returns 0, after which main.c executes it with grub_script_execute_sourcecode () and, on success,
+runs `boot`. Otherwise cas_reboot clears the property by writing "" and returns -1. Every call of
+grub_script_execute_sourcecode () stores its `source` argument into "boot-last-label" first (execute.c:908-910).
+
+
+======================================================================================================
+== Issue 1: realloc through a by-value copy leaves the caller with a freed pointer (openfw.c:671, main.c:294) ==
+======================================================================================================
+
+Discovery:
+main.c:293-300 allocates `script` with grub_malloc (1024) (line 294, result not checked), calls
+grub_ieee1275_cas_reboot (script) (line 295), executes `script` (line 297) and frees it (line 300). cas_reboot
+(openfw.c:636) takes `char *script` by value and contains `if (actual > 1024) script = grub_realloc (script,
+actual + 1);` (openfw.c:671-672). The assignment targets the parameter, so I traced what grub_realloc does to the
+original block.
+
+Source trace:
+1. mm.c:468 (grub_memalign) and mm.c:717 (grub_realloc) size a request as n = ((size + GRUB_MM_ALIGN - 1) >>
+   GRUB_MM_ALIGN_LOG2) + 1 cells, header included. GRUB_MM_ALIGN_LOG2 is 4 for 32-bit pointers and 5 for 64-bit
+   pointers (mm_private.h:56-60).
+2. grub_malloc passes align 1 to grub_real_malloc; with align == 1 the allocation is carved as exactly n cells
+   (mm.c:354-357 exact match, or the `align == 1` branch at mm.c:372 that takes n cells from the end of a larger
+   free block). So the block behind `script` has n = 1024/cell + 1 cells: 33 (64-bit) or 65 (32-bit).
+3. grub_realloc (mm.c:700-742): `if (p->size >= n) return ptr;` otherwise it does q = grub_malloc (size),
+   grub_memcpy (q, ptr, (p->size - 1) << GRUB_MM_ALIGN_LOG2), grub_free (ptr), return q. For actual > 1024 the new
+   size actual + 1 >= 1026 needs n >= 34 (64-bit; 66 for 32-bit), which is more than the block has, so the
+   allocate/copy/free branch is always taken: the caller's block is freed and `script` in the caller is dangling.
+4. grub_free (mm.c, ending ~695) marks the header FREE_MAGIC and makes the freed block the first candidate for the
+   next allocation (mm.c:690-693 "Set r->first such that the just free()d block is tried first").
+5. Back in cas_reboot: grub_ieee1275_get_property (options, "boot-last-label", script, actual, &actual) fills the
+   NEW block; `return 0`. The caller's `script` was never updated.
+6. main.c:297 runs grub_script_execute_sourcecode (script) on the freed block. Its payload is whatever the
+   uninitialised grub_malloc (1024) block contained (the label went elsewhere). The first statement of that function
+   is grub_ieee1275_set_boot_last_label (source) (execute.c:909), which runs grub_strlen over that memory and writes it
+   to NVRAM. The getline helper then grub_strchr/grub_strdup's the same memory (execute.c:891-896); the strdup is
+   very likely served from the freed block itself (point 4).
+7. main.c:300 grub_free (script): get_header_from_pointer (mm.c:136-163) calls grub_fatal ("double free at %p") if the
+   header still reads FREE_MAGIC (mm.c:150-151) or ("alloc magic is broken ...") if it was merged (magic 0,
+   mm.c:152-154). If the block was reused by the strdup in point 6, the free instead releases a block someone else
+   owns. The realloc'ed block (new) is never freed: leak.
+8. The unchecked allocation: if grub_malloc (1024) returned NULL (OOM), `script == NULL` is passed down;
+   grub_ieee1275_get_property (..., buf = NULL, ...) (ieee1275.c:52-80) hands cell 0 to getprop as the destination.
+   With actual > 1024, grub_realloc (NULL, ...) is just grub_malloc (mm.c:707-708) and the result is lost the same
+   way (a leak); main.c then calls grub_script_execute_sourcecode (NULL), whose first statement is now
+   grub_ieee1275_set_boot_last_label (NULL) (execute.c:909), and openfw.c:689 evaluates grub_strlen (NULL) (the
+   dprintf arguments are evaluated whether or not debug is on), a NULL dereference. Needs an OOM at a 1 KiB request
+   at normal-mode start, so it is only noted as part of the same ownership defect.
+
+Consequence:
+For any saved label longer than 1024 bytes (the author wrote the > 1024 branch, so it is meant to be reachable; menu
+entries with long search/hint lines or long kernel command lines, or an eval'ed string, can exceed it), a CAS reboot
+does not resume the boot: GRUB executes stale heap contents, overwrites the saved label with them, and then aborts
+on the double free (or corrupts the heap if the block was reused). The same buffer-ownership defect also leaves the OOM
+path undefined.
+
+Fix assessment:
+Returning an allocated buffer through `char **script` removes the by-value problem and the fixed 1024-byte
+buffer. Allocating `len + 1` leaves room for the terminator (Issue 2); main.c's `grub_free (script)` then frees
+exactly what cas_reboot allocated, and is a no-op when it returned -1 or when the label was not read (script stays
+NULL). `actual > 0` rejects an empty property (Issue 2). Returning -1 on allocation or read failure sends the code to
+the normal menu path, which is what it does when no label exists. The prototype in ieee1275.h must change
+to `char **script`; no other caller exists (grep: main.c:295 only).
+
+
+======================================================================================================
+== Issue 2: label executed without a terminating NUL; empty label accepted (openfw.c:669-674, :692) ==
+======================================================================================================
+
+Discovery:
+After reading the property into `script` the code returns 0 immediately: no terminator, no return-value check, no
+check that `actual > 0`. The consumer takes a `const char *` and walks it as a C string, so I looked for anything that
+terminates the buffer on either side.
+
+Source trace:
+1. Writer: grub_ieee1275_set_boot_last_label (openfw.c:684-695) calls grub_ieee1275_set_property (options,
+   "boot-last-label", text, grub_strlen (text), &actual): length excludes the NUL. The result is ignored; the
+   function returns 0 unconditionally.
+2. Reader: openfw.c:673-674 `grub_ieee1275_get_property (options, "boot-last-label", script, actual, &actual);`
+   asks for `actual` bytes (the property length from getproplen, openfw.c:669). grub_ieee1275_get_property
+   (ieee1275.c:52-80) passes size as buflen and copies at most that many bytes; it never writes a terminator and
+   returns -1 only for an invalid size or a failed call, which is ignored here.
+3. Consumer: grub_script_execute_sourcecode (execute.c:903-935) loops `while (source)`; the getline helper
+   (execute.c:878-897) does grub_strchr (*source, '\n') and grub_strdup/grub_strndup on it. Without a NUL inside the
+   buffer these run on past the label: into the rest of the grub_malloc (1024) block (uninitialised) and beyond. An
+   `actual` of exactly 1024 leaves no spare byte at all; the realloc branch allocates actual + 1 bytes but never
+   writes the extra byte.
+4. Whether the firmware appends a NUL on getprop or stores one is not something GRUB's code establishes (the writer
+   stores strlen bytes) and I did not read firmware documentation. The same function does treat firmware
+   properties as possibly unterminated for the other property: openfw.c:662 `property_value[sizeof (property_value) -
+   1] = 0;`.
+5. Sibling pattern in the same file: grub_ieee1275_get_boot_dev (openfw.c:605-632) rejects `bootpath_size <= 0`
+   (line 614), allocates `size + 64 + 256` (line 621), reads size + 1 bytes and sets `bootpath[bootpath_size] = '\0'`
+   (line 629). The new code has none of these steps.
+6. Empty label: after a non-CAS start cas_reboot clears the label with set_boot_last_label ("") (openfw.c:679), i.e.
+   a zero-length value; on the next start the test at openfw.c:669 is only `! grub_ieee1275_get_property_length (...)`,
+   which succeeds for an existing property of length 0 (ieee1275.c:128-148 returns 0 and *length = 0). If the
+   firmware keeps a zero-length property, then a CAS reboot with an empty label (for example after booting from the
+   interactive prompt or from top-level config commands, neither of which goes through
+   grub_script_execute_sourcecode) reaches `return 0` with actual == 0, and main.c executes the uninitialised 1024-byte
+   buffer. Whether firmware keeps zero-length properties was not checked; the code does not guard either way.
+
+Consequence:
+The script parser reads beyond the label into uninitialised memory; stale bytes after the label can be parsed as
+further commands, or the parse/strdup runs through memory until some NUL is found. With a zero-length label the whole
+executed text is uninitialised. The outcome is garbage commands (or an error message) instead of a resumed boot.
+
+Fix assessment:
+The draft fix in the review allocates len + 1, checks the get_property return, treats `actual <= 0` as "no label" and
+terminates at buf[len]. That mirrors grub_ieee1275_get_boot_dev's pattern. It does not change behaviour for a
+well-formed label.
+
+
+======================================================================================================
+== Issue 3: eval overwrites the saved label (execute.c:908-910, eval.c:54) ==
+======================================================================================================
+
+Discovery:
+The save is placed at the top of grub_script_execute_sourcecode (execute.c:908-910) rather than in the code that runs a
+menu entry. I listed the callers of that function.
+
+Source trace:
+1. `rtb grep grub_script_execute_sourcecode --ref pr241`: callers are eval.c:54 (grub_cmd_eval), main.c:297 (the new
+   replay), and execute.c:952 inside grub_script_execute_new_scope ().
+2. grub_script_execute_new_scope () has two callers: menu.c:302 (grub_menu_execute_entry, `entry->sourcecode`) and
+   menu_entry.c:1216 (the menu editor, executing the edited script).
+3. grub_cmd_eval (eval.c:29-57) joins its arguments into `str` and calls grub_script_execute_sourcecode (str)
+   (line 54), so `eval` run inside an entry stores its own argument string as the label (execute.c:909), replacing the
+   entry body saved a moment earlier by the outer call.
+4. Trace, entry `menuentry "A" { eval "set x=1"; linux /vmlinuz; initrd /initrd }`: the entry run saves the entry body;
+   `eval` saves "set x=1"; `linux` and `initrd` load the kernel; grub_menu_execute_entry then boots implicitly
+   (menu.c:311). After the CAS reboot cas_reboot returns "set x=1", main.c:297 executes it (returns 0), boot = 1, and
+   `boot` fails because nothing is loaded (boot.c:190-197: "you need to load the kernel first"). The error is ignored
+   (main.c:306 clears grub_errno) and the menu is shown.
+5. Entries that do not use `eval` are unaffected, which is why this only shows with such entries.
+
+Consequence:
+For any entry that runs `eval` (directly or through a script it sources that calls it), the saved label is the last
+eval string, so a CAS reboot does not resume the boot of that entry; the user is left at the menu. The wrong label also
+stays in NVRAM until the next start clears it.
+
+Fix assessment:
+Saving in grub_script_execute_new_scope () records the same text for normal entries (their body is passed through
+it, execute.c:952 -> 909 today) and for edited entries, and no longer for eval. The replay in main.c calls
+grub_script_execute_sourcecode () directly, so it would not re-save the label, which already holds that text.
+`source` is non-NULL at both callers (entry->sourcecode is built by grub_xasprintf in menuentry.c:100; the editor
+passes its script buffer).
+
+
+======================================================================================================
+== Issue 4: `%lu` passed a grub_size_t (openfw.c:689) ==
+======================================================================================================
+
+Discovery:
+grub_ieee1275_set_boot_last_label () (openfw.c:684-695) contains
+    grub_dprintf("ieee1275", "set boot_last_label (size: %lu)\n", grub_strlen(text));
+grub_strlen returns grub_size_t, whose underlying type depends on the port, so I checked the typedef, the matching
+format macro and how the call is compiled.
+
+Source trace:
+1. include/grub/types.h:121, 130 (GRUB_CPU_SIZEOF_VOID_P == 8): grub_size_t is grub_uint64_t, which is `unsigned long`
+   when GRUB_CPU_SIZEOF_LONG == 8 (types.h:107-108); PRIuGRUB_SIZE is "lu" (types.h:130). `%lu` matches.
+2. types.h:139-148 (32-bit pointers): `typedef grub_uint32_t grub_size_t` (line 140), grub_uint32_t is `unsigned`
+   (line 104), and PRIuGRUB_SIZE is "u" (line 148). `%lu` expects `unsigned long`; the argument is `unsigned int`.
+3. grub_dprintf is a macro for grub_real_dprintf (misc.h:38), declared with
+   __attribute__ ((format (GNU_PRINTF, 5, 6))) (misc.h:614-618), so the compiler checks the format string against the
+   arguments (the arguments are evaluated and checked whether or not debug output is enabled).
+4. Flags: WARN_FLAGS contains -Wall (configure.ac:541) and is added to TARGET_CFLAGS (configure.ac:640);
+   EXTRA_WARN_FLAGS contains -Wformat=2 (configure.ac:542) and is added when the compiler accepts it
+   (configure.ac:653-667). -Werror is appended to TARGET_CFLAGS and HOST_CFLAGS unless --disable-werror is given
+   (configure.ac:2583-2589; the many other `-Werror` hits in configure.ac are inside feature probes).
+5. openfw.c is part of every IEEE 1275 build (Makefile.core.def:184, `ieee1275 = kern/ieee1275/openfw.c`), which
+   includes the 32-bit i386-ieee1275 and 32-bit powerpc-ieee1275 ports. The 64-bit IEEE 1275 builds are not affected.
+6. The only other `%lu` in openfw.c is line 551, which formats `unsigned long partno` (declared at line 530), so it is
+   correct; line 689 is the first mismatch. The in-tree form for a size_t is PRIuGRUB_SIZE (for example mm.c:756).
+
+Consequence:
+Expected result: with a default configure, the 32-bit IEEE 1275 builds get a -Wformat diagnostic for this call and
+-Werror turns it into a build error for the kernel image. This was not confirmed by compiling; it rests on reading
+the types and the flags above. At run time there would be no effect (both types are 32 bits wide).
+
+Fix assessment:
+"%" PRIuGRUB_SIZE expands to "u" on 32-bit and "lu" on 64-bit, matching grub_size_t on every port, and is the form
+already used in mm.c. The fix touches one line and changes nothing else.
+
+
+======================================================================================================
+== Observed, not reported ==
+======================================================================================================
+- Platform scope: openfw.c is built for every IEEE 1275 port (Makefile.core.def:184, `ieee1275 =`), and both new
+  call sites are guarded only by GRUB_MACHINE_IEEE1275 (main.c:290, execute.c:908), so sparc64 and i386 IEEE 1275
+  also run the "/options" lookup, write an NVRAM property per executed script, and clear it on each start. I did
+  not check how non-POWER firmware reacts; only POWER defines the two CAS properties.
+- set_boot_last_label ignores the set_property result and always returns 0. If the firmware refuses a write (size
+  limits are not something GRUB checks; the property is the full script body, and for a `submenu` entry the whole
+  submenu body), the previous label would stay in NVRAM. Not traced further.
+- cas_reboot runs on every grub_normal_execute () that has a config, including nested `configfile` loads, and clears
+  the label at the end when no CAS reboot is pending.
+- Replay and authentication. grub_menu_execute_entry authenticates a restricted entry before it runs the body
+  (menu.c:215-223: grub_auth_check_authentication (entry->users), and it returns on error), so a restricted
+  entry's body reaches grub_script_execute_new_scope, and therefore the saved label, only after authentication.
+  The other writer of the label, `eval`, is reached from entry bodies, the config file, the menu editor
+  (menu_entry.c:1256 requires authentication) and the command line (grub_cmdline_run, main.c:477-491, requires
+  authentication and CLI access), so those are gated as well. The replay (main.c:295-302) has no entry-level check:
+  it executes whatever text is in /options "boot-last-label" whenever one of the two CAS properties is non-zero
+  (`ibm,fw-nbr-reboots` in /options or `ibm,client-architecture-support-reboot` in /chosen), and only the
+  per-command grub_verify_string () in grub_script_execute_cmdline applies. So anyone who can write that NVRAM
+  property and make a CAS flag non-zero gets a script run at the next GRUB start without the GRUB password. That
+  needs NVRAM write access (root in the OS, or a firmware console), and such a user can already do much of this, so
+  it is not an unauthenticated-user bypass; but the label has no integrity protection. Who can write /options, and
+  whether the CAS properties can be set from outside the firmware, cannot be verified from the tree. Kept as a note.
+- ibm_fw_nbr_reboots = (grub_uint8_t) grub_strtoul (...) (openfw.c:663) truncates to 8 bits and leaves grub_errno set
+  if the property is not a decimal string (cleared later by main.c:306 `grub_errno = GRUB_ERR_NONE`). Whether the
+  property is a decimal string was not checked. Also, `property_value[10]` (openfw.c:640) is not initialised and only
+  its last byte is forced to 0 (openfw.c:662), so a property shorter than 9 bytes that carries no NUL of its own
+  (for example the single byte "1") is parsed by grub_strtoul past its end into stack contents. A NUL-terminated
+  string property is fine; whether the firmware property is NUL-terminated was not checked.
+- main.c:291-294 declares variables after statements (C99); cosmetic.
+
+AI-assistance scrutiny: not applicable (no Assisted-by trailer).

@@ -1,0 +1,137 @@
+MR !324 - diskfilter: Fix partmaps leak and harden RAID10 validation and size calculation
+2 commits (3e484e552 leak fix, 35c505ae6 RAID10 hardening), 1 file (grub-core/disk/diskfilter.c), ~45 diff lines.
+1 issue found (RAID10 far == 0 with offset flag still accepted); commit 1 clean.
+
+Phase 0: sanity-scan.sh origin/master..pr324 -> no flags in any section; messages and diff agree.
+
+Source files read (pr324):
+  grub-core/disk/diskfilter.c (is_lv_readable 47-110, find_lv/open 444-490, get_partmap 398-430, validate_* 540-630,
+  read_segment 632-765, read_lv 950-1010, vg_register 1040-1110, make_raid 1122-1320, insert_array 1321-1385,
+  free_array 1388-1450, MOD_FINI ~1590), grub-core/kern/disk.c (grub_disk_read_small_real 431-510,
+  grub_disk_read 525-640), include/grub/diskfilter.h (pv/lv/segment structs), include/grub/safemath.h (grub_mul),
+  grub-core/disk/mdraid_linux.c, grub-core/disk/mdraid1x_linux.c, grub-core/disk/dmraid_nvidia.c (make_raid
+  callers), grub-core/disk/lvm.c (segment typing ~710-880), grub-core/disk/ldm.c (free_pv, segment types),
+  grub-core/kern/emu/mm.c (util grub_free), util/grub-install.c and util/grub-probe.c (partmap callbacks),
+  docs/BUG_PATTERNS.md (resource-leak-error-path, buffer-bounds, double-free, API contracts).
+
+== Issue 1: validate_segment() accepts far == 0 for offset layouts, read_segment() then reads nothing (:594) ==
+
+Discovery:
+Checking what the rewritten RAID10 condition at line 594 still lets through, given that the commit message's stated
+symptom is "the RAID10 read path skip[s] all read attempts while still reporting success". The read loop in
+read_segment() has two nested counted loops (`i < near`, `j < far`); a zero in either skips every read.
+
+Source trace:
+1. validate_segment() 592-598 (after the patch): near = layout & 0xFF; far = (layout >> 8) & 0xFF;
+   `if (near == 0 || ((seg->layout >> 16) == 0 && far == 0)) return grub_error (...)` (594) and
+   `if (near > node_count || far > node_count) return ...` (596). For layout 0x10002: near = 2, far = 0, layout >> 16
+   = 1, so the first test is false; near = 2 and far = 0 are not above node_count, so the second is false too.
+2. grub_diskfilter_make_raid() level 10 (1147-1166): n = layout & 0xFF = 2; `if (n == 1)` not taken, so n stays 2;
+   `if (n == 0)` (1153) not taken. totsize = nmemb * disk_size / 2 (1159-1165). Only near == 1 with far == 0 gives
+   n == 0 and is rejected there.
+3. is_lv_readable() RAID10 case (89-97): n = layout & 0xFF (= 2); `need = node_count - n + 1`. For
+   node_count == near == 2 that is need = 1, satisfied by the single member whose superblock was scanned
+   (is_node_readable, 51-60: the pv has `disk` set after insert_array). grub_diskfilter_open() (464-496) goes through
+   find_lv(), which requires is_lv_readable (lv, 0) (line 457). So a one-disk crafted image can be opened as the
+   md device.
+4. Producers of layout: mdraid_linux.c:262 passes grub_md_to_cpu32 (sb->layout) and mdraid1x_linux.c:290 passes
+   grub_le_to_cpu32 (sb.layout) straight into grub_diskfilter_make_raid(); neither checks it (read the level and
+   spare checks around them: only level, disk number and size are validated). dmraid_nvidia.c builds levels 0/1/5
+   only, lvm.c types are STRIPED/MIRROR/RAID4/5/6 and ldm.c STRIPED/MIRROR/RAID5 (grep of seg->type assignments), so
+   md superblocks are the only RAID10 source. The field is an on-disk 32-bit value, so a crafted superblock supplies
+   0x10002 (level 10, raid_disks 2).
+5. read_segment() RAID10 block (665-760), segment read via read_lv() (950-1010): `far = ofs = near = 1; far_ofs = 0;`
+   (672-673); for type 10: near = layout & 0xFF = 2, far = (layout >> 8) & 0xFF = 0 (679-680); `if (seg->layout >> 16)`
+   (681) is true, so `ofs = far` (= 0) and `far_ofs = 1` (683-684); far_ofs *= stripe_size (690). Then
+   `read_sector = grub_divmod64 (read_sector * near, node_count, &disknr)`, `ofs *= stripe_size` (= 0, line 697),
+   `read_sector *= ofs` (= 0, line 698).
+6. Loop (while (1), lines ~700-760): read_size = stripe_size - b, capped to size. `err = 0;` before the `i` loop.
+   Line 709 `for (i = 0; i < near; i++)`: first pass sets `k = disknr; err = 0;`, line 715
+   `for (j = 0; j < far; j++)` runs zero times, so grub_diskfilter_read_node is never called and err stays 0; line
+   736 `if (! err) break;` leaves the i loop. Line 747 `if (err)` is false; line 750
+   `buf += read_size << GRUB_DISK_SECTOR_BITS`, 751 `size -= read_size`, 752-753 `if (! size) return GRUB_ERR_NONE;`,
+   else lines 755-760 `b = 0; disknr += (near - i); while (disknr >= node_count) { disknr -= node_count;
+   read_sector += ofs; }`. read_size >= 1 on every pass because b < stripe_size (b is the remainder of a division by
+   stripe_size on the first pass and 0 afterwards) and stripe_size != 0 (validate_segment lines 584-585), so size
+   strictly decreases and the loop terminates. No write to buf, no out-of-bounds access, no hang.
+7. Who reads: grub_disk_read_small_real() (kern/disk.c:431): tmp_buf = grub_malloc (GRUB_DISK_SECTOR_SIZE <<
+   GRUB_DISK_CACHE_BITS) (448, not zeroed), `err = (disk->dev->disk_read) (...)` (458), `if (!err)` copies
+   `tmp_buf + offset` to the caller (465) and stores tmp_buf into the disk cache (466). The driver returned success
+   without writing, so the heap residue is returned and cached as sector data. grub_disk_read() large-read path
+   (606-615): the driver is called with the caller's buf directly, and whatever buf held is cached afterwards.
+   (Read from source only; nothing was run.)
+8. The tree treats far == 0 as invalid everywhere else: make_raid rejects near == 1 && far == 0 (1150-1157);
+   validate_segment rejects far == 0 when `layout >> 16 == 0`; the non-offset branch of read_segment divides by
+   far * stripe_size (687-688), which is what the `(layout >> 16) == 0` qualification protects. The offset branch has
+   no such divide, so the exemption went unnoticed. The commit message says it preserves "the existing validation for
+   non-offset layouts with far == 0"; offset layouts are not mentioned.
+
+Consequence:
+For a crafted (or corrupted) md superblock with level 10, near >= 2 (or node_count == near with other members
+present), far == 0 and any bit at or above bit 16 set, GRUB opens the md device and every RAID10 read returns success
+without fetching any data: callers see uninitialised heap residue (small reads) or whatever their buffer held (large
+reads), and the same bytes are put in the disk cache. It is an uninitialised-read / silent-wrong-data problem; there is
+no out-of-bounds access and no hang (step 6). It only needs a malformed on-disk field, not a legitimate array.
+
+Fix assessment:
+`if (near == 0 || far == 0)` rejects the whole class in one test. For non-offset layouts it is identical to the old
+condition (`(layout >> 16) == 0 && far == 0` is subsumed). For offset layouts it newly rejects far == 0, which the
+read loop cannot service anyway. It does not affect the `far > node_count` or `near > node_count` test. Whether Linux
+md can ever write far == 0 together with the offset flag cannot be checked from this tree (the Linux md sources were not
+read); if it can, such an array is already unreadable here (step 6), so rejecting it only changes the failure mode from
+silent wrong data to an error.
+
+Verification trail for the rest of the MR
+-----------------------------------------
+Commit 1: 3e484e552 - free the partmaps strings (GRUB_UTIL only): no issues found
+- Producer: insert_array() (1361-1373) allocates `xcalloc (s, ...)` with s = (partition chain length + 1), fills
+  entries with xstrdup (p->partmap->name), then writes the 0 terminator at index s-1 (line 1371). So the array is
+  always NULL-terminated and the new loop `for (pm = pv->partmaps; *pm; pm++) grub_free (*pm);` (1411) stops at it.
+- Never-set case: every pv comes from grub_zalloc (diskfilter.c:1279, ldm.c:269, lvm.c:476), so partmaps is NULL for a
+  pv that never went through insert_array (e.g. pv->disk == NULL); the new `if (pv->partmaps)` guard (1408) covers it.
+  The pre-patch code did grub_free (pv->partmaps) unguarded, which was also safe for NULL.
+- Consumers: grub_diskfilter_get_partmap() (400-425) calls cb (pv->partmaps[s], data) for pvs with pv->disk set. Both
+  callbacks only read the string: push_partmap_module() (grub-install.c:399) snprintf's it into a stack buffer,
+  do_print() (grub-probe.c:150) printf's it. Nothing keeps the pointer, so freeing in free_array() cannot dangle.
+- Allocator pairing: in GRUB_UTIL builds grub_free is free() (kern/emu/mm.c:60-65) and xstrdup/xcalloc are
+  malloc-family, so grub_free on those strings is the same pairing the pre-patch grub_free (pv->partmaps) already used.
+- free_array() is called only from GRUB_MOD_FINI (1594); arrays that fail validation never enter array_list, so
+  the new code is not on the make_raid() `fail:` path (pvs there never had partmaps set).
+- Observation (pre-existing, not covered): when insert_array() runs again for a pv that already has pv->disk and the
+  new disk is smaller than pv->part_size (the `>=` early return at 1350 not taken), it overwrites pv->disk and
+  pv->partmaps (1367) without releasing the old values. The commit message says "tearing down or re-scanning"; only
+  the teardown half is fixed. Same shape as the existing pv->disk overwrite, so not attributed to this MR.
+
+Commit 2: 35c505ae6 - RAID10 validation and size (other than Issue 1)
+- Who can reach validate_segment(): only via validate_lv() from grub_diskfilter_vg_register() (1070); RAID10
+  segments come only from grub_diskfilter_make_raid() (see Issue 1 step 4).
+- make_raid() level 10 (1147-1166): n = layout & 0xFF; if (n == 1) n = (layout >> 8) & 0xFF; if (n == 0) free uuid,
+  return NULL. So near == 0 (n = 0) and near == 1 with far == 0 never reach validate_segment(): the new `near == 0`
+  clause is a runtime no-op for current callers (defence in depth). The only newly reachable rejection is
+  `far > node_count`. near > node_count already existed.
+- Legit layouts still accepted (traced): near/far/offset as n2 = 0x0102, n3 = 0x0103, f2 = 0x0201, o2 = 0x10201 on
+  4 disks, f3 on 3 disks: all have near >= 1, 1 <= far <= node_count. Types are uint8_t promoted to int and compared
+  with the unsigned node_count; both non-negative, no signedness surprise. (I did not read the Linux md sources for
+  its own limits; this is only checked against GRUB's use of the fields.)
+- Failure path: a rejected array returns an error from grub_diskfilter_vg_register() and make_raid() runs its
+  existing `fail:` cleanup (1295-1318), already used by the near > node_count case; it frees lvs, segments, nodes,
+  pvs, name and uuid, and `uuid` is not freed twice (the caller-owned uuid is released only there).
+- Size calculation (1159-1165): `grub_mul ((grub_uint64_t) nmemb, disk_size, &totsize)` then
+  grub_divmod64 (totsize, n, 0). nmemb is already checked to 1..GRUB_MDRAID_MAX_DISKS (4096) at 1135, so the cast is
+  of a positive int; n >= 1 here (n == 0 returned earlier); totsize is grub_uint64_t, matching grub_mul's builtin
+  (__builtin_mul_overflow) contract. On overflow the code does grub_free (uuid); return NULL, the same ownership
+  convention as the other early returns in this switch (the RAID0/4/5/6 branch does the same at 1173-1178).
+  Previously `nmemb * disk_size` could wrap silently.
+
+Combination of the two commits
+Disjoint hunks (free_array vs validate_segment/make_raid). The only shared object is `array_list`: arrays rejected by
+the new checks are freed by make_raid()'s own `fail:` path and never enter array_list, so free_array() and its new
+partmaps loop never see them. No interaction found.
+
+Commit messages
+Both describe the code accurately in what they change. Commit 2's claim that near == 0 can make the read path skip all
+reads is true of read_segment() (the `for (i < near)` loop does not run) but is already blocked earlier for md-created
+arrays (see above); the same symptom remains reachable through far == 0 with the offset flag (Issue 1).
+
+Not done
+Did not build or run anything; no md/LVM test images were used.

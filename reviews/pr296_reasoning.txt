@@ -1,0 +1,142 @@
+MR !296 (pr296) - osdep/linux: Fix incorrect path prefix in grub2-mkrelpath for btrfs subvolumes - 1 commit
+(aa28707dc, one-line change in grub-core/osdep/linux/getroot.c). 2 issues.
+
+Source files read (all at ref pr296 unless noted, via rtb):
+  grub-core/osdep/linux/getroot.c (lines 20-376, 380-582, 1172-1189)
+  grub-core/osdep/getroot.c, grub-core/osdep/unix/getroot.c, grub-core/osdep/unix/relpath.c
+  util/grub-mkrelpath.c, util/grub-mkconfig_lib.in, util/grub.d/10_linux.in, util/grub.d/20_linux_xen.in
+  util/grub-install.c (around 1370)
+  grub-core/fs/btrfs.c (get_root, find_path, default-subvolume code), include/grub/btrfs.h
+  configure.ac (warning flags, --disable-werror), .gitlab-ci/script/build.sh
+  history: commits 82591fa6e, e74c31125 (messages only); origin/master getroot.c for call-site count
+
+Diff recap: in grub_find_root_devices_from_mountinfo(), btrfs branch
+  -  fs_prefix = get_btrfs_fs_prefix (entries[i].enc_path);
+  +  fs_prefix = xstrdup ("/");
+
+== Issue 1: grub-mkrelpath drops the btrfs subvolume prefix (getroot.c) ==
+
+Discovery:
+The change is one line, but the value it replaces is what grub-mkrelpath prints for btrfs. The commit message
+frames it as "mountinfo already provides the mount root context" and "aligning btrfs behavior with ext4 and
+xfs". Checked both claims and who consumes the value.
+
+Source trace:
+1. getroot.c lines 548-549: when a branch leaves fs_prefix NULL, the code falls back to
+   `fs_prefix = entries[i].enc_root` (mountinfo's root field). That is the ext4/xfs behavior. The patched
+   btrfs branch does not fall back to enc_root; it forces the constant "/". So the alignment claim does not
+   match the code: btrfs now ignores enc_root, ext4/xfs use it. Step 3 shows the stronger form of this point:
+   enc_root also carries the path of a bind-mounted subdirectory, and the patched branch drops that too.
+2. Value assembly, lines 550-566 (relroot): ptr = stpcpy (relroot, fs_prefix); if dir is longer than
+   enc_path, trailing '/' of the prefix are trimmed, a '/' is added if needed, and dir + enc_path_len is
+   appended. Worked example, / mounted from subvolume @, dir = "/boot/grub2", enc_path = "/":
+     old: fs_prefix = get_btrfs_fs_prefix ("/") = "/@"  -> relroot "/@/boot/grub2"
+     new: fs_prefix = "/"                                -> prefix trimmed to "", then "/" + "boot/grub2"
+          -> relroot "/boot/grub2"
+   dir = "/" (dir_strlen 1 is not > enc_path_len 1): old relroot "/@", new relroot "/".
+3. get_btrfs_fs_prefix() (lines 265-376): it opens the mount path, INO_LOOKUP gives the tree id and fstat
+   gives the inode of the mounted directory. The loop runs while `tree_id != 5 || inode_id != 256`
+   (GRUB_BTRFS_ROOT_VOL_OBJECTID / GRUB_BTRFS_TREE_ROOT_OBJECTID, include/grub/btrfs.h): an INODE_REF search
+   walks from the directory's inode up to the root directory (inode 256) of its tree, and a ROOT_BACKREF
+   search walks from a subvolume up to tree 5, prepending one name per step. The result is the path of the
+   MOUNTED DIRECTORY within the top-level tree. The loop does not run, and `if (!ret) ret = xstrdup ("/")`
+   (line ~366) returns "/", only when the mount is the root directory of the top-level subvolume itself
+   (tree 5, inode 256). So the patch changes the output in two cases, not one:
+   - the mounted subvolume is not the top level (a subvolume path such as "/@"), and
+   - the mount is a bind mount of a subdirectory, even on the top-level subvolume: for
+     `mount --bind /top/dir /mnt`, the INODE_REF walk returns "/dir" (relroot "/dir/file" for /mnt/file), and
+     the patched code gives "/file". ext4/xfs use enc_root, which for such a mount is "/dir", and keep
+     "/dir/file". This is the stronger form of step 1: the patched btrfs branch ignores enc_root entirely,
+     so it diverges from ext4/xfs even where the old btrfs output already matched them. (Source reading
+     only; not run.)
+   In both cases the dropped prefix is information the old output carried.
+4. grub_make_system_path_relative_to_its_root_os() (lines 1172-1189) returns `bind` (relroot) after trimming
+   trailing '/'; for "/" this yields the empty string (non-NULL), which
+   grub_make_system_path_relative_to_its_root() (osdep/unix/relpath.c lines 49-55) returns unchanged.
+   grub-mkrelpath (util/grub-mkrelpath.c:100) prints it.
+5. Consumers of that output in the tree:
+   a. util/grub.d/10_linux.in lines 69-75 and 20_linux_xen.in lines 77-82:
+        xbtrfs) rootsubvol="`make_system_path_relative_to_its_root /`"
+                rootsubvol="${rootsubvol#/}"
+                if [ "x${rootsubvol}" != x ]; then GRUB_CMDLINE_LINUX="rootflags=subvol=${rootsubvol} ..."
+      Added by commit e74c31125 ("Add rootflags=subvol=<name> if / is on a btrfs subvolume"). After the patch
+      `grub-mkrelpath /` is "" for btrfs in every layout, so rootsubvol is empty and the option is never
+      emitted. Before: "/@" -> rootsubvol "@" -> "rootflags=subvol=@".
+   b. GRUB runtime path resolution on btrfs: grub-core/fs/btrfs.c find_path() (line 1934) calls get_root()
+      first (line 1952, and again at 2146 for absolute symlinks). get_root() (lines 1803-1830) looks up the
+      ROOT_ITEM for key object_id GRUB_BTRFS_ROOT_VOL_OBJECTID (= 5) and starts at that tree. The default
+      subvolume is read only in grub_btrfs_get_default_subvolume_id() (line 2947), whose only caller chain
+      is grub_btrfs_get_default_subvol() (3017) <- the btrfs-get-default-subvol command (3105); it does not
+      influence find_path(). Commit 82591fa6e ("Make / in btrfs refer to real root, not the default
+      volume") is consistent with this. So in this tree "/" in a btrfs GRUB path means the top level, and
+      subvolumes appear as directories under it.
+   c. Other users of grub-mkrelpath output as a GRUB path: 10_linux.in line 225 (rel_dirname for
+      linux/initrd), 00_header.in (font, theme, background), grub-install.c:1370 (relative_grubdir ->
+      prefix embedded in core.img), blocklist.c. All treat the string as a path inside GRUB's root
+      (the top level on btrfs).
+
+Consequence:
+For / on subvolume @ (or a separate /boot subvolume under the top level -- the layout the commit message
+implies): grub-mkconfig emits `linux /boot/vmlinuz-...` instead of `linux /@/boot/vmlinuz-...`, and
+`rootflags=subvol=@` is dropped; grub-install computes its prefix without the subvolume. GRUB resolves
+those paths from the top level and does not find them where the files actually are. The commit message says
+only that /boot is a btrfs subvolume; that it sits directly under the top level is implied by the old output
+it quotes (`/boot/vmlinuz-...`, i.e. subvolume path "/boot"). For that layout the old output is the path this
+tree's GRUB opens, and the new output `/vmlinuz-...` is looked up at the top level.
+The change is only right for a GRUB whose btrfs root is the mounted subvolume (downstream patches or a
+set-default-subvolume convention the btrfs driver here does not read); that is not what this tree does.
+Not built or run; the above is from reading the source and the two historical commit messages.
+
+Counter-point (grub-emu / BLS only, not reported): grub-core/commands/blsuki.c:137-140 (GRUB_MACHINE_EMU
+build, GRUB_BOOT_DEVICE = "/boot" per lines 41-43) treats an empty grub_make_system_path_relative_to_its_root
+("/boot") as "separate boot filesystem" and then prepends "/boot" to BLS paths (line 147). For a btrfs /boot
+subvolume the old output was "/boot" (not empty, so not separate) and the patched output is empty (separate),
+so the patch flips that decision, and the resulting "/boot/vmlinuz-..." is the path a top-level-rooted GRUB
+opens. That supports the author's intent for grub-emu/BLS. It does not touch the non-emu consumers named in
+steps 5a-5c, which are what Issue 1 is about.
+
+Fix assessment:
+No draft diff. The author's goal (a path relative to the mounted subvolume for grubby/kdumpctl) conflicts with
+the contract the in-tree callers have. Making it opt-in, changing the external consumers, or changing the
+btrfs driver and the 10_linux/20_linux_xen logic together are all design choices for the author.
+A plain "restore the old behavior" is the only change that is unambiguously safe.
+
+== Issue 2: get_btrfs_fs_prefix() is now an unused static function (getroot.c) ==
+
+Discovery:
+After the one-line replacement nothing obviously calls get_btrfs_fs_prefix() any more.
+
+Source trace:
+1. rtb grep for get_btrfs_fs_prefix at origin/master: two hits -- the definition (line 266) and the call
+   (line 523). At pr296: one hit, the definition (line 266). No other file references it (the grep covers
+   the whole tree and the function is `static`).
+2. The definition (lines 265-376) is at file scope, not inside `#ifdef GRUB_UTIL` (that block runs from line
+   134 to its `#endif` at line 195; the last `}` inside it is line 194) or any other conditional.
+3. Build: grub-core/osdep/getroot.c is `#ifdef __linux__ #include "linux/getroot.c"`; it is listed as a
+   `common` source of libgrubkern.a in Makefile.util.def (line 15), and that library has
+   `cflags = '$(CFLAGS_GNULIB)'` (Makefile.util.def:3-5). gentpl.py:798 builds its flags as
+   `$(AM_CFLAGS) $(CFLAGS_LIBRARY) $(CFLAGS_GNULIB)`, with AM_CFLAGS = $(HOST_CFLAGS) (Makefile.am:13).
+   configure.ac:541-544 puts WARN_FLAGS (-Wall ... -Wunused -Wunused-function) into HOST_CFLAGS;
+   configure.ac:2583-2588 appends -Werror to HOST_CFLAGS unless --disable-werror.
+   CFLAGS_GNULIB (conf/Makefile.common:80) contains -Wno-unused, so for this file `-Wno-unused` does come AFTER
+   the warning flags on the command line. That does not rescue the file on GCC: WARN_FLAGS carries an EXPLICIT
+   `-Wunused-function`, and a later `-Wno-unused` (the group option) does not override an explicitly given
+   -Wunused-function. The adversarial reviewer checked this with a synthetic GCC test, not a build of GRUB:
+   an unused static function under the full flag set fails with `error: ... defined but not used
+   [-Werror=unused-function]`; referencing the function makes it compile; with only `-Wall -Wno-unused` and no
+   explicit `-Wunused-function` the warning is suppressed. I did not check clang (a later `-Wno-unused` would
+   likely suppress the warning there, so the error would be GCC-specific). No -Wno-unused-function or
+   -Wno-error=unused-function override turned up in configure.ac, Makefile.util.def or conf/Makefile.common.
+4. .gitlab-ci/script/build.sh lines 18-20 call ./configure without --disable-werror.
+
+Consequence:
+GCC reports `'get_btrfs_fs_prefix' defined but not used` for an unreferenced non-inline static function;
+with -Werror this fails the Linux host-tools build (grub-mkrelpath, grub-install, ...). Not compiled here --
+this follows from the flags above and the synthetic GCC test in step 3; clang was not checked. Downstream
+builds that pass --disable-werror would only see a warning, which is likely why the author did not notice.
+
+Fix assessment:
+If the approach in Issue 1 changes so the function is still used (old default or opt-in), the warning
+disappears with no further edit. If the unconditional "/" is kept, deleting the function is the matching
+cleanup; the leftover btrfs ioctl struct/macro definitions and the `<grub/btrfs.h>` include do not trigger
+-Wunused-function, so they could stay or be trimmed in the same commit.

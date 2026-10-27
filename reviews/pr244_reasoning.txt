@@ -1,0 +1,106 @@
+MR !244 - Make bash completion script location configurable
+1 commit (4b34be8ec), 2 files (configure.ac, util/bash-completion.d/Makefile.am), 1 issue found.
+
+Phase 0: sanity-scan.sh origin/master..pr244 -> only the "build/CI files changed" section listed configure.ac and
+util/bash-completion.d/Makefile.am, which is what the commit is about; no other flags. Message and diff agree.
+
+Source files read (pr244):
+  configure.ac (84-96 early pkg-config check; 300-372 around the new block; 570-580 incl. m4_pattern_forbid at 574;
+  2700-2740 datarootdir expansion; grep of PKG_PROG_PKG_CONFIG / PKG_CHECK_MODULES on pr244 and origin/master),
+  util/bash-completion.d/Makefile.am (whole), util/bash-completion.d/grub-install.bash.in (whole),
+  util/bash-completion.d/grub-completion.bash.in (1-40), grep of every util/bash-completion.d/*.bash.in for
+  "datarootdir", tree-wide grep for "bashcompletion" / "bash-completion", docs/BUG_PATTERNS.md (docs-ci-build).
+
+== Issue 1: stubs source the shared script from @datarootdir@, files now install to completionsdir ==
+
+Discovery:
+Checking what else in the tree depends on the directory that Makefile.am used to define itself
+(bashcompletiondir = $(datarootdir)/bash-completion/completions, removed by this commit). A tree-wide grep for
+"bash-completion" shows 13 stubs under util/bash-completion.d/ that hard-code that same path.
+
+Source trace:
+1. configure.ac:350-356 (new): PKG_PROG_PKG_CONFIG; if `pkg-config --exists bash-completion` then
+   bashcompletiondir=$(pkg-config --variable=completionsdir bash-completion), else
+   bashcompletiondir=${datadir}/bash-completion/completions; then AC_SUBST(bashcompletiondir).
+2. util/bash-completion.d/Makefile.am:61: `bashcompletion_DATA = $(bash_completion_script) $(grub_*_script) ...`, so
+   the shared script (`grub`, generated from grub-completion.bash.in) and all 13 per-tool stubs install into
+   $(bashcompletiondir). The commit removed the old definition at what was line 61, leaving the AC_SUBST'ed value.
+3. Each stub (grub-bios-setup, grub-editenv, grub-install, grub-mkconfig, grub-mkfont, grub-mkimage,
+   grub-mkpasswd-pbkdf2, grub-mkrescue, grub-probe, grub-reboot, grub-script-check, grub-set-default,
+   grub-sparc64-setup .bash.in) has, at line 20, exactly:
+     . @datarootdir@/bash-completion/completions/grub && __grub_<tool>
+   (read in full for grub-install.bash.in; the other 12 match by grep). The grub-completion.bash.in script itself has
+   no such path. The commit does not touch any of them.
+4. configure.ac:2719-2721: `test "x$prefix" = xNONE && prefix="$ac_default_prefix"` then
+   `datarootdir="$(eval echo "$datarootdir")"`, i.e. before AC_OUTPUT datarootdir is made absolute (e.g.
+   /usr/local/share), and config.status writes that into the stubs through the Makefile.am rules
+   `$(top_builddir)/config.status --file=$@:$<`. The same block also eval-echoes `datadir` (line 2724), which shows
+   `datadir` is still the literal `${datarootdir}` string until then.
+5. Therefore, with bash-completion.pc present, stubs and files agree only when completionsdir equals
+   <datarootdir>/bash-completion/completions. Pre-patch they were identical by construction (same expression).
+   Default `./configure` gives prefix /usr/local -> datarootdir /usr/local/share, whereas a distro bash-completion
+   package reports its own prefix (typically /usr/share/bash-completion/completions; the .pc file itself was not
+   read, so this is an assumption about the common value). With `--prefix=/usr` the two coincide.
+6. Fallback branch (no bash-completion.pc), host-independent trigger: the value is the shell expansion of
+   `${datadir}/bash-completion/completions` at line 354, while the stubs use `@datarootdir@`. `datadir` and
+   `datarootdir` are different variables (the old Makefile.am line used `$(datarootdir)`; the fallback now uses
+   `datadir`), so with a plain `./configure --datadir=/opt/share` the files go to
+   /opt/share/bash-completion/completions while the stubs source /usr/local/share/bash-completion/completions/grub
+   (datarootdir keeps its `${prefix}/share` default and is expanded at line 2721). No bash-completion installation
+   is involved. Without --datadir the unexpanded default is the literal text `${datarootdir}/bash-completion/
+   completions` (datadir is `${datarootdir}` at that point, per step 4). Make expands that fine for installation,
+   but substituting it with config.status into a stub would leave a literal `${datarootdir}` in a bash script,
+   which bash would expand to empty at run time. That is why the fix must also eval-expand bashcompletiondir next
+   to datarootdir (configure.ac:2721). I did not run configure; this rests on reading configure.ac and standard
+   autoconf default values.
+
+Consequence:
+Two triggers, both read from source (configure was not run, no bash-completion.pc was inspected):
+(a) without bash-completion.pc, any --datadir that differs from the datarootdir default (e.g. --datadir=/opt/share)
+installs the files under datadir while the stubs look under datarootdir;
+(b) with bash-completion.pc, whenever its completionsdir differs from $(datarootdir)/bash-completion/completions
+(default prefix /usr/local is enough if completionsdir is a /usr/share path), `make install` would write grub,
+grub-install, grub-mkconfig, ... into that completionsdir, while each installed stub runs
+`. <datarootdir>/bash-completion/completions/grub`, a file that was never installed there.
+In both cases the `.` fails to source the file (the shell reports the missing file) and the `&&` skips
+`__grub_<tool>`, so no completions are offered for any of the 13 tools (not run; read from the stub source).
+Before the patch (same expression on both sides) the two always agreed. Distro builds with --prefix=/usr and the
+default layout match, so the regression is invisible there.
+
+Fix assessment:
+Making the stubs use @bashcompletiondir@ ties the sourced path to the very variable that decides where
+bashcompletion_DATA is installed, so the two cannot diverge for either branch (pkg-config or fallback). config.status
+substitutes every AC_SUBST'ed name in --file inputs, and bashcompletiondir is AC_SUBST'ed (configure.ac:356), so no
+Makefile.am change is needed. The extra `bashcompletiondir="$(eval echo "$bashcompletiondir")"` after the datarootdir
+line makes the fallback value absolute (it is a no-op for the absolute pkg-config value); it must come after
+datarootdir is expanded (line 2721) because the fallback refers to it. The AC_SUBST at line 356 is processed at
+AC_OUTPUT, so reassigning before then takes effect. Makefile use of the now-absolute value is fine for install; like
+the already-absolute datarootdir used by the stubs, it will not follow a `make install prefix=...` override.
+
+Checked and not reported
+------------------------
+- `AS_IF([$($PKG_CONFIG --exists bash-completion)], ...)`: the test is a command substitution whose output is empty,
+  so the shell uses its exit status (POSIX behaviour for a command consisting only of an empty substitution); it
+  works as a test in that form. If pkg-config is missing (PKG_CONFIG empty) the shell would try to run
+  `--exists` and print "command not found", and the else branch is taken: noise only. Not run; read only.
+- `m4_pattern_forbid([^_?PKG_[A-Z_]+$], ...)` (configure.ac:574) makes autoconf fail loudly when pkg.m4 is missing
+  instead of leaving an unexpanded PKG_* macro in configure. It does not add a new requirement: origin/master already
+  needs pkg.m4 (PKG_PROG_PKG_CONFIG at configure.ac:90, "Explicitly check for pkg-config early on", plus
+  PKG_CHECK_MODULES for sdl2, freetype2 and fuse at 2129-2411 on master); it only turns a missing pkg.m4 into a
+  clearer error message.
+- Hygiene nit: PKG_PROG_PKG_CONFIG now appears twice (configure.ac:90 and again at 350); the second is redundant.
+- Fragility nit: `AS_IF([$($PKG_CONFIG --exists bash-completion)], ...)` has no test command of its own; it relies on
+  the shell giving a command that is only an empty command substitution the exit status of that substitution (POSIX
+  rule, as above). PKG_CHECK_EXISTS is the idiom for this and avoids the quirk (and the noise when PKG_CONFIG is empty).
+- Design observation, author's call (no fix drafted): with bash-completion.pc present the install directory no
+  longer follows --prefix/--datarootdir, so a non-root `./configure --prefix=$HOME/x && make install` would try to
+  write to the system completionsdir (this depends on the `completionsdir` value in the .pc, which I did not
+  inspect, so it is not a separate issue), and there is no `--with-...` option to override it (only a make-time
+  `bashcompletiondir=` override). The commit message has no body, so intent is not stated; the title ("configurable")
+  is the only description.
+- Automake: bashcompletiondir is now defined only via AC_SUBST; automake emits it into Makefile.in for every
+  Makefile, so bashcompletion_DATA still resolves its directory prefix (not built or run).
+
+Not done
+--------
+Did not run autoreconf/configure/make; no bash-completion.pc was inspected.

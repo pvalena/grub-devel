@@ -1,0 +1,296 @@
+Reasoning: MR !235 - Add libFuzzer fuzzing infrastructure and an ext2 fuzz target (6 commits)
+
+Commits (oldest first; `rtb log --ref origin/master..pr235 --head 1000` lists 6):
+1. c41b89949 build: Add fuzzing / sanitizer build options        (configure.ac, INSTALL)
+2. 5afa7bac1 fuzz: Add the libFuzzer fuzzing platform            (fuzz/grub_fuzzing_platform.{c,h}, .gitignore)
+3. 08279295f fuzz: Add an ext2 filesystem fuzz target            (Makefile.am, Makefile.fuzz.am, fuzz/*)
+4. e0ebb339d docs: Document the fuzzing test suite               (docs/grub-dev.texi)
+5. eb9881694 fuzz: Add an opt-in seed corpus fetch               (Makefile.fuzz.am, docs/grub-dev.texi)
+6. 9b2d4b30d fuzz: Add optional LLVM source-based coverage       (Makefile.fuzz.am, INSTALL, docs/grub-dev.texi)
+
+Phase 0: sanity-scan.sh on origin/master..pr235 returned one hit (the word "override" in the commit 5 message,
+about FUZZ_CORPUS_REPO / FUZZ_CORPUS_BRANCH) and the expected build-file list (Makefile.am, Makefile.fuzz.am,
+configure.ac). Messages and diff were then read through rtb; no injection, intent matches content. Verdict PASS.
+
+Files read (all at pr235 through rtb unless noted):
+- configure.ac (lines 100-135, 505-566, 2240-2320, 2540-2735, AM_CONDITIONAL block)
+- Makefile.am (whole top 110 lines; include order), Makefile.fuzz.am (final), conf/Makefile.common
+- Makefile.util.def (libgrubkern.a, libgrubmods.a, grub-fstest, grub-mkimage programs), gentpl.py (CFLAGS vars)
+- fuzz/grub_fuzzing_platform.c / .h, fuzz/fuzz_fs_ext2.c, fuzz/dict/ext2.dict
+- grub-core/kern/disk.c, grub-core/kern/disk_common.c, grub-core/disk/host.c, grub-core/kern/env.c,
+  grub-core/kern/misc.c, grub-core/kern/emu/mm.c, grub-core/fs/ext2.c, geninit.sh, util/grub-fstest.c
+- include/grub/{disk.h,device.h,fs.h,list.h,dl.h,env_private.h,crypto.h,emu/misc.h}, util/misc.c (grep)
+- docs/grub-dev.texi (new chapter), INSTALL, .gitignore, docs/BUG_PATTERNS.md (docs-ci-build,
+  resource-leak-error-path, return-value-semantics classes)
+- per-commit diffs for commits 3, 5 and 6 (to see how Makefile.fuzz.am evolved)
+
+
+== Issue 1: zero-fill past the end of the input is unreachable (fuzz/grub_fuzzing_platform.c) ==
+
+Discovery:
+Reading fuzz_disk_read_cb() (lines 141-166) the two branches that zero-fill, `byte_offset >= data_len` (line
+149) and `avail < bytes` (line 159), looked like they depend on GRUB ever asking the device for bytes beyond
+the image. The claim is made in three places, each worded differently: the commit 5afa7bac1 message
+("zero-fills reads past the end of the input, which lets a parser be driven from an arbitrarily short
+input"); the code comment at lines 137-139 ("Any region past the end of the image is zero-filled, which is
+safe: filesystem probers will see an invalid superblock and return GRUB_ERR_BAD_FS"); and docs/grub-dev.texi
+:736-738, added by commit e0ebb339d (fuzz_disk_set_image: "Reads past the end of the input are zero-filled,
+so a parser can be driven from a short input"). fuzz_disk_open() at line 120 sets
+`disk->total_sectors = fuzz_disk_logical_size () >> GRUB_DISK_SECTOR_BITS`, and fuzz_disk_logical_size()
+(lines 94-98) returns fuzz_image_size unchanged. That made me check whether GRUB's disk layer lets a request
+beyond total_sectors reach the callback at all.
+
+Source trace:
+1. grub_disk_open() (grub-core/kern/disk.c:298-399) calls each registered device's disk_open until one
+   succeeds and does not alter disk->total_sectors afterwards; the only post-open check that matters here is
+   the log_sector_size range (disk.c:350-357). fuzz_disk_dev is registered last by fuzz_grub_init(), but
+   grub_disk_dev_register() puts it at the head of grub_disk_dev_list (disk.c:260-264), and fuzz_disk_open()
+   returns UNKNOWN_DEVICE for any other name, so "fuzzdev" is served by the fuzz callbacks with the
+   total_sectors above.
+2. Every filesystem read goes through grub_disk_read(): grub_ext2_mount() reads the superblock with
+   `grub_disk_read (disk, 1 * 2, 0, sizeof (struct grub_ext2_sblock), ...)` (ext2.c:690), and the group
+   descriptor, inode and block reads are grub_disk_read() calls too (ext2.c:421, 472, 606, 671).
+3. grub_disk_read() (disk.c:527-) begins with `grub_disk_adjust_range (disk, &sector, &offset, size)` and
+   returns the error if it fails (disk.c:533-540).
+4. grub_disk_adjust_range() (grub-core/kern/disk_common.c:6-51): line 33
+   `total_sectors = disk->total_sectors << (disk->log_sector_size - GRUB_DISK_SECTOR_BITS)`; lines 41-42 clamp
+   to GRUB_DISK_MAX_SECTORS (1 << 51, include/grub/disk.h:171); lines 44-48
+   `if (total_sectors <= *sector || ((*offset + size + 511) >> 9) > total_sectors - *sector)
+      return grub_error (GRUB_ERR_OUT_OF_RANGE, "attempt to read or write outside of disk `%s'", ...)`.
+   So any request whose last byte is at or past total_sectors * 512 never reaches the device.
+5. The device callback (dev->disk_read) is called from exactly three places in disk.c:
+   - disk.c:458-461 in grub_disk_read_small_real(), only under
+     `disk->total_sectors == GRUB_DISK_SIZE_UNKNOWN || sector + GRUB_DISK_CACHE_SIZE < total_sectors`
+     (lines 453-455; GRUB_DISK_CACHE_SIZE is 64 sectors, disk.h:190), i.e. the whole 64-sector unit is
+     inside the disk;
+   - disk.c:494 in the fallback of the same function, reading `num` sectors computed from the (already
+     range-checked) size and offset, starting at the requested sector (lines 481-488);
+   - disk.c:606 in the agglomerate loop of grub_disk_read(), sized from the range-checked `size`.
+   In all three the sector range handed to the callback is inside [0, total_sectors). With
+   total_sectors = size >> 9, that is [0, floor(size / 512) * 512) bytes, a subset of the input, so
+   byte_offset < data_len and avail >= bytes hold for every call and both zero-fill branches are dead.
+6. Worked example, 3000-byte input with a 1 KiB-block image: total_sectors = 5. The superblock (sectors 2-3)
+   and a group descriptor at block 2 (sector 4) are readable. grub_ext2_read_inode() for inode 2 then reads
+   the inode table, typically at block 5 or later (sector >= 10): adjust_range sees `total_sectors (5) <=
+   sector` and returns OUT_OF_RANGE; the callback is never called. grub_ext2_mount() reaches `fail:` and
+   rewrites OUT_OF_RANGE to GRUB_ERR_BAD_FS "not an ext2 filesystem" (ext2.c, `fail:` label after
+   grub_ext2_read_inode (data, 2, ...)). With the documented behaviour the read would have returned a
+   zero-filled inode and mount would have continued.
+7. Tail bytes: size 4100 gives total_sectors 8, so bytes 4096-4099 are in no readable sector. For size < 512,
+   total_sectors is 0 and no byte is readable.
+
+Consequence:
+Nothing is corrupted or leaked; the cost is fuzzing effectiveness and misleading documentation. Inputs shorter
+than a full image, which libFuzzer produces constantly by truncation, stop at an out-of-range error rather than
+exercising the driver against zero-filled metadata; up to 511 trailing bytes per input are inert; the harness
+comment and the manual describe behaviour the code does not have, and the manual is what authors of the next
+fuzz targets are told to rely on.
+
+Fix assessment:
+Not a straightforward single fix because the intent is ambiguous (docs say zero-fill, code makes it dead).
+Option (a), a capacity larger than the input: trace with a fixed 1 GiB capacity
+(GRUB_DISK_KiB_TO_SECTORS (1024 * 1024) = 1 << 21 sectors, disk.h:200): adjust_range passes for any sector
+below 2^21; grub_disk_read_small_real() takes the full-unit branch (453-455) and the callback zero-fills past
+the data; `(grub_size_t) sector << 9` is at most 2^30, which fits a 32-bit grub_size_t. Using
+GRUB_DISK_SIZE_UNKNOWN instead would also work on 64-bit hosts (clamped to 1 << 51 by disk_common.c:41-42)
+but on a 32-bit host `sector << 9` would truncate and alias high sectors onto low image offsets, so a bounded
+capacity is the safer sketch. Either way the ext2 driver can then follow block pointers into zero-filled space,
+which changes timing and what is reachable; that is a decision for the author. Option (b), deleting the claim
+and the dead branches, needs no behaviour decision.
+Side effect of option (a) on the build: fuzz_disk_logical_size() is `static` (fuzz/grub_fuzzing_platform.c:
+93-98) and fuzz_disk_open() line 120 is its only caller (searched the whole pr235 tree). Replacing that line
+leaves an unused static function; -Wunused-function is in WARN_FLAGS (configure.ac:541) and -Werror is added
+to HOST_CFLAGS unless --disable-werror is given (configure.ac:2586-2588), and fuzz_cflags starts from
+$(AM_CFLAGS) = $(HOST_CFLAGS) (Makefile.am:20), so the platform file would stop compiling. The sketch in the
+review therefore also deletes the function (repurposing it would work equally well).
+
+AI-assistance scrutiny:
+The harness is locally careful (every path through LLVMFuzzerTestOneInput closes the disk and calls
+fuzz_grub_reset; label and UUID are freed; the callback's arithmetic is correct in isolation). The miss is a
+global-contract one: the comment asserts GRUB will hand the device out-of-range reads, without tracing
+grub_disk_read(), where the core rejects them first.
+
+
+== Issue 2: fuzz-get-corpus leaves its temporary clone behind on failure (Makefile.fuzz.am) ==
+
+Discovery:
+Reading the new recipe (Makefile.fuzz.am:117-127, commit eb9881694): it starts with `set -e;`, creates a
+temporary directory with `mktemp -d`, and removes it with a plain `rm -rf $$tmpdir` as the last command.
+
+Source trace:
+- The recipe is one shell command (backslash continuations), run by `/bin/sh -c`; `$(AM_V_GEN)` expands to an
+  `@echo ...;` prefix or to nothing (AM_INIT_AUTOMAKE([1.11 ...]), configure.ac:83), neither of which changes
+  that.
+- Under `set -e` the first failing simple command ends the shell. The commands after `mktemp -d` that can
+  fail: `git clone ... -b $(FUZZ_CORPUS_BRANCH) $(FUZZ_CORPUS_REPO) $$tmpdir` (unreachable remote, unknown
+  branch), `git -C $$tmpdir sparse-checkout set corpus`, `git -C $$tmpdir checkout` (with
+  `--filter=blob:none` this is where the blobs are fetched, so it needs the network again),
+  `mkdir -p fuzz/corpus`, `cp -r $$tmpdir/corpus/. fuzz/corpus/` (which also fails if the checkout contains
+  no `corpus/` directory).
+- No trap and no other cleanup exists in the recipe, and no other rule removes the directory, so on any of
+  these failures `$$tmpdir` stays in `$TMPDIR` (/tmp by default).
+- Convention elsewhere in the tree: recipes that write a partial or temporary file remove it on the failure
+  branch, e.g. `|| (rm -f $@.new; exit 1)` (conf/Makefile.common:160, 166) and `|| (rm -f $@; exit 1)`
+  (Makefile.am:58, 62), so cleaning up on failure is the established pattern; this recipe does not follow it.
+
+Consequence:
+What the recipe text alone establishes: after a failed `mkdir`/`cp` the whole fetched corpus (commit message:
+"a large and continually growing collection of binary inputs") stays in `$TMPDIR`, as does the partial clone
+after a failed `checkout`, because nothing removes the directory. For a failed `git clone` (the commit
+message names an offline machine and a work-in-progress branch as intended uses) the directory is expected to
+remain, at least empty, because git keeps a pre-existing empty destination directory; that is git's behaviour,
+which is not readable in this tree, so it is stated as expected rather than established. Low impact per
+occurrence, but it accumulates on retries and is worst when the failure is "no space left".
+
+Fix assessment:
+`trap 'rm -rf "$$tmpdir"' EXIT` placed right after `mktemp -d` runs on normal exit and on `set -e` exit in
+POSIX sh (dash and bash both run the EXIT trap in both cases). `$$tmpdir` inside single quotes is passed to the
+shell as `$tmpdir` and expanded when the trap fires, after the variable is set. If `mktemp -d` itself fails,
+`set -e` ends the shell before the trap is installed and there is nothing to remove. The trailing `rm -rf` is
+then redundant and removed in the draft, which also keeps `cp` as the last command so its status becomes the
+recipe's status.
+
+
+== Coverage: what was read for each commit and what was found ==
+
+Commit 1 (c41b89949, configure.ac + INSTALL):
+- Placement: the block sits after the --disable-werror block and before `TARGET_CPP=`. By then configure has
+  restored the host environment: `CC="$SAVED_CC"`, CFLAGS, CPPFLAGS, LDFLAGS at configure.ac:2310-2314, after
+  the BUILD_CC swap (2249-2253) and the TARGET_CC swaps (607-609, 1965-2050). SAVED_CC is taken at line 2244
+  after `CC=$HOST_CC` (116). So the two AC_COMPILE_IFELSE probes test the compiler that builds HOST_CFLAGS code.
+- `$platform` is the same variable behind AM_CONDITIONAL([COND_emu]); the `--enable-fuzzing` check is
+  therefore consistent. CFLAGS is saved and restored around both probes; in the msan branch the second
+  save_CFLAGS captures the already restored value, so nothing leaks.
+- Flags only go to HOST_CFLAGS / HOST_LDFLAGS (Makefile.am:20-21 maps these to AM_CFLAGS / AM_LDFLAGS), so
+  every host utility in the same tree is instrumented, which the commit message states. `-O2` is appended
+  after any user HOST_CFLAGS, so a user `-O0` would be overridden in fuzzing builds (a design choice, not
+  reported). FUZZING_LDFLAGS is always substituted (empty when disabled). `--with-fuzzing-sanitizer` without
+  `--enable-fuzzing` is ignored, as the comment says. Unknown values hit AC_MSG_ERROR.
+- The commit message says a normal build is unaffected; in this commit that holds. INSTALL refers to
+  `make fuzz-fs-ext2` and docs/grub-dev.texi, which arrive in commits 3 and 4 (forward reference in prose only,
+  no build effect).
+
+Commit 2 (5afa7bac1, platform layer):
+- Disk device: struct grub_disk_dev initializer matches include/grub/disk.h (disk_read/disk_write signatures);
+  fuzz_disk_open() returns UNKNOWN_DEVICE for other names, which grub_disk_open() clears and continues
+  (disk.c:334-342); log_sector_size 9 passes the check at disk.c:350. See Issue 1 for the capacity problem.
+- fuzz_grub_reset(): `grub_disk_cache_invalidate_all()` frees every unlocked entry (disk.c:65-95); cache locks
+  are taken in grub_disk_cache_fetch() and released in grub_disk_cache_unlock() before the function can fail
+  (disk.c:591-600 for the agglomerate path), so no entry stays locked across iterations. The env loop saves
+  `p->next` before grub_env_unset(); grub_env_unset() (env.c:160-180) finds the var, removes it and frees
+  name, value and the var, and does not touch `name` after freeing it, so passing `p->name` is safe. HASHSZ is
+  defined in env_private.h:25 (tab-separated; included). Vars with hooks are skipped, matching env.c:169-173.
+  The callers of grub_env_set() among the linked sources are command handlers, so the purge removes nothing
+  for the ext2 target; its comment mentions "load_env iterations", a target not in this MR.
+- Wraps: `--wrap=grub_err_printf` / `--wrap=grub_real_dprintf` only redirect references from other objects;
+  grub_debug_enabled() does call grub_env_get ("debug") (kern/misc.c:284-337), so the comment is accurate.
+  Prototype of __wrap_grub_real_dprintf differs from grub_real_dprintf only in `const int line` vs `int line`
+  (compatible).
+- Allocator claim: kern/emu/mm.c implements grub_malloc/grub_calloc/grub_realloc/grub_free over libc, so the
+  sanitizers see GRUB allocations; the commit message is accurate. Note `grub_malloc` memory is uninitialised
+  (relevant for msan, which the manual covers).
+- Stubs: grub_util_host_init is defined in grub-core/osdep/basic/init.c, which Makefile.util.def lists per
+  program (`common = grub-core/osdep/init.c`) and not in libgrubkern.a/libgrubmods.a, so the stub is the only
+  definition in the fuzz link. grub_dl_ref/unref come from util/misc.c (libgrubkern.a), so ext2's
+  `grub_dl_ref (my_mod)` with my_mod == NULL (GRUB_MOD_INIT passes 0 in util builds, dl.h:71-77) is fine.
+  `grub_file_verifiers`: grub-core/kern/verifiers.c is not in either library, but neither is
+  grub-core/commands/pgp.c (the comment names GRUB_MOD_INIT(pgp)); no linked object references the symbol at
+  this base, so the stub looks unused. `grub_dl_load`: the 20 files that call it (grub-core/bus/usb/usb.c,
+  commands/{parttool,pgp,terminal,videoinfo,videotest}.c, kern/{corecmd,dl,main}.c, loader/i386/{bsd,linux}.c,
+  net/net.c, normal/{autofs,crypto,dyncmd,main,menu}.c, tests/{cmdline_cat_test,gfxterm_menu}.c,
+  tests/lib/functional_test.c) are all absent from the libgrubkern.a / libgrubmods.a source lists
+  (Makefile.util.def:1-189, matched file by file), and the other fuzz-link sources (fuzz/, disk/host.c,
+  kern/emu/hostfs.c) do not call it, so this stub also looks unused. `_gcry_log_printmpi` is the one stub that
+  cannot be checked: libgcrypt-grub is generated at bootstrap and is not in the tree.
+- Compile-level reading against WARN_FLAGS (configure.ac:541-559, no -Wdeclaration-after-statement): every
+  non-static function has a prototype, unused parameters carry the attribute, nothing is declared unused-static,
+  `gcry_mpi_t` comes from include/grub/crypto.h:273, `grub_init_all` from emu/misc.h:36, `grub_gcry_init_all`
+  from crypto.h:677, `grub_xputs` from misc.h:600. The fuzz target's CFLAGS omit $(CFLAGS_PROGRAM) (which
+  carries CFLAGS_GNULIB's -Wno-* relaxations, Makefile.am:27) while grub_fstest_CFLAGS include it
+  (gentpl.py:838); the comment about progname.h and -Wundef shows the author met this and worked around it.
+  Not compiled here, so a remaining -Werror trip cannot be excluded.
+- fuzz_grub_init(): grub_init_all() / grub_gcry_init_all() mirror util/grub-fstest.c:758-759; grub_xputs is
+  silenced first. An error left in grub_errno by module init would make the first grub_disk_open() fail (disk.c
+  fail: path checks the global grub_errno) and be cleared by the early return's reset; at most the first,
+  empty-input execution is affected, so not reported.
+
+Commit 3 (08279295f, Makefile.fuzz.am + fuzz_fs_ext2):
+- automake plumbing: `libgrub*_a_CFLAGS +=` extends variables created by gentpl.py (var_add/var_set, lines
+  692-798) in Makefile.util.am, which Makefile.am includes at line 32, before the Makefile.fuzz.am include at
+  the end of the file. noinst_PROGRAMS and EXTRA_DIST are initialised in conf/Makefile.common:143,152. `?=`
+  has precedent (Makefile.am:441). fuzz_libs is the same list and order as grub-fstest (Makefile.util.def:
+  341-352); hostfs.c / host.c are the same extra sources; grub_fstest_init.c comes from Makefile.am:79-81.
+- libgnu.a rule: SUBDIRS is `grub-core/lib/gnulib .` (Makefile.am:4), so in `make all` libgnu.a exists before
+  the top-level directory is built and the new unconditional rule never fires; for a direct
+  `make fuzz-fs-ext2` it builds the library on demand. It is the only build-rule change visible to non-fuzz
+  builds and is not mentioned in the commit message (reported as an observation only). Two other changes also
+  reach non-fuzz builds and are unverified: the unconditional `EXTRA_DIST +=` lines at the end of
+  Makefile.fuzz.am (they change `make dist`), and, from commit 4, the manual chapter (see below).
+- fuzz_fs_ext2.c: `struct grub_device` has `disk` and `net` (device.h:29-33); FOR_FILESYSTEMS is
+  fs.h:131; fs_dir/fs_label/fs_uuid signatures match fs.h. grub_ext2_dir() frees fdiro and data on every path
+  (ext2.c:1041-1070); grub_ext2_label()/uuid() free the mount data and return malloc'd strings the harness
+  frees (also on the NULL path, grub_free (NULL) is a no-op); the disk is closed and fuzz_grub_reset() called
+  on all three exits; grub_errno is cleared after every call. The harness does not call fs_open/fs_read/
+  fs_mtime, so the commit message's "the way GRUB does during a boot" is broader than what is exercised;
+  block mapping is still reached through directory iteration and symlink reads (same read_block callback),
+  so this is a scope note, not a defect.
+- fuzz/dict/ext2.dict: superblock magic 0xEF53 (ext2.c:21) little-endian at offset 56 (13 uint32 + two
+  uint16 precede `magic` in struct grub_ext2_sblock), EXT4_EXT_MAGIC 0xf30a (314), journal magic 0xc03b3998
+  (149), feature bits 0x4 / 0x2 / 0x40 / 0x2 (79, 98, 102, 88), file types 1/2/7 (31-33), revision 0/1,
+  inode sizes 0x80 / 0x100: all match the in-tree values and byte order.
+
+Commit 4 (e0ebb339d, manual chapter):
+- Menu entries match the @node names; chapter order matches the top menu. Statements checked against the
+  build files: option names, sanitizer meanings, `make fuzz_fs_ext2` vs `make fuzz-fs-ext2`, FUZZ_FLAGS,
+  crash-*/leak-*/timeout-* artifacts in the cwd, `GRUB_AS_LIST` idiom (list.h:56-61: GRUB_FIELD_MATCH takes
+  `&(ptr)->field` of a possibly NULL head, which is what UBSan reports), "Adding a fuzzer to the build" list
+  matches the existing target. The only inaccurate statement is the zero-fill sentence (Issue 1). The
+  texinfo itself was not built, and docs/Makefile.am:4 lists grub-dev.texi in info_TEXINFOS, so this chapter
+  is part of the default (non-fuzz) documentation build.
+
+Commit 5 (eb9881694, fuzz-get-corpus): Issue 2. Also read: nothing depends on the target (`fuzz-fs-ext2`
+depends only on the binary), so the "never touches the network" claim holds; `cp -r dir/. dest/` merges and
+libFuzzer names corpus files by content hash, so re-running is safe as claimed; a local path for
+FUZZ_CORPUS_REPO makes git ignore --depth/--filter with a warning but the rest of the recipe still works.
+Variables are unquoted in the shell line (a repository path with spaces would break); not reported.
+
+Commit 6 (9b2d4b30d, COVERAGE=1):
+- Flag flow: `coverage_cflags` / `coverage_ldflags` are lazily expanded, so defining them after fuzz_lflags
+  (which references coverage_ldflags) is fine; the library `+=` lines and fuzz_cflags apply them to every
+  object linked into the fuzz binary; `COVERAGE =` in the Makefile overrides an environment value, so only
+  `make ... COVERAGE=1` enables it, as documented. `%p` in LLVM_PROFILE_FILE is literal in a recipe.
+- coverage / coverage-html use valid llvm-profdata and llvm-cov options; `coverage_ignore_re` alternatives
+  match the directories actually compiled (grub-core/lib/gnulib, libgcrypt-grub, libgcrypt_wrap, minilzo,
+  xzembed, zstd; the filter is unanchored so it also works for out-of-tree builds). `clean-local` is defined
+  nowhere else in the tree (searched), so it does not override another rule.
+- A COVERAGE=1 build leaves libgrub*.a instrumented; other host utilities that link them would need the
+  profile runtime, which only the fuzz binary's LDFLAGS carry. The manual already says to `make clean` before
+  returning to normal builds and the documented flow only builds the fuzz binary, so not reported.
+
+Combined result:
+Ordering is sound: each commit only uses files that exist at that point (commit 3 lists the commit 2 header
+and the dictionary it adds; commits 5 and 6 edit Makefile.fuzz.am and the manual in place without renaming
+anything); the final Makefile.fuzz.am has `coverage_*` defined once and no duplicate rule. Nothing in the
+series touches existing GRUB runtime code.
+
+
+== Not verified (nothing was built, run or fetched) ==
+
+- Whether clang adds any runtime when linking with only `-fsanitize=fuzzer-no-link` (HOST_LDFLAGS in the
+  `none` sanitizer mode, configure.ac:2674-2680) although the comment above says the plain utilities link
+  against the fuzzer runtime. It matters only for a full `make` in a `none` build; `make fuzz_fs_ext2` links
+  with `-fsanitize=fuzzer`.
+- The existence, default branch (`main`) and layout (`corpus/fs-ext2/`) of
+  https://gitlab.freedesktop.org/gnu-grub/grub-fuzz-corpus.git; nothing else in the tree refers to it.
+- Whether the unversioned `clang`, `llvm-profdata` and `llvm-cov` that INSTALL and the Makefile assume exist
+  after installing the versioned packages INSTALL lists; LLVM_PROFDATA / LLVM_COV can only be overridden on
+  the make command line (the Makefile assignment beats the environment) and INSTALL does not say so.
+- How automake treats `clean-local` defined only under COND_FUZZING and derives _DEPENDENCIES through
+  `fuzz_libs`; whether `_gcry_log_printmpi` is needed by the link (libgcrypt-grub is generated at bootstrap
+  and is not in the tree); whether the texinfo chapter builds; what the unconditional EXTRA_DIST additions do
+  to `make dist`.
+- Whether `git sparse-checkout set corpus` works on a `--no-checkout` partial clone exactly as fuzz-get-corpus
+  uses it (clone, sparse-checkout set, checkout), and git's behaviour on a failed clone into an existing empty
+  directory (Issue 2).
+- Whether a direct `make fuzz_fs_ext2` on a fresh tree needs more generated gnulib files (headers, not only
+  `libgnu.a`) than the new Makefile.am rule builds; that rule only builds the `libgnu.a` target.

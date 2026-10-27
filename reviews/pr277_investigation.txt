@@ -1,0 +1,124 @@
+pr277 Investigation Trail - Clean Review
+========================================
+
+MR !277 - "fs/zfs/zfs: Allow pools with OpenZFS native encryption / large dnodes" (Oldrich Jedlicka), 2 commits,
+~147 diff lines. Result: no issues found. Nothing was built or run; everything below is from reading the source at
+the branch (rtb cat, full functions) and tracing concrete inputs by hand. Both commits carry a
+"Co-Authored-By: Claude" trailer, so claims in the messages and comments were checked against the code one by one.
+
+Source files read (at pr277 unless noted):
+  grub-core/fs/zfs/zfs.c: struct grub_zfs_data and spa_feature_names (255-310), zio_checksum_verify (459-505),
+  read_dva/zio_read_gang/zio_read_data (1730-1880), zio_read (1910-2085), dmu_read (2085-2150), mzap/fzap/zap lookup
+  (2150-2640), dnode_get (2745-2835), get_filesystem_dnode/make_mdn/dnode_get_fullpath (3250-3550), zfs_mount
+  (3800-3880), grub_zfs_getmdnobj, check_dataset_readable, fill_fs_info, iterate_zap*, grub_zfs_dir, check_feature,
+  check_mos_features (4120-4560); include/grub/zfs/{spa.h,dnode.h,dmu.h,dsl_dataset.h,zap_impl.h,zio.h,zfs.h}.
+  docs/BUG_PATTERNS.md: no ZFS subsystem entry; applied buffer-bounds (header-derived fields), return-value-semantics
+  (stale grub_errno), logic-deadcode-ordering (check order) and api-contract.
+
+Phase 0
+-------
+sanity-scan.sh: no hits in any category. Commit messages and diff read afterwards; intent matches content.
+
+In-tree facts used
+------------------
+ - blk_prop bits (spa.h): lvl = bits 56..60 (5 bits), type = 48..55, X ("encryption") = bit 61, D = 62, B = 63;
+   embedded flag = bit 39. The patch's decode (prop >> 56) & 0x1f, (prop >> 48) & 0xff and (prop >> 61) & 1 matches.
+ - DMU_OT_OBJSET = 11, DMU_OT_DNODE = 10 (dmu.h enum count); DMU_OTN_ZAP_METADATA = 0x80|0x40|4 = 0xC4.
+ - SPA_VERSION_FEATURES = 5000; GRUB accepts label versions 1..33 and 5000 only (SPA_VERSION_IS_SUPPORTED, zfs.h:43),
+   which is what the commit message relies on to separate Oracle (bits 60-61) from OpenZFS (bit 61) semantics.
+ - dnode_phys_t: dn_type 0, indblkshift 1, nlevels 2, nblkptr 3, bonustype 4, checksum 5, compress 6, flags 7,
+   datablkszsec 8-9, bonuslen 10-11, then 4 pad bytes at 12-15 (before the patch), maxblkid at 16. The patch makes
+   byte 12 dn_extra_slots and leaves 3 pad bytes: sizeof unchanged (512); dn_pad2 has no other user in the tree.
+
+Commit 1 - ce6ebd0de "Allow pools with OpenZFS native encryption"
+------------------------------------------------------------------
+a) pool_version: grub_zalloc'd struct (zero) and assigned in zfs_mount() right after ub_endian is derived and before
+   the first zio_read (ub_rootbp), with the endian-converted ub_version. All zio_read callers (dmu_read 2132/2137,
+   make_mdn 3309, zfs_mount 3847, SA reads 3092/4017/4266/4323) get the `data` created by zfs_mount; scan_disk and the
+   label code do not call zio_read (they use zio_checksum_verify directly). So pool_version is always set when
+   zio_read runs. The older test at zfs_mount `ub->ub_version >= SPA_VERSION_FEATURES` (check_mos_features) compares
+   the raw, unconverted field; for a cross-endian pool every version looks >= 5000 there. Pre-existing, unrelated to
+   the new converted field.
+b) zio_read(), traced inputs (pool_version >= 5000 unless noted):
+   - pool version 28: whole block skipped; `encrypted` = bits 60-61 as before (Oracle path unchanged).
+   - ordinary block, bit 61 clear: `encrypted` forced to 0. Before, it was bits 60-61, i.e. nonzero only when bit 60
+     (top bit of the 5-bit level field, so level >= 16) or bit 61 was set; no ordinary block is affected.
+   - ds_bp of an encrypted dataset (bit 61, level 0, type 11): passes the new check, `encrypted = 0`, goes through
+     the normal read and zio_checksum_verify(zc = bp->blk_cksum, all 32 bytes unless checksum == SHA256_MAC, then 20).
+   - meta-dnode data block of the same dataset (bit 61, type 10): returns GRUB_ERR_ACCESS_DENIED "encrypted datasets
+     are not supported" before any allocation or I/O (`*buf = NULL` was set at the top, so callers see no buffer).
+   - bit 61 with level >= 1 (indirect block): same error. Uberblock rootbp / MOS blocks: bit 61 clear, unchanged.
+   - hole bp (all-zero blk_prop, make_mdn on a never-written dataset): bit 61 clear, unchanged.
+   The check precedes the BP_IS_EMBEDDED branch and uses blk_prop bits shared by both layouts, so an embedded bp with
+   bit 61 set would be treated the same way; I did not find a reason that combination exists (not checked upstream).
+c) What the commit relies on but I could not verify from this tree (author's description of OpenZFS): that the
+   level-0 objset block of an encrypted dataset is authenticated only (not encrypted), and that its blk_cksum holds
+   a normal checksum so the unchanged full-width compare in zio_checksum_verify passes. If that were wrong the
+   effect is a "checksum verification failed" error on objset reads, not a memory problem.
+d) check_dataset_readable() (commit 1 form): ds is the head dataset dnode (fill_fs_info first follows
+   dd_head_dataset_obj when handed a DSL dir, as before) or a snapshot dataset dnode. dsl_dataset_phys_t has 16 u64
+   fields before ds_bp, so ds_bp sits at bonus offset 128..255; the bonus area (dn_bonus[192] + dn_spill, contiguous)
+   is 320 bytes and `mdn` in fill_fs_info is a full local copy of the dnode, so the read is in bounds (make_mdn reads
+   the same field). Endianness argument ds->endian is what make_mdn passes to zio_read as well.
+   readable == 0 -> fill_fs_info returns GRUB_ERR_NONE with info zeroed except dir = 1: dataset listed, no mtime.
+   Callers: iterate_zap_fs / iterate_zap_snap (errors cleared, entry skipped), grub_zfs_dir isfs branch (error
+   returned to the user). No allocation in the new function, no errno left set on the success paths.
+e) Why the objset read had to be allowed: dnode_get_fullpath() calls make_mdn() unconditionally, even for an isfs
+   path such as (zfs)/pool/enc, and ignores its return value (pre-existing). Had the objset block been refused like
+   the other bit-61 blocks, make_mdn would fail here and leave grub_errno set, which grub_zfs_dir returns at the
+   end. With the plain objset read, make_mdn succeeds and the first read of encrypted content (dnode_get of
+   MASTER_NODE_OBJ -> dmu_read -> zio_read of the meta-dnode block) gives the "encrypted datasets are not
+   supported" error.
+f) spa_feature_names: "com.datto:encryption" (20 chars, MAX_SUPPORTED_FEATURE_STRLEN is 50). check_feature() only
+   compares names with val != 0 against this list, so adding it just stops the pool-level rejection.
+
+Commit 2 - cfd8376c8 "Allow pools with large dnodes"
+-----------------------------------------------------
+a) dnode_get(): objnum is a 512-byte slot index. Example: meta-dnode block size 16384 -> epbs = 14 - 9 = 5, so objnum
+   33 is block 1, idx 1; a large dnode at 33 with dn_extra_slots = 1 occupies slots 33-34. dnode_get(33) copies
+   slot 33 (DNODE_SIZE), sees dn_extra_slots = 1 and returns GRUB_ERR_NOT_IMPLEMENTED_YET. Both the cache-hit path
+   and the fresh-read path test it, after the dn_type check (so a type mismatch is still reported first); in the
+   fresh-read path the block is already cached when the error is returned, which is harmless.
+   Objects are never addressed by an interior slot number, so only first slots need the check.
+b) Coverage: dnode block contents are read only in dnode_get() (data->dnode_buf is touched nowhere else; the old
+   get_default_bootfsobj is #if 0). The only dnode copies that bypass it are os_meta_dnode in make_mdn() (3320),
+   zfs_mount() (3864/3873) and check_mos_features() (a fixed single-slot member of objset_phys_t).
+   The MOS goes through dnode_get() too, so if the commit's "MOS never uses large dnodes" were wrong the result is a
+   clean error, not a misparse. I did not verify that claim against OpenZFS.
+c) Callers' handling of the new error: iterate_zap() prints it per entry and continues (a large-dnode entry is
+   omitted from a directory listing with a message); iterate_zap_fs/snap clear grub_errno and skip; open and
+   dnode_get_path propagate it. All via grub_error(), so grub_errno is set consistently.
+d) check_dataset_readable() ZAP part: a dataset object that has an active per-dataset feature is "zapified"
+   (dn_type 0xC4, bonus type still DSL_DATASET), which is what the guard `dn_type == DMU_OTN_ZAP_METADATA` selects;
+   non-zapified datasets (dn_type DMU_OT_DSL_DATASET) skip the lookup and are readable. zap_lookup() of
+   "org.zfsonlinux:large_dnode" (26 chars, within MZAP_NAME_LEN 50):
+   - micro ZAP: mzap_lookup() returns grub_error(GRUB_ERR_FILE_NOT_FOUND) when absent; found returns NONE.
+   - fat ZAP: fzap_lookup -> zap_leaf_lookup returns FILE_NOT_FOUND when absent; found requires le_int_size == 8
+     and value_length == 1, else BAD_FS "invalid leaf chunk entry" (returned as an error: the dataset would be
+     skipped by iterate_zap_fs; nothing unsafe).
+   - FILE_NOT_FOUND is cleared with `grub_errno = GRUB_ERR_NONE` before readable = 1; any other error is returned
+     with grub_errno still set, which every caller above handles. The found case sets no errno.
+   zap_lookup only reads through dmu_read on a local dnode copy, so it does not disturb data->dnode_buf (cache used
+   by dnode_get). Cost: one extra MOS block read per zapified dataset or snapshot listed.
+e) Feature acceptance: "org.zfsonlinux:large_dnode" (26 chars) added next to the encryption entry, same mechanism.
+
+Combination of the two commits
+------------------------------
+Final check_dataset_readable() order: bit 61 first, then the ZAP key; an encrypted dataset with large dnodes takes
+the first branch and never reaches the ZAP. Encrypted reads fail in zio_read (before dnode contents are seen), so
+dn_extra_slots is never consulted for encrypted datasets. Large-dnode datasets that are not encrypted read normally
+until dnode_get meets a dnode with dn_extra_slots != 0. Commit 1 builds on its own (function exists without the ZAP
+part); commit 2 only adds to it. Unused-variable check: `val` is written through zap_lookup's pointer, `err` is used.
+Commit messages: every statement was checked against the diff (pool_version stored at mount, bit 61 rules, error
+text, mtime skipped, ZAP key, dnode field, version gating) and matches.
+
+Observations (not defects)
+--------------------------
+ - Comment "Padding before large_dnode." in dnode_get() is cryptic: the field is not padding on feature-flag pools.
+   "Not used by the MOS, checked per dataset." is accurate for what the code does (the names only stop the pool-level
+   rejection; the per-dataset checks are in zio_read, dnode_get and check_dataset_readable).
+ - zio_read_data() tries every non-zero DVA, and treats bit 63 of dva_word[1] as the gang flag. If, as I recall of the
+   OpenZFS block pointer layout (not checked against any source in this tree), the third DVA slot of a protected
+   block pointer carries salt/IV, it would only be tried as a DVA after the first two fail to read, and then fail
+   with "unknown device" / checksum errors. Error-path only.
+ - Not tested: real encrypted or dnodesize=auto pools, `grub-probe --target=fs_label` against one.

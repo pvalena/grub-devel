@@ -1,0 +1,260 @@
+pr323 Investigation Trail - Clean Review
+========================================
+
+MR !323 - "Defer configfile screen clear until visible output" (Sean Rhodes), 4 commits, ~530 diff lines.
+Result: no issues found. Nothing was built or run; everything below is from reading the source at the
+branch (rtb cat, full functions) and tracing concrete inputs by hand.
+
+Source files read (at pr323 unless noted):
+  grub-core/commands/configfile.c, grub-core/commands/sleep.c, grub-core/commands/echo.c,
+  grub-core/commands/help.c, grub-core/commands/terminal.c, grub-core/normal/term.c (whole file region
+  that holds print_ucs4_real, grub_xnputs, grub_cls, grub_term_save_pos), grub-core/normal/menu.c
+  (run_menu, show_menu), grub-core/normal/main.c (read_config_file, grub_normal_execute, normal init/fini),
+  grub-core/normal/menu_entry.c (grub_print_ucs4 caller), grub-core/kern/term.c, grub-core/kern/misc.c,
+  grub-core/term/efi/console.c (whole file), include/grub/term.h, include/grub/list.h,
+  include/grub/procfs.h, grub-core/fs/proc.c, grub-core/tests/deferred_clear_test.c,
+  grub-core/tests/lib/test.c, grub-core/tests/lib/functional_test.c, grub-core/Makefile.core.def
+  (test modules, configfile/echo/help/sleep/true/procfs/normal stanzas), tests/util/grub-shell.in,
+  tests/grub_func_test.in, grub-core/normal/dyncmd.c, grub-core/commands/extcmd.c, grub-core/kern/main.c, and
+  every in-tree struct grub_term_output initializer (listed under commit 2, hunk a).
+  docs/BUG_PATTERNS.md: no terminal/console class exists; applied the EFI (protocol open/close balance,
+  state-not-restored), api-contract, return-value-semantics and logic-deadcode-ordering entries.
+
+Phase 0
+-------
+sanity-scan.sh: no injection, Unicode, payload, URL, network or credential hits. Only flag: "Build/CI files
+changed: grub-core/Makefile.core.def", which is the new deferred_clear_test module stanza (expected).
+Commit messages and diff read afterwards; intent matches content; no AI-assistance tags present.
+
+Final design in one paragraph
+-----------------------------
+configfile (and extract_entries_configfile) call grub_cls_deferred() instead of grub_cls().  For each active
+output: if the terminal implements the new ->prepare callback and has not yet been "activated"
+(GRUB_TERM_OUTPUT_ACTIVE clear), only GRUB_TERM_CLEAR_PENDING is set; otherwise the old behavior (newline for
+dumb/debug, else cls) runs.  Only the EFI console implements ->prepare (console.c:481).  Its
+grub_prepare_for_text_output() is the single place where the firmware text console is switched to "available"
+(console.c:149-157); the patch hooks the pending clear and the ACTIVE bit there, so the first putchar/getwh/
+gotoxy/cls on an untouched console performs the clear, and a configfile that never prints never clears.
+
+Commit 1 - dbd414894 "configfile: Defer screen clear until visible output"
+--------------------------------------------------------------------------
+What it does: configfile.c installs configfile_xputs() as grub_xputs for the outermost configfile
+(configfile_depth 0 -> 1), keeps clear_pending/clear_generation per nesting level (saved in locals, restored
+after grub_normal_execute), and cls is issued on the first non-empty xputs unless grub_cls_generation moved
+(bumped in grub_cls() and in the inline grub_term_cls(), exported from kern/term.c via EXPORT_VAR).
+Traced:
+ - Install/restore are balanced: no early return between "if (new_env) {...}" and the matching restore
+   block; grub_normal_execute() returns void; old_clear_* locals are only read under the same new_env test
+   that writes them.
+ - saved_xputs is grub_xputs_normal at install time: configfile references grub_normal_execute and grub_cls
+   (module normal), and GRUB_MOD_INIT(normal) takes grub_dl_ref(mod) ("Normal mode shouldn't be unloaded"),
+   so GRUB_MOD_FINI(normal) (which resets grub_xputs) cannot run while the hook is installed.
+ - Nested case: inner configfile saves outer pending/generation, sets its own, restores on exit; depth counter
+   keeps the hook installed until the outermost returns.  A visible menu inside the configfile calls
+   grub_term_cls() (menu_text.c), which bumps the generation, so a later first xputs does not clear again.
+ - Limitation the next commit addresses (and the commit message of commit 2 states): output that bypasses
+   grub_xputs (help uses print_ucs4 directly) is not seen by the hook.
+No defect found in this commit as a standalone change.  It is wholly removed by commit 2 (hook, depth
+counter, grub_cls_generation definition/export/increments all gone; no reference left at pr323:
+`rtb grep cls_generation --ref pr323` returns nothing).
+
+Commit 2 - e43b88694 "term: Defer configfile clear per output terminal"
+------------------------------------------------------------------------
+Hunks, each read in the full resulting function:
+ a) term.h: GRUB_TERM_OUTPUT_ACTIVE (1<<8), GRUB_TERM_CLEAR_PENDING (1<<9).  Existing flag bits: 0 (NO_ECHO),
+    1 (NO_EDIT), 2 (DUMB), 3-5 (CODE_TYPE mask).  No collision.  New ->prepare member sits after ->fini;
+    commands/terminal.c's struct abstract_terminal and its GRUB_FIELD_MATCH checks only cover
+    next/prev/name/init/fini, so the layout check is unaffected.  Struct initializers: I listed every
+    `.putchar =` initializer with `rtb grep '\.putchar *=' --ref pr323` and opened each body; all use designated
+    initializers, so inserting a member mid-struct is safe.  Checked designated (14 definition sites in 14
+    files; vga_text.c is also compiled as mda_text, so 15 compiled variants), file:line of the definition:
+      grub-core/osdep/unix/emuconsole.c:146     grub-core/osdep/windows/emuconsole.c:272
+      grub-core/term/arc/console.c:178          grub-core/term/efi/console.c:477
+      grub-core/term/gfxterm.c:1112             grub-core/term/i386/coreboot/cbmemc.c:69
+      grub-core/term/i386/pc/console.c:283      grub-core/term/i386/pc/vga_text.c:254
+        (mda_text.c does `#include "vga_text.c"` and registers the same grub_vga_text_term; MODE_MDA only
+        changes .name)
+      grub-core/term/ieee1275/console.c:223     grub-core/term/morse.c:109
+      grub-core/term/serial.c:129               grub-core/term/spkmodem.c:115
+      grub-core/term/uboot/console.c:86         grub-core/term/xen/console.c:98
+    Plus the two fake terminals in the test (deferred_clear_test.c:184,194), also designated.  serial.c builds
+    its per-port terminals with grub_memcpy (out, &grub_serial_term_output, sizeof (*out)) (serial.c:510), so the
+    new member is just copied (NULL) there.  Declarations grub_cls_deferred/grub_term_prepare_output are
+    non-EXPORT_FUNC like grub_cls, and both are defined in normal/term.c (module normal); configfile already
+    needs normal, and sleep already needs normal (grub_term_save_pos/restore_pos live at normal/term.c:258/279),
+    so no new module dependency edge is created.
+ b) normal/term.c grub_cls_deferred() (1107-1123) and grub_term_prepare_output() (1126-1133).  FOR_LIST_ELEMENTS
+    expands to a plain for (list.h:39), so the unbraced `if` body in grub_term_prepare_output is fine.  The
+    prepare return value is dropped; grub_prepare_for_text_output never sets grub_errno, so no errno leaks.
+    grub_term_cls() (inline, handles term->cls == NULL) replaces the raw (term->cls)(term) call of grub_cls().
+ c) term/efi/console.c: see "EFI state machine" below.
+ d) normal/term.c: grub_xnputs() returns before grub_error_push() when msg_len == 0 (so push/pop stay paired),
+    and grub_print_ucs4() returns when str == last_position.  Caller audit below.
+ e) sleep.c:85: grub_term_prepare_output() only when --verbose (state[0] is the "verbose" option, same index
+    do_print uses) and after n == 0 has returned.
+ f) Test module + Makefile.core.def stanza (common, no enable=, like sleep_test) + functional_test.c load.
+ g) kern/term.c/term.h: removal of the generation counter; it also dropped the blank line after the extern
+    block in term.h (restored by commit 4).
+Commit message vs code: every claim (per-terminal pending flag, active terminals keep immediate clear, EFI
+consumes pending on prepare, prepare before save_pos in sleep, empty output silent, fake-terminal test with
+direct/formatted/cursor/empty/explicit/multi-output cases) matches the diff.
+
+Commit 3 - 06e3faabf "tests: Exercise configfile deferred clear" (no body)
+---------------------------------------------------------------------------
+Adds two procfs-backed configs ("true\n", and a config that runs `configfile` on the first), registers them
+in the test, loads configfile, and adds two sections (silent configfile with one untouched and one active
+terminal; nested redirect).  Registration/unregistration are paired in straight-line code (no early return).
+get_contents returns grub_strdup(); proc.c grub_procfs_close() frees file->data, so ownership is correct, and
+a NULL return is handled by grub_procfs_open (returns grub_errno).
+
+Commit 4 - a8b293219 "tests: Consolidate configfile terminal coverage"
+-----------------------------------------------------------------------
+Adds the "second terminal printed exactly 'visible' after its immediate clear" assertion, removes the
+helper-only section whose coverage is now provided by the configfile section (untouched first terminal pending,
+active second terminal cleared immediately, both correct after output), and restores the term.h blank line.
+Message matches the diff.  Net effect of 2+4 on term.h is zero outside the intended additions.
+
+EFI state machine (term/efi/console.c)
+--------------------------------------
+Variables: global text_mode (UNDEFINED at boot; set only at line 156 and 465), per-term flags ACTIVE/PENDING.
+ - prepare (141-170): returns BAD_DEVICE if grub_efi_is_finished; returns early (line 149-150) whenever
+   text_mode != UNDEFINED.  So ACTIVE/PENDING handling runs exactly once per UNDEFINED -> AVAILABLE
+   transition, and ACTIVE is set on the same path that sets text_mode, so ACTIVE == (text_mode AVAILABLE) for
+   the single EFI console term.
+ - fini (457-466): clears ACTIVE|PENDING first, then, if text_mode == AVAILABLE, disables the cursor and
+   resets text_mode to UNDEFINED.  Flags and text_mode therefore return to the same pair of states together.
+   fini is invoked from commands/terminal.c (--remove and the "not in list" removal pass), never when the console
+   is merely re-selected, so a re-selected active console stays ACTIVE.
+ - cls (440-452): clears PENDING before calling prepare, so a prepare that happens inside cls cannot also do
+   the deferred clear; the explicit clear then runs once.  Trace: pending set, `clear` command ->
+   grub_cls -> grub_console_cls: PENDING off, prepare sets ACTIVE (no clear), one clear_screen.  One clear total.
+ - Pending path: untouched console, configfile -> PENDING.  First output: print_ucs4_real calls
+   term->getxy (console.c:419 returns {0,0} while text_mode != AVAILABLE).  The EFI console is
+   VISUAL_GLYPHS, so it takes the bidi path, which evaluates get_maxwidth (-> grub_term_width -> getwh ->
+   prepare) and get_startwidth (getxy) as arguments of grub_bidi_logical_to_visual.  C leaves that argument
+   order unspecified, but getxy gives {0,0} both before the clear (text_mode UNDEFINED) and after it (cursor
+   homed), so either order yields the same start column.  prepare then does ACTIVE, clear_screen with a black
+   background, attribute restored; putchar follows.  Same for gotoxy/putchar/cls as the first caller.  The
+   block is a copy of grub_console_cls's clear sequence (o->mode->attribute, set_attributes, clear_screen,
+   restore); same types and macros, so it should compile on every EFI target the file already builds for.
+ - Hidden-menu autoboot (the motivating case): run_menu with timeout_style hidden loops on
+   grub_getkey_noblock/grub_key_is_interrupt (EFI getkeystatus: no output), on timeout returns default entry
+   with notify_boot = (style != HIDDEN) = 0; show_menu calls grub_menu_execute_with_fallback (the grub_cls() at
+   menu.c show_menu is only in the non-auto_boot branch).  No term callback that calls prepare runs, PENDING stays
+   set and the splash survives until something prints.
+ - Visible menu on an untouched EFI console: the pending clear is consumed by the width query, not by the
+   explicit cls.  grub_menu_init_page (menu_text.c) calls grub_term_width() first (menu_text.c:342), which
+   prepares the console and performs the deferred clear; it then calls grub_normal_init_page (menu_text.c:410),
+   whose first statement is grub_term_cls (main.c:218) (or grub_term_cls directly at menu_text.c:412 when the
+   version line is dropped), which clears again.  Two clears in total, the same count as before the MR
+   (immediate configfile clear plus the menu's own clear), so the extra clear is harmless.  When the console is
+   already active, grub_cls_deferred clears immediately as before and the menu's cls is the second clear.
+ - terminal_output switch (console -> gfxterm): console is removed, fini clears PENDING; gfxterm has no
+   ->prepare so grub_cls_deferred clears it immediately as before.
+ - Non-EFI terminals (serial/terminfo, pc console, vga_text, ieee1275, uboot, xen, arc, gfxterm): prepare is
+   NULL, so grub_cls_deferred == immediate clear (dumb/debug -> newline, else grub_term_cls), same as the old
+   grub_cls() for terminals that define ->cls.  The two empty-output early returns are the only change there.
+
+sleep --verbose
+---------------
+sleep.c:85 prepares before grub_term_save_pos.  On the EFI console the call does perform the pending clear
+(prepare, console.c:141-170, clear at 159-167); what it does not change is the saved cursor position: while
+PENDING is set text_mode is UNDEFINED, getxy reports {0,0}, and the clear leaves the cursor at {0,0}, so
+save_pos yields {0,0} either way (without the call, the first do_print's restore_pos -> gotoxy would trigger
+the same clear).  So the call has no visible effect there.  It matters for terminals whose getxy reports the
+real cursor before prepare
+(the test's fake terminals, and any future ->prepare implementer).  normal/menu.c run_menu (countdown style:
+grub_term_save_pos then print_countdown) is the same pattern and works on EFI for the same reason; it is not
+touched by the patch and does not need to be.  Non-verbose sleep skips prepare, so PENDING is preserved
+(test section 6).
+
+Empty-output early returns (caller audit)
+-----------------------------------------
+grub_xnputs: callers are grub_xputs_normal (grub_strlen), cbmemc.c replay (sizes may be 0; nothing to print),
+and the test.  Before the patch an empty string still ran print_ucs4_real, whose first act is term->getxy and
+whose argument evaluation reaches getwh -> prepare, i.e. an empty `echo -n ""` could activate the EFI console
+(and consume the pending clear).  After: no terminal call at all.  grub_xputs_dumb already did nothing for "".
+grub_print_ucs4: callers are print_more (non-empty "--MORE--"), grub_normal_init_page (main.c:239, non-empty
+version banner, and that function starts with an explicit grub_term_cls), help.c:81 (prefix of the command
+text), menu_entry.c:1113 (completion window).  All pass margin_left == margin_right == 0, so the only thing
+skipped for an empty range is the getxy/getwh query; no margin spaces are lost.  Void return, no caller
+depends on a side effect.
+
+Test walk-through (deferred_clear_test.c, final state)
+------------------------------------------------------
+Harness facts: fake terminals have flags 0 (ASCII code type, so print_ucs4_real takes print_ucs4_terminal and
+putglyph calls ->putchar once per glyph, plus a '\r' only after '\n'), ->prepare/putchar/getwh/gotoxy/cls all
+funnel through fake_prepare (activates and, if pending, calls fake_clear), getxy does not.  grub_test_assert only
+records failures (tests/lib/test.c), printed by grub_test_run after grub_term_outputs is restored, so messages
+are not lost on the fake terminals.  grub_term_outputs is saved/restored in straight-line code.
+In print_ucs4_terminal the start column (getxy) is read before get_maxwidth triggers the prepare/clear, so a
+fake terminal's pre-clear position (7,4 from reset_term) seeds line_width for the first line; harmless here
+because every string the test prints is far shorter than 79 columns.  (Line numbers below are section starts.)
+ 1 (222-232) both untouched; cls_deferred -> both PENDING; `help` -> first grub_term_width call prepares and
+   clears before any glyph: clears==1, chars_before_clear==0 on both; second terminal got glyphs after clear.
+ 2 (234-252) first untouched, second ACTIVE; configfile: first PENDING, second immediate fake_cls (clears==1,
+   chars==0).  Config body is `true`, no menuentry, so grub_normal_execute (nested, not batch) shows no menu and
+   nothing prints: first clears==0 && PENDING, silent_config_reads==1 (procfs get_contents runs once per open).
+   grub_xnputs("visible", 7): first prepared by getwh -> clears==1, chars_before_clear==0, chars==7;
+   second chars==7 with clears still 1 (commit 4 assertion).
+ 3 (254-263) both untouched, config runs `configfile` on the silent config: both reads==1, first still
+   PENDING/clears==0 (inner cls_deferred is idempotent on an already-pending term).
+ 4 (265-273) xnputs("direct") then printf(" formatted\n"): first prepared once (chars_before_clear==0),
+   chars > 6.
+ 5 (275-290) sleep --verbose 1: prepare -> clear (pos {0,0}), save_pos {0,0}; do_print restores {0,0} twice:
+   first_gotoxy == {0,0}, no gotoxy_changed, on both terminals.
+ 6 (292-302) sleep 1 (no --verbose): clears==0, PENDING kept; `echo -n ""` -> grub_xputs("") -> early return:
+   chars==0, clears==0.
+ 7 (304-310) cls_deferred then grub_cls: fake_cls clears PENDING, one clear, PENDING off.
+Command availability (settled from source): help/sleep/echo/true are separate modules that the test does not
+insmod, so they resolve through dynamic-command stubs.  Chain: grub_main calls grub_load_normal_mode
+(kern/main.c:233, called at :368), which loads normal and runs the `normal` command; with no argument that goes
+through grub_cmd_normal -> grub_enter_normal_mode (config) -> grub_normal_execute (config, 0, 0), i.e. the root,
+non-nested call.  That call runs read_lists (main.c:246-256, 270-278), unless grub_no_modules (0 outside the
+grub-emu "full" build, misc.h:739; the functional test runs in QEMU through grub-shell), and read_lists calls
+read_command_list (dyncmd.c:97).  It registers a stub for every command.lst entry whose module is not already
+loaded (`grub_dl_get (p)` skip), via grub_register_extcmd_prio with BLOCKS|EXTCMD|DYNCMD and no option table;
+when the module is already loaded the real command exists instead.  grub_command_find returns either.  For a
+stub, grub_command_execute -> grub_extcmd_dispatch -> grub_extcmd_dispatcher (no options, so it calls the stub
+function directly) -> grub_dyncmd_dispatcher, which loads the module, unregisters the stub, and calls the real
+command's func (the BLOCKS/EXTCMD branch is not taken for help/sleep/echo/true: help and sleep are registered
+with flags 0, echo with ACCEPT_DASH|OPTIONS_AT_START, true as a plain command), so `sleep --verbose 1` and
+`echo -n ""` are parsed by the real commands' option tables.  command.lst is generated (grub-core/Makefile.am:394-405)
+and installed into images (util/grub-install-common.c:1075).  Variables: the grub.cfg generated by grub-shell.in
+(~458-512) and grub_func_test.in set no GRUB `debug` or `pager`; `debug` in grub-shell.in is a shell variable
+(only the separate grub-shell-luks-tester.in does `set debug=all`); no in-tree default sets `pager` (main.c:503
+is just the write hook, and legacy_parse.c:210 emits `set pager` only for converted legacy configs), and grub_more
+is a zero-initialized static.  So grub_cls_deferred's active-terminal branch clears (no `debug` newline) and no
+pager prompt can block `help`.
+Still unverified: I did not inspect or boot a built image, so that command.lst really sits under
+$prefix/<cpu>-<platform>/ in the rescue ISO, and that the test passes in QEMU, remain unconfirmed.
+Compile-level read: designated initializers, unsigned counters compared with size_t constants, %u for
+unsigned, no unused variables.
+
+Observations recorded, not reported as issues
+---------------------------------------------
+1. Precedence of pending over debug/dumb: grub_cls_deferred() tests `prepare && !ACTIVE` before the DUMB/debug
+   newline rule.  On an untouched EFI console with the `debug` variable set, the old grub_cls() printed a newline
+   (screen kept); now the screen is cleared at the first output.  Nothing GRUB drew can be lost (the console was
+   untouched), only firmware/previous-stage text, and EFI console is not DUMB.  No concrete failure, so not an
+   issue.
+2. ACTIVE means "prepared", not "visibly printed": any getwh/gotoxy/putchar/cls on the EFI console consumes a
+   pending clear, including geometry queries in dry-run line counting.  All such callers found are in drawing
+   contexts (menu, help, message printing); the new empty-output returns remove the one query-only path I found.
+3. The ACTIVE/PENDING bits are written by terminal drivers, while the comment above the flag block in term.h still
+   says the flags are "used by higher-level functions but not terminals themselves".  Comment-only mismatch.
+4. The clear sequence is duplicated between grub_prepare_for_text_output and grub_console_cls (could share a
+   helper).  Style only.
+5. Series shape: commit 1's implementation is fully reverted by commit 2 and commit 4 repairs whitespace commit 2
+   removed; squashing 1+2 and 3+4 would make bisect/review simpler.  Every intermediate state read as
+   self-consistent (commit 1 references only symbols it defines/exports).
+6. Pre-existing, outside this MR (present on origin/master, not touched by the diff): the out-of-memory fallback
+   loop in grub_xnputs(), `for (; msg_len--; str++, msg_len++)`, re-increments msg_len each iteration and never
+   terminates for msg_len != 0.  Needs a failed grub_calloc to reach.  The new msg_len == 0 early return does not
+   change it.
+
+Limits of this review
+---------------------
+Not compiled, not run on EFI hardware or QEMU; the EFI ClearScreen/cursor behavior is taken from the existing
+grub_console_cls usage in the same file, and the claim that firmware leaves the cursor at {0,0} after
+clear_screen rests on that same existing usage (the in-tree test fakes it).

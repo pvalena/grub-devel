@@ -68,3 +68,162 @@ Changing `cidr < 0` to `cidr < 1` rejects /0 and eliminates the
 UB path. /0 is not meaningful for local routing (it means "all
 addresses are local"), so rejecting it is reasonable. The fix
 does not affect any valid prefix value (1-31).
+
+
+========================================================================
+RE-REVIEW 2026-10-27 - PR !165 - net_add_addr PREFIX - 4 commits - 2 issues
+========================================================================
+
+(Everything above is the first round, kept unchanged. Its Issue 1 is
+fixed; see "Prior issues" below. The two issues here are new findings
+about the resulting code.)
+
+Source files read during this re-review (branch pr165 unless noted):
+  grub-core/net/net.c (grub_cmd_addaddr 1155-1205, grub_net_add_ipv4_local
+    1109-1160, grub_net_add_addr/_real 253-295, parse_ip/parse_ip6/
+    grub_net_resolve_address 426-590, grub_net_network_level_interface_
+    register 962-1000)
+  include/grub/misc.h (inline grub_strtol, ~338-372)
+  grub-core/kern/misc.c (grub_strtoul/grub_strtoull, 570-660)
+  include/grub/types.h (GRUB_LONG_MAX, 160-172)
+  grub-core/Makefile.core.def (module net, 2520-2530)
+  docs/grub.texi (net_add_addr and net_add_route nodes; origin/master copy)
+  grub-core/net/bootp.c (346, 493-500), include/grub/net.h (prototype)
+
+Commit mapping (old -> new), compared by content:
+  50b223175 -> c931ec3cb  unchanged: diff <(rtb diff OLD^ OLD) <(rtb diff
+                          NEW^ NEW) printed nothing
+  af1a834d3 -> 2f6a1cb5b  unchanged: only the "index" blob-hash line and the
+                          hunk offset (9234 -> 9416) differ (rebase)
+  (new)     -> 614476725  new: "changing validation to reject /0 prefixes"
+  (new)     -> 8744b747e  new: "removing dead code in prefix validation"
+  Dropped: none (both old hashes still resolve with git cat-file -t and
+  both have a content match).
+
+Prior issues:
+  Issue 1 (/0 shift UB): FIXED by 614476725. Resulting code
+  (net.c:1181-1182):
+    cidr = (int)grub_strtol(&p[1], &q, 10);
+    if ( (q[0] != '\0') || (cidr > 31) || (cidr < 1) )
+  "/0" gives cidr 0 -> rejected by cidr < 1. An empty "10.0.0.1/" is
+  also rejected: grub_strtoull (misc.c:~650) finds no digits, sets
+  GRUB_ERR_BAD_NUMBER and *end = str (the NUL), returns 0, so cidr is 0
+  and cidr < 1 fires (the grub_error at net.c:1183 replaces the stale
+  errno). After this the command passes mask -1 or 1..31 to
+  grub_net_add_ipv4_local(); net.c:1144 shifts by 32 - mask, i.e. 1..31,
+  or by 24/16/8 on the auto path. No remaining shift-by-width in this
+  command. Negative input ("/-5") is -5 and rejected; "/+5", "/abc" and
+  "/0x1c" leave q at a non-NUL char and are rejected.
+  Additional finding (dead "! q"): FIXED by 8744b747e. Removing it is
+  safe: grub_strtoull sets *end on all three exits (overflow, no digits,
+  success), and grub_strtol always forwards it, so q is always
+  initialised before q[0] is read.
+
+== Issue 1: Docs put [/PREFIX] on the interface argument (grub.texi) ==
+
+Discovery:
+Reading the docs commit 2f6a1cb5b against the code commit. The synopsis
+line became
+  @deffn Command net_add_addr @var{interface[/PREFIX]} @var{card} @var{address}
+while the commit message says "optional /PREFIX appended to the ADDRESS
+argument".
+
+Source trace:
+- net.c:1177 p = grub_strchr (args[2], '/'): the prefix is split off
+  args[2], the third argument (ADDRESS). args[0] is used only at net.c:
+  1198, grub_net_add_addr (args[0], ...).
+- grub_net_add_addr (net.c:280-295) grub_strdup()s the name and
+  grub_net_add_addr_real (net.c:253-277) stores it unchanged;
+  grub_net_network_level_interface_register (net.c:962-1000) does no
+  validation of the name (it only builds net_<name>_mac / net_<name>_ip
+  variables). So "efinet0/28" is an accepted interface name.
+- The usage string registered at net.c:2181 is
+  "SHORTNAME CARD ADDRESS[/PREFIX] [HWADDRESS]", and commit c931ec3cb's
+  example is "net_add_addr efinet0 efinet0 10.0.0.140/28". Both put the
+  prefix on ADDRESS.
+- The adjacent node net_add_route documents the same optional prefix as
+  @var{ip}[/@var{prefix}] (grub.texi, net_add_route node), so the
+  intended style is clear.
+
+Consequence:
+A user who follows the rendered synopsis types
+"net_add_addr efinet0/28 efinet0 10.0.0.140". No error is raised: an
+interface named "efinet0/28" is created, grub_net_add_ipv4_local (inf,
+-1) gives it the class-A default 10.0.0.0/8 route named
+"efinet0/28:local", and the requested /28 is silently not applied.
+Documentation-only defect; the code is right.
+
+Fix assessment:
+Moving the optional part to the address, "@var{address}[/@var{prefix}]",
+matches the code, the usage string and net_add_route. The prose line
+"if @var{/PREFIX} is not specified" should use the same @var{prefix}
+spelling. Adding "(1 to 31)" states the range the code enforces
+(net.c:1182). Texinfo-only change, no build impact.
+
+== Issue 2: (int) cast defeats the cidr > 31 range check (net.c) ==
+
+Discovery:
+Reading the validation after the /0 fix, the question was whether
+"cidr > 31" and "cidr < 1" really bound the user's number. cidr is an
+int (net.c:1165) but is assigned from (int)grub_strtol(...) (net.c:
+1181), and grub_strtol returns long.
+
+Source trace:
+- grub_strtol (misc.h ~338-372) calls grub_strtoull, then only checks
+  "magnitude > GRUB_LONG_MAX" for overflow; otherwise returns
+  (long) magnitude. A value in 32..GRUB_LONG_MAX is returned intact.
+- GRUB_LONG_MAX is 9223372036854775807L when GRUB_CPU_SIZEOF_LONG == 8
+  (types.h:165-166), so long is 64-bit there. The net module is built
+  with "common = net/net.c" (Makefile.core.def:2522), i.e. on every
+  platform including the 64-bit EFI ones. On 32-bit targets long is
+  already int-sized and an out-of-range value is caught by the overflow
+  check (returns GRUB_LONG_MAX = 0x7fffffff > 31), so they are fine.
+- (int) of a long outside int range is implementation-defined; GCC and
+  Clang reduce it modulo 2^32. 4294967324 = 2^32 + 28 -> 28. Negatives
+  wrap the same way: -4294967268 -> 28. Values that overflow long
+  (> GRUB_LONG_MAX) are returned as GRUB_LONG_MAX = 0x7fff...ffff, whose
+  low 32 bits are 0xffffffff -> -1 -> rejected. Values 2^31 .. 2^32-1
+  wrap to a negative int and are still rejected by cidr < 1; only values
+  >= 2^32+1 whose residue mod 2^32 is 1..31 are wrongly accepted (e.g.
+  4294967324 -> 28). The negative side is the same idea: values below
+  -2^31 whose residue mod 2^32 is 1..31 are accepted (-4294967268 -> 28).
+- q ends at the terminating NUL for such a string (the digits are all
+  consumed), so the q[0] != '\0' test does not catch it either.
+
+Consequence:
+"net_add_addr n0 card 10.0.0.140/4294967324" succeeds and installs
+local route 10.0.0.128/28 instead of printing "invalid network prefix".
+Only nonsense input is affected, and the truncated value is always in
+1..31 when it passes, so the later shift in grub_net_add_ipv4_local()
+stays defined: validation hole, not a memory-safety problem. Low impact,
+but the cast sits directly in the one check this patch adds to bound the
+input.
+
+Fix assessment:
+Declaring cidr as long and dropping the cast makes the 1..31 test apply
+to the real value. The later call grub_net_add_ipv4_local (inf, cidr)
+converts to the int parameter only after validation (or with the initial
+-1), so the conversion is value-preserving. grub_strtol's overflow
+return (GRUB_LONG_MAX) is still > 31 and rejected. No other use of cidr.
+
+Other observations (not reported as issues):
+- IPv6: grub_net_resolve_address (net.c:561-590) accepts IPv6 literals.
+  The prefix is parsed before the address type is known, so "/1".."/31"
+  on an IPv6 address passes and is then ignored, because
+  grub_net_add_ipv4_local() returns 0 for non-IPv4 (net.c:1115-1116);
+  "/32".."/128" fails with "invalid network prefix". The docs only
+  describe IPv4/DNS addresses and net_add_addr never added an IPv6
+  local route, so this is a limitation rather than a regression.
+- In-place edit: p[0] = '\0' writes into args[2]. The argv strings come
+  from the script layer's own allocations; no in-tree C caller invokes
+  net_add_addr programmatically (grep of the tree shows only tests and
+  docs), so the mutation is not observable.
+- Pre-existing, outside this MR: bootp.c:493-500 passes a mask derived
+  from the DHCP netmask option, which is 0 for 0.0.0.0, to the same
+  shift in grub_net_add_ipv4_local(). The /0 rejection here covers only
+  net_add_addr; the shared helper is unchanged.
+- Commits 3-4 (614476725, 8744b747e) correct commit 1 (c931ec3cb), so
+  commit 1 alone still has the /0 path; squashing would keep the series
+  bisectable. Messages of all four commits otherwise match their diffs,
+  except commit 2 whose message ("ADDRESS argument") contradicts its
+  own synopsis hunk (Issue 1).

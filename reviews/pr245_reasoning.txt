@@ -1,0 +1,100 @@
+pr245 reasoning -- Allow "fallback" to include entries by title, not just number (1 commit)
+
+Commits:
+  1. 970837638 - Allow "fallback" to include entries by title, not just number.
+
+Source files read (at pr245 unless noted): grub-core/normal/menu.c (whole of menuentry_eq,
+get_and_remove_first_entry_number, grub_menu_execute_entry, grub_menu_execute_with_fallback, get_entry_number),
+grub-core/kern/misc.c (grub_strtoul, grub_strtoull, grub_isspace), grub-core/kern/env.c (grub_env_set),
+grub-core/kern/err.c (grub_error_push/pop, via the callers' use), docs/grub.texi (default and fallback sections),
+docs/BUG_PATTERNS.md (return-value-semantics, buffer-bounds, logic-deadcode-ordering).
+
+Method and limits: everything was read with rtb; nothing was built or run, so the traces below are read from the
+source. The commit has no Assisted-by trailer.
+
+What the commit does (read): menuentry_eq() moves above get_and_remove_first_entry_number() (so it is defined
+before use; the old definition lower in the file is deleted, and get_entry_number() at menu.c:529 still sees it)
+and now returns a length instead of 1: `ptr2 - spec` when the spec's first component ends at a single '>'
+(menu.c:176), `ptr1 - id` when both strings end together (menu.c:184), 0 otherwise.
+get_and_remove_first_entry_number() gains the `menu` argument (only caller: menu.c:409) and, when
+grub_strtoul() reported GRUB_ERR_BAD_NUMBER, loops over menu->entry_list trying the title and then the id.
+
+
+======================================================================================================
+== Issue 1: `tail += sz` uses the wrong base pointer and a mismatched length (menu.c:240, :184) ==
+======================================================================================================
+
+Discovery:
+After a successful title/id match the code leaves the list position as `tail += sz` (menu.c:239-240) and then
+skips whitespace and stores `tail` back with grub_env_set (menu.c:242-245). `tail` was set by the grub_strtoul()
+call at menu.c:208, which has already failed at that point, so I read what grub_strtoull() stores in *end on
+failure and what each return of menuentry_eq() counts.
+
+Source trace:
+1. grub_strtoull() (kern/misc.c:589-668): line 597 skips leading whitespace (`while (grub_isspace (*str)) str++;`);
+   lines 602-614 skip a "0x" prefix when base is 0 or 16 (`str += 2`, line 609); when no digit is found
+   (`if (! found)`, line 650) it raises GRUB_ERR_BAD_NUMBER, stores `*end = str` (line 656) and returns 0. `str` is
+   the advanced pointer, so on failure `tail` is val + (leading whitespace) (+ 2 for a "0x" prefix), not val.
+2. menuentry_eq (menu.c:168-188) compares `spec` (= val) from its first character: whitespace included. It returns
+   the number of id characters consumed at a full match (line 184, `ptr1 - id`) or spec characters consumed up to
+   a single '>' (line 176, `ptr2 - spec`). Neither includes the leading offset in (1).
+3. Trace, entry title " A" (one leading space), fallback=" A":
+   - grub_strtoul (" A", &tail, 0): whitespace skipped, 'A' gives digit 10 >= base 10 -> break, found 0 ->
+     BAD_NUMBER, tail = val + 1.
+   - menu.c:216-220: menuentry_eq (" A", " A") compares ' ' == ' ', 'A' == 'A', then both NUL ->
+     returns ptr1 - id = 2. sz = 2 >= 1, entry = i, errno cleared (menu.c:230-231).
+   - menu.c:239-240: tail = (val + 1) + 2 = val + 3. strlen (val) is 2, so val[2] is the NUL and val[3] is one byte
+     beyond the string.
+   - menu.c:243-245: `while (*tail && grub_isspace (*tail)) tail++;` reads val[3] onwards (stale bytes of the heap
+     cell the value was strdup'ed into; grub_env_set (kern/env.c:82-104) stores `grub_strdup (val)`), and
+     grub_env_set (name, tail) copies bytes until the first NUL it finds. A longer leading run of whitespace moves
+     the start further past the NUL.
+4. Escaped '>' (second sub-case). Title "A>B", fallback "A>>B". menuentry_eq: 'A' == 'A'; at ptr2 = ">>B" the first two
+   ifs fail because ptr2[1] == '>' (menu.c:175-178), the third (`if (*ptr2 == '>') ptr2++`, line 179) skips one
+   '>'; then '>' == '>'; then 'B' == 'B'; both NUL -> returns ptr1 - id = 3 (the title is 3 characters) although 4
+   characters of the spec were consumed. tail = val + 3 points at "B" (val is "A>>B"), so `fallback` becomes "B". On
+   the next pass "B" is looked up as a title/id like any other value: an entry titled or identified "B" would run
+   as a second, unintended fallback; otherwise the lookup fails and the variable is unset.
+5. Ordinary input is unaffected: for a title without leading whitespace, "0x" start or '>', tail == val and
+   sz == strlen (val) (or the index of the single '>'), so `tail + sz` is the right place. That is why this is narrow.
+6. Comparison with the sibling caller get_entry_number() (menu.c:529-575), which does not need an offset because it
+   never advances through the value; the new code is the only user of `sz` as an offset.
+
+Consequence:
+For a menu entry whose title (or id) starts with whitespace and a fallback value equal to it, GRUB reads past the end of
+the environment value (a bounded-by-NUL scan of stale heap memory) and sets `fallback` to whatever it finds. The next
+loop pass (menu.c:409) then parses that garbage as an entry number or title, so a bogus entry can be run as a
+fallback, or the list is silently cut. For titles with an escaped '>' a leftover suffix is re-interpreted as a
+second fallback. Titles that start with whitespace, "0x<non-hex>", or contain '>' are unusual, so real-world
+exposure is small.
+
+Fix assessment:
+`return ptr2 - spec` at the final return makes every return count spec characters, which is what an offset into `val`
+needs (at the final return ptr2 sits on spec's NUL, so the value is strlen of the spec). `tail = val + sz` then
+ignores wherever grub_strtoul() stopped. For ordinary input val + sz equals the old tail + sz, so behaviour there is
+unchanged. For the '>' return the offset still points at '>' (unchanged). The callers that treat menuentry_eq() as a
+boolean (get_entry_number, menu.c:552-553) are unaffected by the change, since the value is non-zero in exactly the
+same cases as before the fix.
+
+
+======================================================================================================
+== Observed, not reported ==
+======================================================================================================
+- A title/id matches only if it is the entire value or is followed by a single '>' (menuentry_eq has no
+  whitespace terminator), so a list of titles or ids separated by spaces ("idA idB", "Windows 10 Fedora") never
+  matches its first element and the lookup falls through to the "unset fallback" branch (menu.c:247-252). That is
+  the pre-patch outcome for non-numbers; the whitespace skipping that follows a title match can therefore only see
+  an empty remainder or the ">..." remainder. "0 idB" works (number first, then idB as the last element) but
+  "idA 0" does not. docs/grub.texi (fallback, line ~3672) describes a single entry, so I did not treat this as a defect.
+- After a '>' match the remainder (">rest") is stored back in `fallback` and discarded on the next pass (no title
+  starts with '>' and menuentry_eq returns 0 for it). The numeric path behaves the same for "1>0" before this
+  patch. The submenu path of `default` (grub_menu_execute_entry, menu.c:341-355) is not mirrored for `fallback`,
+  although the docs say fallback entries are identified "in the same way as for default".
+- Numeric parsing still wins over titles: a title starting with a digit (for example "9front") parses as entry 9
+  (errno NONE), the same rule get_entry_number() uses for `default`.
+- menuentry_eq now returns 0 for an empty id/title matched against an empty spec (previously 1). get_entry_number()
+  uses the result as a boolean, so `default=""` would no longer select an entry with an empty title. No realistic
+  input depends on it.
+- The comment above get_and_remove_first_entry_number() still says the value is a list of non-negative integers.
+
+AI-assistance scrutiny: not applicable (no Assisted-by trailer).

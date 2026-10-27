@@ -1,0 +1,175 @@
+pr247 Reasoning - MR !247 "Make efi machines load an env block from a variable" (Peter Jones), 1 commit, ~73 diff lines
+=========================================================================================================
+
+Result: 1 issue (security-relevant). Nothing was built or run; everything below is from reading the source at the
+branch (rtb cat/grep, full functions) and tracing concrete inputs by hand. This file replaces the earlier
+pr247_investigation.txt: its verified-clean parts are kept at the end, and its "observation" about trust is
+superseded by Issue 1 below.
+
+Source files read (at pr247 unless noted):
+  grub-core/kern/efi/init.c (whole file), grub-core/lib/envblk.c (whole file), include/grub/lib/envblk.h,
+  grub-core/kern/efi/efi.c (get/set variable helpers, 175-292), include/grub/efi/efi.h, grub-core/kern/efi/sb.c
+  (grub_efi_get_secureboot_real), grub-core/kern/lockdown.c, include/grub/lockdown.h, grub-core/kern/env.c,
+  grub-core/kern/main.c (grub_load_modules, grub_set_prefix_and_root, grub_main), grub-core/kern/dl.c
+  (grub_dl_load_core), grub-core/kern/verifiers.c (grub_verifiers_open), grub-core/commands/pgp.c (880-1040),
+  grub-core/commands/appendedsig/appendedsig.c (1180-1390), grub-core/commands/loadenv.c (set_var, load_env),
+  include/grub/tpm.h, grub-core/Makefile.core.def (kernel and loadenv stanzas), grub-core/Makefile.am
+  (kernel_syms.lst, syminfo.lst, moddep.lst rules), grub-core/genmoddep.awk, include/grub/types.h (grub_guid_t),
+  docs/grub.texi (load_env, check_signatures, lockdown and --pubkey passages).
+  docs/BUG_PATTERNS.md: applied the EFI subsystem map (resource-leak, double-free/ownership of firmware-sourced
+  pointers, low-level-ub), buffer-bounds, return-value-semantics (stale grub_errno), api-contract and docs-ci-build.
+
+Phase 0
+-------
+sanity-scan.sh: no hits except "Build/CI files changed: grub-core/Makefile.core.def", which is the one-line
+`efi = lib/envblk.c;` addition (expected). Commit message (subject only, no body) and diff read afterwards;
+intent matches content; no AI-assistance tags.
+
+== Issue 1: Unauthenticated EFI variable presets any GRUB variable, including check_signatures (kern/efi/init.c) ==
+
+Discovery:
+Reading grub_efi_env_init() (init.c:114-128) and comparing its set_var() (init.c:106-112) with the one in
+commands/loadenv.c. loadenv's set_var consults a whitelist passed through hook_data (and docs/grub.texi:8113-8123
+warns that skipping the whitelist could read "a malicious value into critical environment variables from the file,
+such as setting check_signatures=no, modifying prefix ..."). The new set_var names the parameter `whitelist`, marks it
+unused, and calls grub_env_set (name, value) for every entry; grub_efi_env_init passes NULL as hook_data
+(init.c:126). Every `name=value` line of the EFI variable "GRUB_ENV" (GUID 91376aff-cba6-42be-949d-06fde81128e8,
+init.c:100-103) therefore becomes an environment variable, with no filtering.
+
+Source trace:
+ 1. Ordering. main.c:317 grub_machine_init() -> grub_efi_init(): grub_efi_mm_init() (init.c:139),
+    grub_shim_lock_protocol_setup() (145), then, only when Secure Boot is enabled, grub_lockdown() and
+    grub_shim_lock_verifier_setup() (151-155), then the new grub_efi_env_init() (159), then grub_efidisk_init() (160).
+    The env block is applied unconditionally, after lockdown, and before main.c:330 grub_verifiers_init() and
+    main.c:341 grub_load_modules(). grub_load_modules() calls grub_dl_load_core() for every embedded module
+    (main.c:59-73), which runs grub_dl_init() (dl.c:805-821, call at 817), i.e. GRUB_MOD_INIT of each embedded module
+    sees the preset variables.
+ 2. Consumer. commands/pgp.c GRUB_MOD_INIT(pgp): `val = grub_env_get ("check_signatures")` (pgp.c:978);
+    `sec = 1` only if val[0] is '1' or 'e', else `sec = 0` (979-982); hook registered at 984
+    (grub_register_variable_hook only installs the hooks, it does not re-run the write hook on an existing value:
+    env.c:211-232). The implicit
+    default is applied only when the variable is unset: `if (!val) grub_env_set ("check_signatures", grub_pk_trusted ?
+    "enforce" : "no")` (pgp.c:1011-1012). So a preset value wins over the key-derived default.
+ 3. Effect of sec == 0. grub_pubkey_init(): `if (!sec) { *flags = GRUB_VERIFY_FLAGS_SKIP_VERIFICATION; return
+    GRUB_ERR_NONE; }` (pgp.c:898-902): the pgp verifier stops requiring a .sig for every file type.
+ 4. Nothing else enforces. `rtb grep check_signatures` over the whole tree (outside po/) finds the variable only in
+    pgp.c (978, 984, 985, 1012, 1034, 1035), docs/grub.texi and tests/file_filter/test.cfg; nothing in util/ or other
+    grub-core code sets it to enforce. docs/grub.texi:10003-10008: "Passing one or more --pubkey options to
+    grub-mkimage implicitly defines check_signatures equal to enforce in core.img prior to processing any configuration
+    files" - that implicit default is exactly the `if (!val)` branch above, which a preset variable bypasses.
+ 5. The write hook is not lockdown-aware: grub_env_write_sec (pgp.c:939-943) sets sec from the first character and has
+    no grub_is_lockdown() test. (Contrast appendedsig.c:1206 and 1247, whose write hooks refuse changes when
+    check_sigs is true and lockdown is on, and appendedsig.c:1345-1346 which forces check_sigs on under lockdown.)
+ 6. Attribute handling. grub_efi_get_variable() passes attributes == NULL to the attribute-aware getter
+    (efi.c:287-290), so the attributes of GRUB_ENV are never examined. kern/efi/sb.c:99-110 shows the in-tree rule for
+    an OS-writable variable: MokSBState downgrades security only when the variable lacks RUNTIME_ACCESS (sb.c:109),
+    using grub_efi_get_variable_with_attributes() (efi.c:214, declared efi.h:90).
+
+Concrete failing input:
+EFI variable GRUB_ENV (GUID above) containing "# GRUB Environment Block\ncheck_signatures=no\n".
+Next boot: grub_envblk_iterate() yields name "check_signatures", value "no"; set_var() stores it; pgp's MOD_INIT reads
+"no" -> sec = 0, and the `if (!val)` default (enforce, because the core.img carries a --pubkey) is skipped.
+grub_pubkey_init() then returns SKIP_VERIFICATION for every file, so an unsigned grub.cfg, GRUB modules, kernel, initrd
+and grubenv are accepted by pgp in a core.img whose protection relies on that implicit default. Editing grub.cfg alone
+does not achieve this there, because grub.cfg itself must carry a valid .sig.
+Under Secure Boot (lockdown on): the lockdown verifier answers DEFER_AUTH for the kernel/module/chainload types
+(lockdown.c:34-55), and verifiers.c:152-171 then fails closed ("verification requested but nobody cares",
+verifiers.c:170) unless another verifier (shim_lock) authenticates the file. So kernels and modules stay protected, but
+the config file type is not in that list, so with pgp downgraded an unsigned configuration is accepted, and an
+unsigned configuration could inject kernel command-line arguments for a shim-authenticated kernel. I did not confirm
+that this combination (pgp plus shim_lock) exists in practice.
+
+Attacker precondition: the ability to write the GRUB_ENV variable. There is no writer in this tree (`rtb grep
+'"GRUB_ENV"'` finds only init.c:121), and which principals can write it, and with which attributes, cannot be
+determined from the source. If the variable is runtime-accessible, or with physical access to the machine, the
+precondition is met; I did not assert that any particular OS user can write it. For reference, the in-tree default
+setter grub_efi_set_variable() uses NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS (efi.c:204-209).
+
+Variables NOT affected, which bounds the impact:
+ - check_appended_signatures and appendedsig_key_mgmt: registered with read hooks that return the module's internal
+   state and ignore the stored string (appendedsig.c:1188-1195 grub_env_read_sec, 1229 grub_env_read_key_mgmt;
+   registration at 1366 and 1383), and lockdown forces check_sigs on (1345-1346). A preset value has no effect.
+ - lockdown and shim_lock: plain variables set at lockdown.c:77 and sb.c:281, so a preset entry of that name would be
+   overwritten by those calls when Secure Boot is on, and if set while Secure Boot is off they are never read:
+   `rtb grep` for "lockdown", "shim_lock" and $lockdown / $shim_lock in grub-core, util and include finds only the
+   two grub_env_set/export pairs (lockdown.c:77-78, sb.c:281-282). The C flag grub_is_lockdown() (lockdown.c:82) is
+   separate state.
+ - prefix, root, cmdpath: grub_set_prefix_and_root() (main.c:350) sets them whenever a boot device is found.
+ - tpm_fail_fatal: grub_is_tpm_fail_fatal() = grub_env_get_bool ("tpm_fail_fatal", false) (tpm.h:48-51), default
+   false, so a preset can only tighten it.
+ Other variables (for example timeout, default, pager, debug, superusers-related ones) were not enumerated.
+
+Consequence:
+Anyone who can write GRUB_ENV can turn off pgp signature enforcement on the next boot of a core.img that relies on the
+implicit `--pubkey` default, without a signed configuration; the pre-existing grub.cfg trust chain no longer protects
+that configuration. Without a core.img using pgp the specific consequence does not apply, but the mechanism (any
+variable is presettable before any module initialises, with no lockdown or attribute check) still does.
+
+Fix assessment (options, not a single obvious change; discussed in the review):
+ (a) Skip/reject the variable when RUNTIME_ACCESS is set. Matches sb.c:99-110. The attribute-returning getter exists
+     (efi.c:214; declared efi.h:90), so no new API is needed. Depends on the writer using non-runtime attributes,
+     which is outside this tree.
+ (b) Pass a whitelist of harmless names as hook_data. The `whitelist` parameter is already in the signature and
+     loadenv's set_var is the model; the data structure there (grub_env_whitelist_t) is private to loadenv.c, so it
+     would be re-declared or moved. Needs the author's use case to pick the names. Recommended, possibly with (a).
+ (c) Skip the variable when grub_is_lockdown() (lockdown.c:82, lockdown.h:32). Only helps Secure Boot boots (lockdown
+     is set at init.c:153 only then); the non-SB --pubkey case stays exposed.
+ (d) Verify a signature over the block before parsing: no verifier is available at this point (grub_verifiers_init()
+     runs later, main.c:330), so this needs a new mechanism; not evaluated further.
+
+== Secondary points (not counted as separate issues) ==
+
+S1. Signature skipped. grub_envblk_open() rejects size < sizeof (GRUB_ENVBLK_SIGNATURE) (26) or a signature mismatch
+    (envblk.c:31-36), but grub_efi_env_init() calls grub_envblk_iterate() directly on a stack struct, so the check
+    never runs. The first 25 bytes ("# GRUB Environment Block\n" is 25 characters) are skipped unchecked
+    (iterate starts at buf + sizeof (SIGNATURE) - 1), so input "foo=bar\n..." without the header is parsed from
+    offset 25 and any line straddling it yields a truncated name. Robustness gap (api-contract), not memory unsafety.
+S2. Return value ignored. grub_efi_get_variable()'s grub_efi_status_t is dropped (init.c:121). The callee sets
+    *data_out = NULL first, so `!buf` covers every failure and the common not-found case sets no grub_errno; after an
+    OOM in grub_utf8_to_utf16_alloc the stale grub_errno is returned unprinted. Cosmetic.
+S3. Documentation. docs/grub.texi mentions only the grubenv file (lines 4007, 4074, 9991); the variable name GRUB_ENV,
+    its GUID (the string occurs only at init.c:101, in either letter case) and the block format are not documented.
+
+== Verified-clean parts (kept from the earlier investigation) ==
+
+Data flow and ownership
+-----------------------
+grub_efi_get_variable("GRUB_ENV", &guid, &size, &buf): the callee (efi.c:214-262) sets *data_out = NULL and
+*datasize_out = 0 first, returns before allocating when the variable is missing (GetVariable size query not
+BUFFER_TOO_SMALL) or its size is 0, frees its own buffer on a failed second GetVariable, and only on success hands
+back a grub_malloc(datasize) buffer. So buf != NULL implies size >= 1 (the `size < 1` test at init.c:123 is
+redundant and its early return cannot leak a non-NULL buffer in practice). The buffer is freed after iterate
+(init.c:127): grub_malloc/grub_free pair; set_var -> grub_env_set copies name and value via grub_strdup.
+
+grub_envblk_iterate() on an exact-size buffer of N bytes (p = buf + 25, pend = buf + N), traced:
+ - N <= 25: p >= pend, the loop body never runs (p may point beyond one-past-end, but is only compared, never read).
+ - Name scan `while (p < pend && *p != '=')` and `if (p == pend) return` stop before reading pend.
+ - Value scan reads *p only for p < pend; a trailing backslash at pend-1 makes p += 2 reach pend+1 and the
+   `p >= pend` test returns. The unescape loop `for (...; *p != '\n'; ++p)` therefore only runs when an unescaped '\n'
+   exists at p < pend, and it consumes escapes with the same stride as the scan.
+ - name = grub_malloc(p - name_start + 1): name part + NUL + unescaped value + NUL fit because unescaping only
+   shrinks (2 source bytes -> 1) and the final NUL lands at most at index p - name_start.
+ - find_next_line() after the hook starts on the '\n' and returns p + 1; comment lines ('#') scan to '\n' or pend.
+ - A last entry without a trailing '\n' is dropped ("Broken" return); a line starting with '=' yields an empty name
+   passed to grub_env_set (creates a variable named ""; harmless).
+No out-of-bounds read or write on a malformed variable that I could construct (the adversarial pass re-traced this).
+
+Build
+-----
+`efi = lib/envblk.c;` is in the `kernel` stanza (Makefile.core.def:236), all efi platforms. The `loadenv` module
+(Makefile.core.def:1085) also compiles lib/envblk.c. genmoddep.awk errors on a symbol defined in two modules, but its
+input (syminfo.lst) gets kernel symbols only from kernel_syms.lst, built from the EXPORT_FUNC/EXPORT_VAR lines of
+KERNEL_HEADER_FILES; include/grub/lib/envblk.h is not in that list and has no EXPORT_FUNC, so the kernel copy is not
+seen as a definition and loadenv.mod keeps resolving its own copy. Cost: a second copy of the five envblk functions
+in the EFI kernel (only iterate is called).
+grub_guid_t initializer {0x91376aff, 0xcba6, 0x42be, {8 bytes}} matches struct grub_guid (u32, u16, u16, u8[8]).
+set_var matches the hook type `int (*)(const char *, const char *, void *)`. All efi arch init files call
+grub_efi_init() (arm, arm64, i386 (also x86_64), ia64, loongarch64, riscv).
+
+Ordering notes
+--------------
+Variables are set before grub_set_prefix_and_root() (main.c), which registers the `root` write hook and then sets
+prefix/root whenever a boot device is found. Hooks registered later do not re-run on an existing value
+(env.c:211-232), the same as for a plain `set` before the hook exists.
+
+Commit message: subject only; it matches the diff but gives no detail on variable name, GUID or format.

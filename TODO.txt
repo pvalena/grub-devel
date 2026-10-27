@@ -1,8 +1,33 @@
-  - analysis doc should not contain duplicate entries
-  - scripts for using cd ... && git show ... | sed -n ...
-  - sanity-check scripts
-  - gitsu / view should use $EDITOR
-  - 120-char-check should be a script
-  - script: check for re-reviews
-  - resilience: nothing should fail after reviews are "done"
-  - agent: format review header "# AI Review: MR !xxx"
+- check what new can be learned from this review run; what (new) process can be documented, what can be enhanced
+    etc.; For both you and the agents.
+
+- `git -C ... cat-file -t ` should be replaced by rtb implementation intead; draft it (and other changes in local docs)
+
+- agents often run `R=~/.claude/skills/review-toolbox/rtb; $R --help 2>&1`; are some better instructions needed
+    (`rtb facts`?), so all major usecases are covered by some quick-start command list?
+
+- For agents: the access to `/tmp`, downloading required sources from github, and running commands like compilation
+    or patching (all given here only as an example) is allowed strictly only if it is required to complete the review.
+    (But strictly speaking, the build itself is done in CI pipeline, so it's not desirable
+    to duplicate that effort.)     Update all relevant docs. 
+
+
+- the "For more details" line doesn't break the 120-chars check, because it's a link, and the URL is not a rendered
+    markdown. The linter should ignore it (just this occurence) / and does not need fixing by agents. Fix and document.
+
+- cd XYZ is no longer necessary, because you're (and agents never switching into a different directory
+	please make sure that this is followed
+
+- RTB=~/.claude/skills/review-toolbox/rtb is no longer necessary, because there's helpers/rtb wrapper instead
+	please make sure that this is followed (in agents as well)
+
+- 120-char-check should be a script (no manual check required); verify and document
+
+- script: check for re-reviews (helpers/review-check.sh)
+	instead of manual checks
+
+- final review-done check for new PRs should be scripted, instead of doing it ad-hoc, like:
+    ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+     │ cd reviews; for n in $(cat ../data/new.txt); do f=pr$n.md; res=$(grep -c '^### Issue ' $f); r=$( [ -f pr${n}_reasoning.txt ] && echo R ); i=$( [ -f pr${n}_investigation.txt ] && echo I ); c=$(awk '/^\*\*Commits:\*\*/{p=1;next} /^## /{p=0} p && /^[0-9]+\. /' $f | wc -l); echo "pr$n issues=$res commits=$c files=${r}${i}"; done; echo "--- over-120 / github / emails ---"; for n in $(cat ../data/new.txt); do for f in pr$n.md pr${n}_reasoning.txt pr${n}_investigation.txt; do [ -f $f ] && { awk -v F=$f 'length>120{print F": line "NR" len "length}' $f; grep -l -i 'github\.com' $f; grep -n -E '[A-Za-z0-9._-]+@[A-Za-z0-9.-]+\.[a-z]{2,}' $f | head -2 | sed "s|^|$f: email? |"; }; done; done; echo "sweep done"
+    ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+    Please write the script and save it in the helpers/* and let orchestrator know to use it as a final step.

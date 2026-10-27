@@ -1,0 +1,81 @@
+pr262 Investigation Trail - Clean Review
+========================================
+
+MR !262 - "ieee1275: Use common device argument separator parser" (Michael Chang), 1 commit, ~69 diff lines.
+Result: no issues found. Nothing was built or run; everything below is from reading the source at the branch
+(rtb cat, full functions) and tracing concrete inputs by hand.
+
+Source files read (at pr262 unless noted):
+  grub-core/kern/ieee1275/openfw.c (get_devargs/get_devname/parse_args/encode_devname/get_boot_dev, lines 325-720),
+  grub-core/kern/ieee1275/init.c (grub_machine_get_bootlocation), grub-core/disk/ieee1275/ofdisk.c
+  (insert_bootpath, nvme-of path builders at lines 432-544, 633), grub-core/disk/ieee1275/obdisk.c
+  (strip_ob_partition, add_bootpath), grub-core/net/drivers/ieee1275/ofnet.c (parse_bootpath, devname use),
+  grub-core/osdep/linux/ofpath.c (path formats), include/grub/ieee1275/ieee1275.h.
+  History: `rtb log --pickaxe` on origin/master finds adeeeeda3 (MR !146) as the commit that introduced both the
+  strrchr in get_devargs and the nvme-of special case in get_devname.
+  docs/BUG_PATTERNS.md: applied null-deref (strchr/strstr results) and resource-leak-error-path
+  (Firmware disk / ieee1275 subsystem entries).
+
+Phase 0
+-------
+sanity-scan.sh: no hits in any category. Commit message and diff read afterwards; intent matches content; no
+AI-assistance tags.
+
+What the patch does
+-------------------
+Before: get_devargs used grub_strrchr(path, ':') for every path (no NVMe-oF handling). get_devname used
+grub_strchr(path, ':') (first colon), then overrode `colon` for paths containing "nvme-of": the first colon after
+"/namespace@", or NULL when there is no "/namespace@".
+After: grub_ieee1275_find_colon_separator() does strrchr first (NULL -> NULL), then the same nvme-of override
+(first colon after "/namespace@", else NULL). Both callers use it; get_devargs returns
+colon ? grub_strdup(colon + 1) : NULL; get_devname keeps its alias lookup and strndup tail unchanged.
+No allocation happens in the helper, so no new leak or ownership question; no pointer is dereferenced before a
+NULL test (colon is tested in both callers, namespace_split before strchr).
+The nvme-of override cannot produce a pointer outside the string: grub_strchr(namespace_split, ':') searches from
+inside `path`. If strrchr found no colon, nvme-of paths also have none after "/namespace@" (a colon after it would
+also be a last-colon candidate), so the early NULL return equals the override result.
+
+Traced inputs (old devname / old devargs -> new devname / new devargs)
+----------------------------------------------------------------------
+A. "/vdevice/v-scsi@30000067/disk@8100000000000000:2,\grub.elf" (single colon, not nvme-of)
+   old: ".../disk@8100000000000000" / "2,\grub.elf"; new: identical.
+B. "/nvme-of/controller@500a098000000001,ffff:nqn=nqn.2014-08.org.nvmexpress:uuid:abc/namespace@1:2,\grub.elf"
+   (format matches the builders at ofdisk.c:514/544 and ofpath.c:806/813)
+   old devname: nvme-of branch -> first colon after "/namespace@" -> ".../namespace@1"; old devargs: last colon
+   of the whole path = the one after "namespace@1" -> "2,\grub.elf". New: identical for both.
+C. Same as B without ":2,\grub.elf" (bootpath naming the whole namespace)
+   old devname: whole path; old devargs: last colon is inside the NQN -> "abc/namespace@1" (non-NULL garbage).
+   new devname: whole path; new devargs: NULL. This is the intended consistency fix.
+D. B with a colon inside the arguments: "...namespace@1:2,\EFI:x"
+   old devargs: last colon -> "x" (wrong); new: first colon after "/namespace@" -> "2,\EFI:x".
+E. Non-nvme-of path whose argument field contains a colon, e.g. "/pci@f4000000/ata-6@d/disk@0:3,\:tbxi"
+   old devname: first colon -> ".../disk@0"; new devname: last colon -> ".../disk@0:3,\" (includes the args).
+   devargs is "tbxi" both before and after (strrchr). So devname becomes inconsistent with the first-colon rule it
+   used before; the commit message documents the new rule ("otherwise, use the final colon in the path").
+   Reachability: I found no producer of such paths in this tree. ofnet.c SUFFIX (":speed=auto,duplex=auto,1.1.1.1,
+   ..."), the ofpath.c formats (all "...:%c" / "...:%d" with one colon) and sparc obdisk.c (strip_ob_partition cuts
+   at the first colon before get_devname is called, so its input has no colon) are all single-colon. Whether
+   firmware bootpaths for other device types (IPv6 network arguments, Apple-style ",\:tbxi" file arguments) take
+   this shape was not checked, so this is recorded as an observation, not an issue.
+F. No colon at all: helper returns NULL; devname uses pathlen = strlen(path); devargs NULL. Unchanged.
+G. PCIe NVMe "/pci@.../nvme@0/namespace@1:2,\boot" (path builder at ofdisk.c:633 appends "/namespace@%x" to the
+   controller path): does not contain "nvme-of", exactly one colon, so it takes the plain last-colon branch and
+   gives the same result as before for both functions.
+
+Callers of the two functions
+----------------------------
+get_devname: openfw.c parse_args (line 388), encode_devname (506), ofdisk.c:1149 (insert_bootpath, bootpath from
+/chosen), ofnet.c:529 (alias->path from device-tree iteration; its exact form was not checked), obdisk.c:823
+(sparc, input already stripped at the first colon). get_devargs is static; used in parse_args for
+GRUB_PARSE_FILENAME and GRUB_PARSE_PARTITION, both of which already handle NULL (`if (!args) return 0;`).
+On powerpc the parse_args wrappers (get_device_type/get_aliasdevname/get_filename/encode_devname) are only fed the
+/chosen bootpath (init.c:174-202, ofdisk.c:1145).
+
+Pre-existing, not introduced here
+---------------------------------
+parse_args() early `return 0` when args == NULL skips `grub_free (device)` (the strdup'd/alias name returned by
+get_devname); the comment says "Shouldn't happen". Case C is now a legitimate input that takes this path (before,
+non-NULL garbage args avoided it; for the example in C the garbage "abc/namespace@1" reaches encode_devname as
+partition "1bc/namespace@1" and fails strtoul with "invalid partition number").
+Leak is one short string once per boot and the early return already existed for colon-less paths, so it is noted
+here only.

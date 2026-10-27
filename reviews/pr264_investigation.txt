@@ -97,11 +97,14 @@ flag to 0. This is a conservative but deliberate design - it avoids hammering a 
 event API is already failing, at the cost of not retrying a possibly-transient failure until
 reinit. Not a correctness bug; noted as a design trade-off.
 
-Race check: the EFI ConIn "wait for key" event is level-triggered by firmware (stays signaled
-while an unread keystroke is queued), so a key arriving between grub_getkey_noblock()'s failed
-read and the wait_for_event call is not missed - wait_for_event returns immediately in that
-case. This is the standard justification for this idiom and matches how EDK2 code (e.g. shell
-key-wait helpers) uses ConIn->WaitForKey.
+Race check (softened in the 2026-10-27 re-review; the original text asserted firmware behaviour
+that nothing in this tree shows): whether the firmware's ConIn "wait for key" event stays signaled
+while an unread keystroke is queued is firmware behaviour I recall but did not verify from any
+source in this tree, and I did not check how EDK2 code uses ConIn->WaitForKey. What the source
+does show is that this does not matter for correctness: grub_console_wait() also arms a 20 ms
+timer event, so a key that arrives between grub_getkey_noblock()'s failed read and the
+wait_for_event call (or a key event that never signals) is picked up by the next poll once the
+timer fires (the code comment notes firmware timer granularity may round the 20 ms up).
 
 Reachability of `text_input` path: grub_efi_console_input_init() sets term->data from
 grub_efi_open_protocol() for the Simple Text Input Ex protocol; when unavailable it stays NULL
@@ -156,3 +159,208 @@ flag are all correct and match the commit message's stated intent. The AI-assist
 was independently traced against the actual source (not accepted on the AI's own assertions)
 and its expected call counts are exactly reproducible from grub_getkey()'s and
 grub_console_wait()'s logic.
+
+
+======================================================================================================================
+RE-REVIEW 2026-10-27 -- MR !264 now has 3 commits (was 1)
+======================================================================================================================
+
+Current commit list (rtb log --ref origin/master..pr264 --head 1000 prints newest first). Apply order, oldest first,
+confirmed pairwise with rtb log A..B (origin/master..77ce527b1, 77ce527b1..35f424df1, 35f424df1..b97169739):
+  1. 77ce527b1  term: Avoid busy polling while waiting for UEFI console input       UNCHANGED (was 2d5353490)
+  2. 35f424df1  x86: Use PAUSE in grub_cpu_idle                                     NEW
+  3. b97169739  term: Avoid busy polling while waiting for BIOS console input       NEW
+No old commit is dropped: the sole old commit (2d5353490) has a content match (commit 1). Whole-MR diff is 945 lines.
+
+Phase 0 (before any branch content entered the analysis): sanity-scan.sh origin/master..pr264 -> no prompt-injection,
+Unicode, HTML-comment, base64/hex, eval/exec, URL/IP, network, credential or hook hits. Only flag: "Build/CI files
+changed" for .gitlab-ci/yml/matrix.yml and Makefile.util.def, which is expected (one new native test registered per
+test-adding commit). Commit messages and the full diff were read afterwards: no instructions aimed at a reader, no
+unrelated changes, messages match the diffs. Verdict PASS (intent matches content).
+
+Source files read at pr264 for this round (full functions, not only hunks):
+- grub-core/kern/term.c (whole file), include/grub/term.h (struct grub_term_input, register/unregister helpers,
+  FOR_ACTIVE_TERM_INPUTS), grub-core/term/efi/console.c (input init, getkey, wait), grub-core/term/i386/pc/console.c
+  (whole file), include/grub/i386/pc/{int.h,int_types.h,memory.h,console.h}, include/grub/i386/memory.h,
+  grub-core/kern/i386/int.S (grub_bios_interrupt), grub-core/kern/i386/realmode.S (prot_to_real),
+  grub-core/kern/i386/pc/mmap.c (other INT 15h callers), include/grub/{time.h,i386/time.h,x86_64/time.h,misc.h,
+  kernel.h,types.h,test.h,memory.h}, grub-core/tests/lib/test.c, grub-core/kern/misc.c (printf parser),
+  grub-core/kern/generic/millisleep.c, grub-core/bus/usb/usbtrans.c, grub-core/kern/i386/qemu/init.c,
+  tests/efi_console_wait_test.c, tests/bios_console_wait_test.c, Makefile.util.def, .gitlab-ci/yml/matrix.yml,
+  grub-core/Makefile.core.def (where term/i386/pc/console.c is built).
+
+== 1. Old -> new mapping (commit 1 unchanged) ==
+
+  git -C grub cat-file -t 2d5353490            -> commit (old object still present)
+  diff <(rtb diff 2d5353490^ 2d5353490) <(rtb diff 77ce527b1^ 77ce527b1)
+      -> three differing lines only: the two `index xxxx..yyyy` blob-hash lines (matrix.yml, Makefile.util.def) and the
+         Makefile.util.def hunk header offset (-1465 became -1473, master added lines above the insertion point).
+         Both diffs are 561 lines; every +/- line is identical, so the patch content is unchanged.
+  diff of rtb messages for the two commits   -> empty (message unchanged).
+  rtb log 2d5353490^..77ce527b1^ lists 100+ master commits the MR was rebased over (ofpath, lib/arg, zstd,
+  appendedsig, pgp, ...). Per-file rtb log over that range for term.c, efi/console.c, term.h, pc/console.c, pc/int.h,
+  i386/time.h and include/grub/time.h is empty: master did not touch those files. The prior round's analysis of
+  commit 1 therefore still describes the code; it was nevertheless re-read in the resulting tree (below) because
+  the MR structure changed.
+
+== 2. Fresh pass over commit 1 in the resulting tree ==
+
+Wait gate (term.c, grub_getkey): `term = grub_term_inputs; if (term && !term->next && !grub_term_poll_usb && term->wait
+&& term->wait (term)) continue;`. grub_term_inputs is the list FOR_ACTIVE_TERM_INPUTS walks (term.h), so "term->next ==
+NULL" is exactly "one active input". grub_getkey_noblock() runs before every wait and still calls grub_term_poll_usb,
+grub_net_poll_cards_idle and every active getkey, so a wake returning 1 only loops back to the same polling path.
+
+Designated initializers (struct grub_term_input got a new `wait` member before `data`): re-grepped the current tree.
+Definitions found: unix/windows emuconsole.c, arc, arm/cros, arm/pl050, at_keyboard, efi, i386/pc, ieee1275, serial,
+uboot, usb_keyboard (grub_usb_keyboard_term plus a copied grub_usb_keyboards[16]), xen, tests/fake_input.c, and the two
+new tests. All use `.field =` initializers or are zero-initialised arrays, so `.wait` is NULL everywhere except the
+EFI and BIOS consoles. No positional initializer exists.
+
+EFI wait (efi/console.c) re-read: events[1] is the only object the function creates; create_event failure returns before
+anything exists to close, and every other path calls close_event once. As I recall the UEFI spec, WaitForEvent is only
+valid at TPL_APPLICATION (not checked against the spec here); an error return would set input_wait_failed and fall
+back to polling, so that case is handled by the same path. `index` is written by firmware but never read: a key wake
+and a timer wake are treated alike (both `continue` into a fresh poll), which is why the "timer-only wake" test works.
+input_wait_failed is reset in grub_efi_console_input_init() after the grub_efi_is_finished early return.
+
+== 3. Commit 2: x86: Use PAUSE in grub_cpu_idle (include/grub/i386/time.h, include/grub/x86_64/time.h) ==
+
+Both headers had the same blob (4da5ae93c) and get the same new blob (dffa2825e): the empty body becomes
+`asm volatile ("pause");` with the FIXME rewritten ("HLT must replace PAUSE below, not just be uncommented alongside
+it"), which matches what the code does.
+
+Scope: include/grub/time.h includes <grub/cpu/time.h> only when neither GRUB_MACHINE_EMU nor GRUB_UTIL is defined;
+otherwise it supplies its own empty grub_cpu_idle(). So the change cannot reach grub-emu, host utilities or the native
+unit tests (all GRUB_UTIL). It applies to the firmware builds that take the i386/x86_64 cpu header. In-tree callers
+of grub_cpu_idle() (grep): grub_getkey (term.c), grub_millisleep (kern/generic/millisleep.c:
+`while (grub_get_time_ms () - start < ms)`), grub_usb_execute_and_wait_transfer (bus/usb/usbtrans.c: poll
+check_transfer, test timeout, idle), and the endless grub_exit() loops of i386 qemu and coreboot (also arm coreboot,
+which uses the arm header). All the x86 ones are spin-waits that re-test their condition through function calls, so a
+hint instruction that returns after a few cycles cannot change their results; the previous body was empty and the
+loops call out-of-line functions, so no compiler-barrier behaviour is lost. PAUSE is the usual x86 spin-wait hint
+(general knowledge; I found no in-tree use of it to compare, and did not assemble it: not compiled here).
+Commit message claim "PAUSE still spins; it does not replace a blocking wait" is consistent with the code.
+
+== 4. Commit 3: BIOS console wait (term/i386/pc/console.c, int.h, test, CI) ==
+
+grub_console_wait(): regs zero-initialised; eax = 0x8600 (AH=86h), ecx = 0, edx = 20 * 1000 (CX:DX = 20000
+microseconds, as in the code comment); flags = GRUB_CPU_INT_FLAGS_DEFAULT | GRUB_CPU_INT_FLAGS_CARRY. In i386-pc
+builds GRUB_CPU_INT_FLAGS_DEFAULT is GRUB_CPU_INT_FLAGS_INTERRUPT (int_types.h), so 0x0201 is passed (fits the 16-bit
+`flags` member). grub_bios_interrupt (kern/i386/int.S) copies regs->flags to the real-mode `popf` before the `int`
+and writes the returned flags back, so `regs.flags & GRUB_CPU_INT_FLAGS_CARRY` after the call is the BIOS's carry.
+Presetting CF is conservative: a BIOS that does not clear CF on success is treated as a failed wait (falls back to
+polling), never as a successful one. Interrupts are enabled in real mode both by the flags word and by the `sti` at
+the end of prot_to_real (realmode.S, GRUB_MACHINE_PCBIOS), i.e. the same conditions every other INT 13h/16h call here
+already runs under. The AH=86h semantics (CX:DX microseconds, CF set on error) come from the commit's own comment and
+the usual interrupt-list convention; I did not check them against a spec document or real firmware, and the commit
+message itself says physical BIOSes were not tested and a hanging firmware call cannot be recovered from.
+
+Failure path: CF set -> input_wait_failed = 1, return 0, so grub_getkey() falls to grub_cpu_idle() (PAUSE from commit 2)
+and keeps polling INT 16h; nothing is allocated, so there is nothing to release. The flag is cleared only by the new
+`.init` (grub_console_input_init), which grub_term_register_input()/grub_term_register_input_active() call when the
+terminal is (re)activated; the BIOS input had no `.init` before, and a NULL-init terminal is handled by the
+`! term->init ||` test in term.h, so adding one changes nothing else. grub_console_term_input has no `.fini`.
+Gate interplay (same as EFI): `console` plus any second active input, or grub_term_poll_usb set by the native USB
+stack, disables the wait and leaves the old spin (now with PAUSE).
+
+Include/ABI edits (not behaviour changes on i386-pc):
+- console.c: `<grub/machine/{memory,console,int}.h>` became `<grub/i386/pc/...>`. On an i386-pc configuration
+  grub/machine is the link to grub/i386/pc, so the same files are read; the explicit path lets the host-built test
+  compile when grub/machine points at another platform.
+- int.h: `__attribute__ ((regparm(3)))` moved in front of the declaration and wrapped in `#if defined (__i386__)`. On
+  i386 targets (the only ones where GRUB_MACHINE_PCBIOS builds) the function type is the same; on other hosts the
+  i386-only attribute is simply not applied (rationale per the commit message; not compiled here).
+- Makefile.util.def: `cppflags = '-DGRUB_MACHINE_PCBIOS=1'` applies to every file of this test. Effects checked by
+  grepping include/ for GRUB_MACHINE_PCBIOS: int_types.h (flags default -> 0x200), int.h (declaration visible),
+  misc.h (grub_halt gets an `int no_apm` prototype; none of the five linked grub-core sources mention grub_halt),
+  kernel.h (inside #ifndef GRUB_UTIL, not compiled) and multiboot headers (not included). No conflict found.
+  grub/memory.h does not include grub/machine/memory.h, so pc/memory.h does not pull in another platform's header.
+
+Test trace (tests/bios_console_wait_test.c; mock grub_bios_interrupt, real console.c, real term.c). Scenario results
+derived by hand from the sources, not by running it:
+ - check_wait: wait() twice -> mock sees eax 0x8600, ecx 0, edx 20000, flags 0x201 (asserted); waits = 2, no INT 16h.
+   pending = 3: three grub_getkey() calls each see INT 16h/AH=1 (ZF clear) then AH=0 -> 'x'; waits stays 0.
+   ready_after = 3 + mock_poll_network: iterations 1 and 2 find no key (checks = 1, 2) and wait (waits = 1, 2);
+   iteration 3 sets pending at checks == 3 and reads -> waits 2, network_polls 3, reads 1 (matches the assertion).
+ - check_failures (errors 0x83 and 0x86): first wait sets CF -> returns 0; second returns 0 without an INT (waits == 1);
+   grub_getkey() with ready_after = 3 completes by polling (waits 1, checks 3, reads 1); unregister + register_active
+   runs `.init`, the next wait succeeds (waits == 2). Loop body repeats after reset_test() for the second error code.
+ - check_guards: grub_getkey_noblock() never waits; grub_term_poll_usb = mock -> usb_polls 3, waits 0; second input
+   (`other`, stack object linked via console_input->next) -> waits 0. reset_test() re-pushes the console on the lists
+   (grub_list_push overwrites next/prev), so the dangling `next` to the stack object after check_guards is harmless;
+   grub_console_fini() then unlinks the static terminals.
+ - Every assertion carries a message. mock mirrors AH=1 (ZF) and AH=0 (read must follow a successful check), matching
+   grub_console_getkey()'s own AH=1-before-AH=0 sequence.
+CI: bios_console_wait_test added at the top of TYPE: native in .test-matrix (alphabetically before cmp_test) and
+declared `testcase = native;` in Makefile.util.def, matching the efi_console_wait_test entry (no TYPE mismatch).
+
+== 5. Interactions between the commits ==
+
+- Ordering: commit 3 depends on `.wait` added by commit 1 (same struct member, same grub_getkey gate); commit 2 touches
+  only the two time.h headers. Each commit is self-consistent when applied in order: commit 3's matrix.yml and
+  Makefile.util.def hunks are based on the blobs commit 1 produced (index lines 7311453fe / 48957e3db).
+- Shared state: input_wait_failed is a file-static in each of two mutually exclusive drivers (EFI vs i386-pc console),
+  so no cross-driver interference. After a failed wait the fallback is grub_cpu_idle(), which is now PAUSE
+  (commit 2) rather than an empty body: the fallback is no longer a pure tight loop, still a spin.
+- Commit-1 message says grub_cpu_idle() is "unchanged" and x86 idle "is empty"; true at commit 1, superseded by commit
+  2. Not a defect (each message describes its own commit).
+- Resources: only the EFI wait owns a resource (its timer event); the BIOS wait owns none. No path in either commit
+  leaves a resource open.
+
+== 6. Observations (not issues) ==
+
+- Runtime no-op for current callers: PAUSE does nothing in GRUB_UTIL/emu builds and in the native tests.
+- Test-only robustness: tests/efi_console_wait_test.c passes `NULL` as the message of nearly every grub_test_assert
+  (about 50 call sites end in `NULL);`). On a passing assertion that is harmless. On a failing one
+  grub_test_assert_helper (grub-core/tests/lib/test.c:173) calls failure_append_vtext -> grub_xvasprintf
+  (misc.c:1405) -> parse_printf_arg_fmt, which does `fmt = fmt0; while ((c = *fmt++) != 0)` (misc.c:906-907) on
+  the NULL pointer, so the test would crash instead of printing "assert failed". CI still goes red; only the
+  diagnostic is lost. The BIOS test passes a message everywhere. Not reported as an issue: no product code is
+  involved and no failing input exists today; not compiled here.
+- Behaviour trade-offs stated by the author: the BIOS wait does not wake on a keypress (a key typed during the wait
+  is only seen on the next poll); physical BIOS firmware is untested; the SeaBIOS/QEMU CPU figures in the commit
+  messages were not reproduced here. The source only shows that a 20 ms wait is REQUESTED (edx = 20 * 1000): the
+  actual duration is whatever the firmware's INT 15h/AH=86h implementation does (the EFI code comment says firmware
+  may round its timer up; for BIOS the author tested only SeaBIOS under QEMU/KVM). I therefore make no claim about
+  the resulting input latency.
+- UNTESTED / UNVERIFIED BIOS failure modes (reasoned from the code only; no BIOS was available and nothing was run;
+  neither is reported as an issue because no concrete failing firmware is known):
+  a) A BIOS that returns with CF clear but without really waiting is not detected as a failure:
+     grub_console_wait() returns 1 whenever CF is clear, so grub_getkey() `continue`s without the fallback. Each loop
+     iteration would then make two grub_bios_interrupt() calls (INT 16h/AH=1 from grub_console_getkey(), plus INT
+     15h/AH=86h), each a protected -> real -> protected round trip, instead of one before the MR, so the spin would
+     be more expensive than before while still functional. Presetting CF only protects against firmware that leaves
+     CF untouched on success, not against one that clears it and returns early.
+  b) A firmware call that never returns (for example a BIOS waiting on an RTC periodic interrupt that never fires)
+     would freeze input permanently, since grub_getkey() never regains control to poll. input_wait_failed cannot
+     help because it is only set after the call returns. The commit message admits that physical BIOSes are untested
+     and that "the fallback cannot recover if a firmware call hangs".
+- Hygiene (not a functional failure): the MR adds two native test binaries, bios_console_wait_test and
+  efi_console_wait_test (built from tests/ per Makefile.util.def), but touches no .gitignore (rtb diff
+  origin/master..pr264 -- .gitignore is empty). Evidence at pr264: .gitignore has 0 matches for "console_wait"; it has
+  no `*_test` wildcard (its only `*` patterns are `*.1` ... `*~`, `mod-*.c`, `/10_*`, `/docs/*...`, `/grub-2.[0-9]*/`);
+  other native tests have explicit entries (/printf_test, /tpcm_unit_test, /priority_queue_unit_test, ...). History
+  (rtb log .gitignore / --cmsg-grep fortify): commit e8818f675 "tests: Add fortify source tests" added
+  /fortify_abort_test and /fortify_test to .gitignore in the same commit that added those tests, and c6514d389
+  "gitignore: Ignore some additional untracked files" later back-filled other test binaries. After an in-tree build
+  the two new binaries would show as untracked (not built here).
+- Cosmetic (test only): tests/bios_console_wait_test.c line 74 uses `"Unexpected BIOS interrupt %#x"`. GRUB's printf
+  does not implement the `#` flag: in parse_printf_arg_fmt the `#` falls into the default case and counts no argument,
+  and in grub_vsnprintf_real `if (curn >= args->count) continue;` skips the conversion, so `%#` is consumed, the
+  trailing `x` prints literally and the intno value is dropped. It only matters when that assertion fails (an
+  unexpected interrupt number reaching the mock); the message is then less informative, nothing else changes.
+
+== 7. Changes to earlier text of this file ==
+
+Two first-round statements in "Race check" (the EFI ConIn wait-for-key event being "level-triggered by firmware" and
+"matches how EDK2 code uses ConIn->WaitForKey") were not supported by anything in this tree. They were softened in
+place in this re-review to what the source shows (the 20 ms timer bounds the wait regardless) and the firmware
+behaviour is marked as recalled/unverified. Also corrected in this section: the BIOS test links five grub-core
+sources (kern/list.c, kern/misc.c, kern/term.c, term/i386/pc/console.c, tests/lib/test.c), not four; the grub_halt
+check was re-run over all five plus tests/lib/unit_test.c and the test file itself (no mentions).
+
+== Conclusion (re-review) ==
+
+No issues found in the 3-commit MR. Commit 1 is unchanged (rebase only); commits 2 and 3 were read in full, with the
+resulting code of the whole MR re-read for ordering, shared state and error paths. Not done: building, running the
+tests, or exercising a real BIOS/UEFI.

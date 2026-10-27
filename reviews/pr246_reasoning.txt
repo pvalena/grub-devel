@@ -1,0 +1,157 @@
+pr246 reasoning -- Make "exit" take a return code (1 commit)
+
+Commits:
+  1. a93553df3 - Make "exit" take a return code.
+
+Source files read (at pr246 unless noted): grub-core/commands/minicmd.c, grub-core/kern/misc.c (grub_strtoul,
+grub_strtoull, grub_abort), include/grub/misc.h, grub-core/kern/efi/efi.c, include/grub/efi/api.h,
+grub-core/kern/uboot/init.c, grub-core/kern/arm/uboot/uboot.S, include/grub/uboot/uboot.h,
+grub-core/kern/emu/main.c, grub-core/kern/emu/misc.c, grub-core/kern/i386/pc/startup.S, the other platform
+grub_exit definitions (arm/coreboot, i386/coreboot, i386/qemu, ieee1275, mips/arc, mips/loongson, mips/qemu_mips,
+xen), grub-core/script/execute.c (command dispatch, grub_errno handling), grub-core/lib/posix_wrap/stdlib.h,
+grub-core/Makefile.core.def (minicmd, kern/emu/misc.c), Makefile.util.def, docs/grub.texi (exit mentions),
+docs/BUG_PATTERNS.md (return-value-semantics, api-contract, low-level-ub-platform).
+
+Method and limits: everything was read with rtb; nothing was built or run, so build and runtime outcomes are read from
+the source, not tested. The commit carries no Assisted-by trailer.
+
+Completeness of the signature change: `rtb grep grub_exit --ref pr246` lists every definition and call site. Callers:
+minicmd.c:224, emu/misc.c:90 (grub_util_error), kern/misc.c:1498 (grub_abort), uboot/init.c:81. Definitions: efi.c,
+emu/main.c, emu/misc.c, uboot, ieee1275, xen, arm/coreboot, i386/coreboot, i386/qemu, mips/arc, mips/loongson,
+mips/qemu_mips (all changed to take an int), and i386/pc/startup.S:146 (assembly `FUNCTION(grub_exit)`, which never
+reads its arguments, so the new C argument is harmless). The prototype is include/grub/misc.h:650. No other file in
+the tree (util/, tests/, modules) mentions grub_exit, so no caller or definition was missed.
+
+
+======================================================================================================
+== Issue 1: non-numeric `exit` argument exits with status 0 (grub-core/commands/minicmd.c) ==
+======================================================================================================
+
+Discovery:
+grub_mini_cmd_exit() (minicmd.c:199-226) parses its argument with
+    n = grub_strtoul (argv[0], 0, 10);
+    if (n != ~0UL)
+      retval = n;
+and keeps retval = -1 (the "no code" default, line 204) only when n == ~0UL. That test looks like it was written
+assuming the libc convention that strtoul signals failure with a sentinel. It prompted the question what
+grub_strtoul actually returns for input that is not a number.
+
+Source trace:
+1. include/grub/misc.h:336 declares unsigned long grub_strtoul (const char *, const char **end, int base).
+2. kern/misc.c:571-586 grub_strtoul() calls grub_strtoull() and only adds an overflow check under
+   `#if GRUB_CPU_SIZEOF_LONG != 8`; otherwise it returns the grub_strtoull() value unchanged.
+3. kern/misc.c:589-668 grub_strtoull():
+   - line 597 skips whitespace, lines 602-614 handle a "0x" prefix and pick the base;
+   - the digit loop (lines 619-648) does `digit = grub_tolower (*str) - '0'` as an `unsigned long`, then
+     `if (digit >= 'a' - '0') digit += '0' - 'a' + 10; else if (digit > 9) break;` and
+     `if (digit >= (unsigned long) base) break;`. For '-' (0x2d): 0x2d - 0x30 wraps to a huge unsigned value, which
+     is >= 'a' - '0', gets 10 - 0x31 added, stays huge, and fails the `digit >= base` test: break with found == 0.
+     For "f", "o" and the like the same test breaks (base is 10 here).
+   - overflow (lines 639-643): sets GRUB_ERR_OUT_OF_RANGE and returns ~0ULL. This is the only ~0 return;
+   - `if (! found)` (line 650): sets GRUB_ERR_BAD_NUMBER ("unrecognized number"), stores *end, and `return 0`
+     (lines 650-658).
+   So "no digits" yields 0 with grub_errno == GRUB_ERR_BAD_NUMBER, never ~0UL.
+4. minicmd.c never reads grub_errno after the call and has no `end` pointer (it passes 0). `n` is 0, so
+   `n != ~0UL` is true and `retval = 0`.
+5. Inputs traced: "foo": 'f' -> digit 0x66-0x30 = 54 >= 49 -> 54 + (0x30-0x61+10 = -39) = 15 >= 10 -> break, found 0.
+   "-1": '-' as above, found 0. "": loop body never runs (`*str == 0`), found 0. All three return 0 with BAD_NUMBER.
+6. grub_exit (0): efi.c:157-158 `if (retval == 0) rc = GRUB_EFI_SUCCESS`, so the boot services Exit gets
+   GRUB_EFI_SUCCESS; uboot/init.c:44 gives `grub_uboot_return (0)`. (emu/misc.c:165 `exit (rc < 0 ? 1 : rc)` is not
+   what the `exit` command reaches: in grub-emu it resolves to emu/main.c:69-73 grub_exit, which calls
+   grub_reboot () and ignores the code; emu/misc.c's grub_exit is used by grub_util_error, line 90.)
+7. Command dispatch (script/execute.c) clears grub_errno via grub_print_error () after each command, so a stale errno at
+   entry is not a concern for the proposed `grub_errno != GRUB_ERR_NONE` check; the same pattern is used by other
+   commands that parse a number.
+
+Consequence:
+`exit foo`, `exit -1` and `exit ""` exit with the success status, while `exit` with no argument exits with the
+failure status. No error is printed because grub_exit never returns. On EFI the status is what is handed back to
+the firmware (or to the program that started GRUB).
+
+Fix assessment:
+Returning grub_errno (GRUB_ERR_BAD_NUMBER, "unrecognized number") for a failed parse gives the user the usual GRUB
+error and leaves GRUB running, which is what other commands do for a bad numeric argument. It does not change valid
+input. The ~0UL test can be dropped: an overflow now takes the same error path via GRUB_ERR_OUT_OF_RANGE. A parse of
+exactly 2^64-1 on a 64-bit build succeeds without error and converts to retval -1, i.e. the default; that is
+harmless.
+
+Limits of the draft fix (hardening, not separate issues; each traced in kern/misc.c:589-668):
+ (a) Trailing garbage: minicmd.c passes 0 as the `end` pointer, so nothing checks that the whole argument was
+     consumed. `exit 3x` parses 3 ('x' breaks the digit loop at line 629 with found == 1) and exits with 3, no error.
+ (b) `exit 0x1`: grub_strtoul is called with base 10, so the "0x" prefix is not skipped (lines 602-614 skip it only for
+     base 0 or 16). '0' is parsed, 'x' breaks the loop, the result is 0 with no error, i.e. success.
+ (c) Narrowing: `retval = n` converts unsigned long to int. On LP64 `exit 4294967296` wraps to 0 (success) and
+     values in 2^31..2^32-1 become negative, i.e. the failure default. Reachable only with a deliberately huge
+     argument.
+ Rejecting (a) and (b) needs an `end` pointer and an `*end != '\0'` check (returning GRUB_ERR_BAD_NUMBER), and
+ (c) a clamp or range check on `n` before the conversion. The draft fix in the review covers only the no-digits
+ case, which is the one a plain typo or an empty argument hits.
+
+
+======================================================================================================
+== Issue 2: default `exit` status changes on EFI and U-Boot, contrary to the commit message ==
+======================================================================================================
+
+Discovery:
+The commit message states: "By default we return the same exit status we did before this patch." The diff of
+efi.c and uboot/init.c shows the previous constants (GRUB_EFI_SUCCESS passed unconditionally, and
+grub_uboot_return (0)) replaced by expressions of the new argument, so I compared the new default with the old one.
+
+Source trace:
+1. minicmd.c:204 `int retval = -1;` and 208-215: the argument is only parsed when argc == 1, so plain `exit` calls
+   grub_exit (-1) (line 224).
+2. efi.c at pr246, lines 152-165:
+     grub_efi_status_t rc = GRUB_EFI_LOAD_ERROR;
+     if (retval == 0) rc = GRUB_EFI_SUCCESS;
+     ...boot_services->exit (grub_efi_image_handle, rc, 0, 0);
+   GRUB_EFI_LOAD_ERROR is GRUB_EFI_ERROR_CODE (1) (include/grub/efi/api.h:648). On origin/master the same function
+   passed GRUB_EFI_SUCCESS unconditionally (the removed line in the diff). So plain `exit` on EFI went from success to
+   load-error.
+3. uboot/init.c:42-45: `grub_uboot_return (rc < 0 ? 1 : rc)` replaced `grub_uboot_return (0)`; -1 gives 1.
+   grub_uboot_return is the assembly return-to-U-Boot (arm/uboot/uboot.S:51-56) and does not touch r0, so the value
+   reaches the caller of GRUB.
+4. Host: emu/misc.c:160-166 `exit (rc < 0 ? 1 : rc)` replaced `exit (1)`, so the default stays 1, but that
+   function is reached from grub_util_error (emu/misc.c:90, `grub_exit (1)`) in the host utilities, not from the `exit`
+   command. In grub-emu the `exit` command goes to emu/main.c:69-73 grub_exit, which calls grub_reboot () (a longjmp to
+   the emu main loop) and ignores the code both before and after the patch. So "unchanged default" holds only for
+   grub_util_error; no platform that honours the code through the `exit` command keeps its old default.
+5. kern/misc.c:1498: grub_abort() now calls grub_exit (1), so an abort changes status too: on EFI from SUCCESS to
+   LOAD_ERROR, and on U-Boot from `grub_uboot_return (0)` to `grub_uboot_return (1)` (same cause as the `exit`
+   default).
+6. Argument count: the old grub_mini_cmd_exit had `argc` and `argv` both unused, so `exit a b` ignored its arguments
+   and exited. The new code returns `grub_error (GRUB_ERR_BAD_ARGUMENT, N_("one argument expected"))` for
+   argc > 1 (minicmd.c:207-208), so the same input now leaves GRUB running with an error. The message also reads
+   "one argument expected" although zero arguments are accepted. This is a deliberate part of adding the argument,
+   but it is another change from "the same behaviour as before" that the commit message does not mention.
+7. The explicit grub_exit (-1) at uboot/init.c:81 (no U-Boot API: "Don't even have a console to log errors to") is
+   a failure exit; any fix that maps -1 back to the old default would have to keep that call meaning failure.
+
+Consequence:
+After this commit every EFI user of the plain `exit` command (the command's own comment, minicmd.c:219-221, notes it
+is "often used to launch the next boot application") hands GRUB_EFI_LOAD_ERROR back instead of GRUB_EFI_SUCCESS, and
+U-Boot gets 1 instead of 0, and `exit a b` now errors instead of exiting. Either the commit message is wrong, or
+the behaviour is. I did not read any firmware or shim source to say how a given loader reacts to the changed
+status, so the review only claims the message/code mismatch.
+
+Fix assessment:
+No draft patch: both directions are defensible (keep the status and map "no code" to the old per-platform value, or
+keep the new default and correct the commit message and the docs). The author knows which was meant. docs/grub.texi
+only lists `exit` as "Exit from GRUB." (line 9652) and in the minicmd module description (line 5495), and the
+command is still registered with no argument synopsis (minicmd.c:249-250), so nothing documents either behaviour.
+
+
+======================================================================================================
+== Observed, not reported ==
+======================================================================================================
+- kern/misc.c (new, lines 1501-1507): a clang-only global `abort()` that calls grub_abort(). It is not mentioned in
+  the commit message and is not present on origin/master. History (`rtb log -S`): 064360e66 removed the kern/misc.c
+  copy (moving it to compiler-rt.c) and 8505f7300 removed that one too, in favour of the static inline abort() that
+  posix_wrap provides for gnulib/libgcrypt (grub-core/lib/posix_wrap/stdlib.h:62). I found no duplicate global
+  definition in the tree and no failing path, so it is only noted as an unrelated hunk.
+- emu/misc.c: `#if defined (GRUB_KERNEL) && !defined (GRUB_MACHINE_EFI)`. emu/misc.c is only built for the utilities
+  and the emu kernel (Makefile.util.def:29, Makefile.core.def:399), where GRUB_MACHINE_EFI is not defined, so the new
+  condition is a no-op for the in-tree builds.
+- The `argc < 0` test is always false, and the message "one argument expected" is shown for 2 or more arguments
+  although 0 are allowed; cosmetic.
+
+AI-assistance scrutiny: not applicable (no Assisted-by trailer).
