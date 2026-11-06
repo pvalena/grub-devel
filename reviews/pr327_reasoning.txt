@@ -1,0 +1,120 @@
+pr327 Reasoning Trail - 1 issue (commits 1-4 and 6-10 clean)
+========================================
+
+MR !327 - "fs/btrfs: ..." series (Avnish Chouhan), 10 commits, 387 diff lines (two-dot and three-dot diffs are
+equal, so the branch is rebased). Result: 1 issue (commit 5, RAID10). Nothing was built or run; everything is from
+reading
+the source at pr327 (rtb cat, full functions) and tracing inputs by hand.
+
+Source files read (at pr327): grub-core/fs/btrfs.c (struct definitions, free_iterator, check_btrfs_header,
+save_ref, next, lower_bound, find_device, btrfs_read_from_chunk, rebuild_raid5, raid56_read_retry,
+grub_btrfs_read_logical, grub_btrfs_mount/unmount, grub_btrfs_extent_read, find_path symlink read, grub_btrfs_dir,
+find_pathname). docs/BUG_PATTERNS.md has no btrfs/filesystem entry; applied the resource-leak, error/success
+conflation and uninitialised-state classes.
+
+
+== Issue 1: RAID10 stripe-array validation gap (grub-core/fs/btrfs.c, commit c0fb2fa40) ==
+
+Discovery:
+Commit 5 claims that a crafted nstripes can no longer make btrfs_read_from_chunk() index past the chunk item, and
+its comment says the effective nstripes is "what is used to index the array". While tracing which stripe each
+RAID profile indexes, RAID10 turned out to index differently.
+
+Source trace (grub-core/fs/btrfs.c at pr327):
+ - 1035: nstripes = grub_le_to_cpu16 (chunk->nstripes) ? : 1;  raw 0 or 1 gives effective 1.
+ - 1287-1291: est_chunk_alloc = 32 * nstripes + 48 = 80 > chunk_avail fails for an 80-byte item, so it passes
+   (chunk_avail is chsize at 1002 for a chunk-tree item, the bootstrap remainder at 957 for a bootstrap entry).
+ - RAID10 case: 1124 nsubstripes = chunk->nsubstripes ? : 1; 1130 divisor is nstripes / nsubstripes ? : 1, which
+   is 1/2 = 0 -> 1, so stripen = 0 and 1132 stripen *= 2 stays 0; 1133 redundancy = nsubstripes = 2. The only
+   nsubstripes check (1142) is != 2, so a crafted nsubstripes == 2 passes.
+ - 1315 for (i = 0; i < redundancy; i++) calls btrfs_read_from_chunk (..., stripen, ..., i, ...) (1317).
+   Line 709: stripe = (chunk + 1); stripe += stripen + redundancy, so i == 1 selects stripe[1], bytes 80..112 of
+   an 80-byte item.
+ - Trigger: the i == 1 retry runs whenever i == 0 fails. btrfs_read_from_chunk() returns GRUB_ERR_READ_ERROR at
+   line 725 when find_device() (718) returns NULL, so a crafted stripe[0].device_id that names no attached
+   device is enough; no real disk failure is needed. (The j loop at 1273 repeats the whole sequence once.)
+ - Over-read: stripe[1].device_id and stripe[1].offset (16 bytes) are read. For a chunk-tree item chunk is a
+   grub_malloc (chsize) buffer, so this is a 16-byte heap over-read. For a bootstrap entry it reads inside
+   data->sblock.bootstrap_mapping / the neighbouring struct grub_btrfs_data members, not past an allocation.
+ - Consumers: the value goes to find_device() (device id) and paddr (offset) for grub_disk_read(). No path
+   returns the bytes to the attacker. Attacker precondition: a crafted btrfs filesystem on a disk GRUB reads.
+ - Other profiles, no exempt case found: RAID10 with nstripes >= 2 stays in bounds (nstripes 2, 3, 5 traced:
+   stripen * 2 + i <= nstripes - 1); RAID1/DUP/C3/C4 enforce nstripes == redundancy (1092); SINGLE enforces
+   nstripes == 1; RAID0 stripen < nstripes; RAID5/6 nparities < nstripes (and nstripes effective 1 is rejected).
+
+Consequence:
+Reading a stripe descriptor past the end of the validated item: 16 bytes of adjacent heap (or superblock-struct
+neighbour) are interpreted as device_id/offset and used for a device lookup and disk read. Bounded information
+effect (no echo to the attacker), but it is exactly the out-of-bounds index the commit says it closes.
+
+Fix assessment:
+Rejecting nstripes < nsubstripes in the RAID10 case (with goto out) matches the commit's validation style and
+covers raw 0 and 1; with nsubstripes == 2 valid RAID10 items have nstripes >= 2, so no valid filesystem is
+rejected. The alternative bound inside the retry loop also works but leaves the geometry inconsistent.
+
+Phase 0
+-------
+sanity-scan.sh: no hits in any section. Messages and diff read afterwards: intent matches content, no
+AI-assistance tags, a single file changed.
+
+Commits 1-4: grub_btrfs_extent_read()
+-------------------------------------
+Every exit of the cache-miss block now releases `desc` once:
+ - lower_bound() error: free_iterator (lower_bound allocates desc->data first, so a NULL data is possible and
+   grub_free(NULL) is fine).
+ - "extent not found", "too short", malloc failure, read failure: free_iterator before return -1.
+ - success: either the `extend <= pos` branch (next(), then free_iterator, then return or continue) or the
+   trailing free_iterator. No path frees twice or skips a free.
+data->extent is set to NULL after the free and again after a failed read, so grub_btrfs_unmount() (grub_free on
+data->extent) cannot double free and the cache test `!data->extent || ...` misses on the next call. The cache keys
+(extstart, extsize, extino, exttree) are now written only after the read succeeded; extend is derived afterwards.
+offsetof(struct grub_btrfs_extent_data, inl) equals the old `(char *)&data->extent->inl - (char *)data->extent`.
+<stddef.h> is already used by other grub-core files (kern/misc.c, kern/ieee1275/init.c).
+Commit 3: the failing malloc and read_logical paths returned grub_errno / err (small positive enum values). The
+callers are grub_btrfs_read() (returned to grub_file_read, <0 is the error) and find_path() which compares the
+result with inode.size and then `return grub_errno`; grub_errno is set by the failing callee in both cases, so
+-1 is the right value. Commit 4: `r` is a plain int; the hole-skip path tests r < 0, r == 0 as before.
+A cache hit after a hole skip: extend <= old pos < new pos, so the next iteration misses and re-reads. Fine.
+
+Commit 5: chunk stripe-array bound
+----------------------------------
+grub_btrfs_chunk_item is 48 bytes without stripes, grub_btrfs_chunk_stripe is 32 bytes, so a valid item is
+48 + 32 * nstripes. chunk_avail is chsize (item size from the chunk tree, which is >= 48 by the earlier check) or,
+for a bootstrap entry, bootstrap_mapping + sys_chunk_array_size - chunk. The loop condition guarantees
+ptr < end - 17 so chunk < end and the subtraction cannot underflow. A valid item gives est == chunk_avail and the
+test is `>`, so valid filesystems still pass (e.g. 1 stripe: 80 <= 80). The old test compared against chunk->size
+(logical length, LE and unconverted), so it was effectively always false. nstripes is the effective count
+(0 -> 1), matching the indexing. The check is inside the j loop, so it is applied on the retry too.
+The RAID10 residual is written up as Issue 1 above.
+
+Commit 6: chunk leak
+--------------------
+Walked every `return` between `chunk_found:` and the loop end: all former direct returns (no chunk, SINGLE, RAID1,
+RAID10, RAID5/6 parities, default, csize == 0) now set err and goto out; the final `if (err)` also goes through
+out. Normal completion has err == 0 (the j loop only exits with `if (!err) break;`), so `out:` frees and falls
+through to the next iteration. Early returns before the allocation (lower_bound, no chunk, zero size) have
+challoc == 0 and nothing to free; the read_logical failure after the malloc already freed. `return err` equals
+the old `grub_errno = err` value. The goto leaves the declaration block, never jumps into one.
+
+Commits 7-10
+------------
+7: raid56_read_retry() allocates nstripes buffers; with all stripes valid (reachable when the first read failed
+and the retry succeeds) the old operand order read buffers[nstripes]. Reordered test is correct. Separate,
+pre-existing and untouched (observation): in that "all OK" case rebuild_raid5() returns without filling
+dest, raid56_read_retry() still returns GRUB_ERR_NONE, so the caller gets an unfilled buffer as a successful
+read. Reachable only after a transient first-read failure.
+8: find_device(): old code bumped n_devices_attached and overwrote n_devices_allocated before the grow; on failure
+the unmount loop closed an unwritten slot and a later call wrote past the array. New code grows via locals and
+commits count/allocation only afterwards. The new capacity formula (attached + 1) * 2 + 1 equals the old one. A
+NULL dev is still recorded for an unknown id (same as before). ctx.dev_found is closed on the failure path.
+9: save_ref(): depth/allocated now committed after the realloc. next() now propagates the save_ref error, which
+is needed because depth no longer advances on failure (else the `while (!leaf)` loop would re-read the same node
+forever). lower_bound() already checked save_ref. Callers free desc via free_iterator on error (extent_read,
+grub_btrfs_dir, find_pathname), so no new leak.
+10: check_btrfs_header() errors now propagate from lower_bound() (return err) and next() (return -err). In
+lower_bound the header is compared with the logical `addr` actually read; in next() with node.addr. The old
+behaviour left grub_errno set while returning success; grub_fs_probe() treats a set grub_errno as "not this fs",
+so valid filesystems are unaffected and corrupt tree blocks now fail early. Whether filesystems with a changed
+metadata UUID behave differently is not verified (the in-tree superblock struct has no such field); the new hard
+failure could affect
+filesystems whose tree-block UUID differs from the superblock UUID, not verifiable from the tree.

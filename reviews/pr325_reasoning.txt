@@ -369,3 +369,73 @@ sources), but the deletion in commit 5 was done only along the bootstrap.conf pa
 the same files in conf/Makefile.extra-dist was missed, which is the kind of global-consumer gap a diff-local view
 hides. Commit 1 likewise fixed the files that failed to build for the author, while basic/platform.c, which only
 non-Linux hosts compile, has the same shape.
+
+
+======================================================================================================
+== Re-review (2026-11) ==
+======================================================================================================
+
+Current commits (`rtb log --ref origin/master..pr325 --head 1000`, 5; newest first): ee8f3e9e8, 4252745f9,
+0303bf92f, df8f27b91, 0c0e09ddd. Old hashes all still exist (`git -C grub cat-file -t` returned "commit" for
+370eb4f81 8ee84f56f 701acd1d3 8a915a5f8 326d5c0df). Two-dot and three-dot diffs are both 645 lines (rebased).
+
+Mapping (diff of `rtb diff OLD^ OLD` vs `rtb diff NEW^ NEW`):
+  370eb4f81 -> 0c0e09ddd  unchanged (empty diff-of-diffs)
+  8ee84f56f -> df8f27b91  unchanged
+  701acd1d3 -> 0303bf92f  unchanged
+  8a915a5f8 -> 4252745f9  unchanged
+  326d5c0df -> ee8f3e9e8  reworked; no commit dropped or new.
+Delta of commit 5 against the old one: (a) conf/Makefile.extra-dist drops the four deleted-patch entries;
+(b) bootstrap.conf gets a four-line comment (Author/Date/subject of the upstream gnulib commit) above
+GNULIB_REVISION, whose value is unchanged (5df606bb), so the bump target and the refreshed patches are the same;
+(c) configure.ac sets ac_cv_header_stdckdint_h=no right after AC_PROG_CC, before gl_EARLY; (d) the commit message
+gains the stdckdint bullet. The refreshed fix-width/fix-unused-value patches are byte-identical to the prior round's
+(no hunk in the diff-of-diffs), so the earlier dry-run result is not re-done.
+
+Prior issue 1 (Makefile.extra-dist): FIXED. `rtb cat conf/Makefile.extra-dist --ref pr325 --lines 28,36` lists only
+fix-width.patch and fix-unused-value.patch; bootstrap.conf:90-94 loops over the same two names;
+`rtb grep` for the four deleted names over pr325 finds nothing.
+
+Observation A (reed_solomon.c, <assert.h> before config.h): unchanged at lines 29-31; still harmless for the reason in
+the round-1 text above (the config-util.h shim is guarded by `!defined assert`).
+
+Observation B -> promoted to Issue 1. Reassessment against the Classifying-findings bar:
+ - Concrete path: non-Linux, non-MinGW/Cygwin host. grub-core/osdep/platform.c (9 lines) has no includes and selects
+   basic/platform.c in the final #else. basic/platform.c:19 includes <grub/util/install.h>, whose lines 22-23 are
+   <sys/types.h> and <stdio.h>. Nothing precedes it in the TU. No -include of a config header exists in
+   configure.ac, conf/Makefile.common, Makefile.am or gentpl.py (rtb grep for config-util shows only the
+   AC_CONFIG_HEADERS line and the .pp prerequisites). grub/types.h:22 and grub/symbol.h:22 include <config.h>, but only
+   after install.h's two libc includes.
+ - gnulib wrappers: fetched lib/sys_types.in.h and lib/stdio.in.h at 5df606bb. sys_types.in.h:26-28 and
+   stdio.in.h:64-66: `#if !_GL_CONFIG_H_INCLUDED` then `#error "Please include config.h first."`. At 9f48fb99
+   (the old bump target) neither file has the check or the macro (grep found no hit). So the failure is introduced by
+   this MR's bump, not pre-existing.
+ - Wrapper on the include path: the four programs get CPPFLAGS_GNULIB (Makefile.am:22; Makefile.util.def:6 for the
+   program template). The same mechanism is why commit 1 of this MR had to add config.h to tests/ and
+   osdep/unix/sleep.c on the Linux CI host, so the wrappers are generated and found first in these builds. Wrapper
+   generation is not Linux-specific; that wrappers get generated on other hosts follows the same build, but I did not
+   run gnulib-tool or configure on one.
+ - Siblings: linux/platform.c:19 and unix/platform.c:19 `<config.h>`; windows/platform.c `<config-util.h>`;
+   no_platform.c (AROS) starts with <grub/types.h> which includes <config.h> (types.h:22), so it is fine.
+ - Unverified: no build on a non-Linux host was run; I did not check which BSD/Hurd hosts the maintainers build on.
+ Ruling: meets the Issue bar. The failing path is determined by source (an #error condition that is true for this
+ include order), it is attributable to the bump, and the fix is one line. The remaining uncertainty is only whether
+ someone builds the utilities on such a host, which does not change the defect.
+ Fix assessment: `#include <config.h>` as the first line of basic/platform.c matches linux/platform.c. basic/platform.c
+ is included first in its TU, so config.h is seen before install.h. config.h (not config-util.h) is what the siblings
+ use; that config.h defines _GL_CONFIG_H_INCLUDED for host builds was not checked here (not generated or built).
+
+stdckdint (new in commit 5): fetched m4/stdckdint_h.m4 at 5df606bb. gl_STDCKDINT_H calls gl_CHECK_NEXT_HEADERS
+([stdckdint.h]) and then tests `$ac_cv_header_stdckdint_h = yes` to set HAVE_STDCKDINT_H; with the variable preset
+to `no`, HAVE_STDCKDINT_H=0 and gnulib's replacement header is generated (lib/stdckdint.in.h is the template).
+That autoconf honours a preset cache variable in AC_CHECK_HEADERS is standard behaviour, not run here. The assignment
+sits after AC_PROG_CC and before gl_EARLY, so it precedes the checks. Effect on target builds with older compilers
+(GCC 13.2.0 crosstool) is the commit message's claim; not built, not verified.
+
+Scratch access used: curl from raw.githubusercontent.com (coreutils/gnulib mirror) into the new empty directory
+/tmp/gnulib-fetch-RClhlY: new/lib/{sys_types.in.h,stdio.in.h,stdckdint.in.h}, new/m4/stdckdint_h.m4 (all at
+5df606bbd0ef54a8f150c3303c870b9381a661f0) and old/lib/{sys_types.in.h,stdio.in.h} (at 9f48fb99...). A first attempt at
+m4/stdckdint.m4 returned 404 (the file is stdckdint_h.m4). Before reading, the six files were scanned with the
+sanity-scan.sh pattern battery adapted to files (/tmp/scan-scripts/scan-files.sh): all plain ASCII text, no binaries,
+no Unicode tricks, no base64/hex/network/eval hits; matches were only "override" in comments/identifiers, licence and
+bug-tracker URLs and a `#token` stringize macro. Nothing was built or run beyond curl and the scan.

@@ -1,0 +1,57 @@
+AI Review Investigation: pr218 - grub-install: force journal draining to ensure data integrity
+===============================================================================================
+
+Commits: 1 (a967ab24e). Re-review of the amended commit (prior round: 9c902969c, see pr218_reasoning.txt, kept).
+Result: CLEAN - both prior issues are fixed; the reworked parts show no new defect.
+
+Base note: pr218 is not rebased on current origin/master (two-dot diff 1969 lines, three-dot 244). Reviewed the MR's
+own changes via `rtb diff --ref origin/master...pr218`; conflicts assumed not to affect the MR.
+
+Phase 0: sanity-scan.sh origin/master...pr218 flagged only "Makefile.util.def changed" (new source registration).
+Commit message and diff agree.
+
+Old -> new mapping
+------------------
+`git -C grub cat-file -t 9c902969c` -> commit (old object still present).
+`diff <(rtb diff 9c902969c^ 9c902969c) <(rtb diff a967ab24e^ a967ab24e)` differs only in:
+  - blob/hunk offsets (rebase-induced);
+  - linux/journaled_fs.c: sigemptyset/sigaddset(INT, TERM) replaced by sigfillset (one comment line, 85 -> 84 lines);
+  - grub-mkconfig.in: `@PACKAGE@` -> `@grubdirname@` (2 places), `trap` lines gain QUIT (2 places).
+Everything else (basic stub, osdep wrapper, install.h, grub-install.c hunk, Makefile.util.def) is unchanged.
+Status: commit is "reworked" (only the fixes above).
+
+Prior issues against CURRENT source
+-----------------------------------
+Issue 1 (@PACKAGE@ vs @grubdirname@): fixed. util/grub-mkconfig.in:359 and :364 now use `@grubdirname@`;
+configure.ac:343-347 sets grubdirname from --with-grubdir (default $PACKAGE) and AC_SUBSTs it; grub-reboot.in:39,136
+use the same substitution. A build with --with-grubdir=grub2 and `-o /boot/grub2/grub.cfg` now matches.
+Issue 2 (signals): fixed. grub_install_sync_fs_journal() (linux/journaled_fs.c) does sigfillset + SIG_BLOCK before
+FIFREEZE and restores old_set at `finish:` after FITHAW, so SIGHUP/QUIT/TSTP stay pending until thaw. SIGKILL and
+synchronous faults cannot be blocked/are not delivered by other processes in this window; not a regression.
+Shell side: `trap '' HUP INT QUIT TERM` now covers the same terminating signals as the intent of the first draft.
+Observation (restore_backup_atexit ordering): still present, unchanged code (util/grub-install-common.c:292-335
+registers it via atexit() on first append_to_backup_dirs()); no failing input shown.
+
+Fresh review of the reworked/whole code
+---------------------------------------
+- grub-install.c ~2045-2070: grub_fs is set at line 1333 (error out if NULL), so grub_fs->name is safe. Loop over
+  {"xfs","ext2"}: `retries` 10; `while (retries-- && !sync(grubdir)) grub_sleep (1);` traced: success on attempt k
+  leaves retries >= 0 (no warning); 10 failures end with retries == -1 -> warning. Only EBUSY (already frozen)
+  returns 0 -> retried; other errors return 1 (EOPNOTSUPP/ENOSYS/EPERM silently, others warn).
+- linux/journaled_fs.c: opens `grubdir` O_RDONLY (directory fd is valid for FIFREEZE/FITHAW), freeze loop retries only
+  on EINTR for up to 3 s (signals are blocked, so effectively once), thaw loops on EINTR, fd closed on every path
+  after open (the early `return 1` happens before the signal mask changes). In the default layout nothing
+  writes to the frozen filesystem between freeze and thaw (only ioctl(FITHAW) on the open fd). The thaw-failure
+  warning (grub_util_warn) is emitted before the signal mask is restored, while the fs may still be frozen.
+  grub_get_time_ms exists in emu (grub-core/kern/emu/misc.c:169); grub_sleep is in include/grub/time.h.
+- Makefile.util.def: new sources are in the grub-install program block only (the only user); osdep wrapper
+  journaled_fs.c selects linux/ or basic/ by __linux__, same pattern as the other osdep wrappers; basic stub
+  returns 1 so non-Linux builds skip the freeze.
+- grub-mkconfig.in: function runs after the new config is moved into place; GRUB_FS, GRUB_DEVICE, GRUB_DEVICE_BOOT
+  are set at lines 140-148; make_system_path_relative_to_its_root comes from grub-mkconfig_lib (sourced at line 52).
+  `test A -o B && test C -a D` parses as intended; failure is swallowed (`|| true`, `>&2`).
+- Shell variant, hedged (not tested): after `fsfreeze --freeze /` the shell only execs `fsfreeze --unfreeze`, which
+  writes nothing by default. It could hang only if stderr is a file on the frozen fs (e.g. `sh -x` xtrace or a log
+  redirect into `/` or `/boot`) AND a message is printed inside the window. Kept an observation. Whether the exec
+  can block on an atime update under strictatime is not verified (kernel source is outside this tree).
+- Stop signals (SIGTSTP) are not trapped on the shell side; narrow window, same class as above, not reported.

@@ -1,0 +1,40 @@
+pr324 re-review (2026-11) -- diskfilter: partmaps leak + RAID10 hardening (2 commits)
+
+Source files read (pr324): grub-core/disk/diskfilter.c (validate_segment 580-625, read_segment 670-765,
+grub_diskfilter_make_raid 1122-1200, insert_array partmaps 1360-1372, free_array 1388-1425). Prior round's
+trail: pr324_reasoning.txt (kept unchanged; it records the issue that was found and is now fixed).
+
+Phase 0: sanity-scan.sh origin/master..pr324 -> no flags in any section; messages and diff read afterwards, consistent.
+
+Method: current list fetched with `rtb log --ref origin/master..pr324 --head 1000` (2 commits: e35c5189d,
+081c5f8cc). `git -C grub cat-file -t` on 3e484e552 and 35c505ae6 -> "commit" for both.
+`diff <(rtb diff 081c5f8cc^ 081c5f8cc) <(rtb diff 3e484e552^ 3e484e552)`: only the blob index line differs, so commit 1
+is unchanged. The same for e35c5189d vs 35c505ae6: the only content difference is the `validate_segment()` condition,
+old `near == 0 || ((seg->layout >> 16) == 0 && far == 0)`, new `near == 0 || far == 0`. No commit dropped or added.
+
+Prior issue (offset layout with far == 0): FIXED, checked against current source, not only the changed line.
+ - validate_segment() 592-598 at pr324: near = layout & 0xFF, far = (layout >> 8) & 0xFF;
+   `if (near == 0 || far == 0)` -> BAD_FS; `if (near > node_count || far > node_count)` -> BAD_FS. For 0x10002
+   (near 2, far 0, offset flag): rejected by the first test. There is no remaining exempt branch: both counters are
+   >= 1 for every layout whatever bits 16+ say.
+ - read_segment() 683-753: offset branch sets ofs = far (>= 1 now); `for (i = 0; i < near; i++)` and
+   `for (j = 0; j < far; j++)` each run at least once, so `err` is assigned by grub_diskfilter_read_node() before
+   `if (! err) break;`. A path returning GRUB_ERR_NONE without writing buf no longer exists for RAID10.
+ - non-offset: far_ofs = grub_divmod64 (raid_member_size, far * stripe_size, 0) (687-688): far >= 1 and
+   stripe_size != 0 (validate_segment 583) keep the divisor non-zero.
+ - near > node_count / far > node_count: bounds k = disknr + j walks via `k++; if (k == node_count) k = 0` so the
+   indices stay inside nodes[0..node_count-1].
+ Whether Linux md can write far == 0 with the offset flag was not checkable from the tree; such an array is now
+ rejected rather than being read without a copy being fetched.
+
+make_raid size calculation (1147-1166): `grub_mul ((grub_uint64_t) nmemb, disk_size, &totsize)`; on overflow
+`grub_free (uuid); return NULL;` -- same ownership convention as the n == 0 branch above and the level 0/4/5/6 branch
+below. Then `totsize = grub_divmod64 (totsize, n, 0)` with n != 0 (checked at 1153). nmemb is range-checked at the top
+(1 .. GRUB_MDRAID_MAX_DISKS) so the cast is non-negative. Not run; read only.
+
+partmaps leak (commit 1, unchanged): insert_array() (1367-1371) builds a NULL-terminated xcalloc'd array of xstrdup'd
+names under GRUB_UTIL; consumers (423-424 and the grub-install/grub-probe callbacks) only borrow the strings.
+free_array() 1405-1413 frees each string then the array, guarded by `if (pv->partmaps)`. The re-insert path at :1367
+still overwrites partmaps without freeing (pre-existing, outside this MR).
+
+Result: no issues found.
